@@ -63,9 +63,15 @@ def plot_weekday_seasonal_csv(
     plt.tight_layout()
     plt.show()
 
-
-if __name__ == "__main__":
+def data_workflow():
     df = input_csv()
     y = parse_date_col(df)
+    return y
+
+def plot_workflow(y):
     plot_timeseries_csv(y)
     plot_weekday_seasonal_csv(y)
+
+if __name__ == "__main__":
+    y = data_workflow()
+    plot_workflow(y)
