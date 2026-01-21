@@ -102,7 +102,7 @@ def plot_periodogram(ts, detrend=None, ax=None):
         detrend=detrend,
         window="boxcar",
         scaling='spectrum',
-        axis=0
+        axis=0 # because y is a series, not an array
     )
     if ax is None:
         _, ax = plt.subplots()
