@@ -183,12 +183,18 @@ def plot_lags(x, y=None, lags=6, nrows=1, lagplot_kwargs={}, **kwargs):
     fig.tight_layout(w_pad=0.1, h_pad=0.1)
     return fig
 
+def make_lags(ts, lags):
+    return pd.concat(
+        {
+            f'y_lag_{i}': ts.shift(i)
+            for i in range(1, lags + 1)
+        },
+        axis=1)
+
+
 
 if __name__ == "__main__":
     y = data_workflow()
-    _ = plot_acf(y["MWh use"], lags=7*24) 
-    _ = plot_pacf(y["MWh use"], lags=7*24) 
-    _ = plot_lags(y["MWh use"], lags=7*24, nrows=24)
-    plt.tight_layout()
-    plt.show()
+    Y = make_lags(y["MWh use"], lags=27)
+    Y = Y.fillna(0.0)    
     
