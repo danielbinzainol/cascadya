@@ -1,6 +1,7 @@
 from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np
 
 def input_csv(
     csv_path: str = r"D:\Cascadya\Cascadya - Documents\8. COMPTE CLIENT\__Dossier Simulation MBC\France champignon\données_bonduelle.csv",
@@ -72,6 +73,63 @@ def plot_workflow(y):
     plot_timeseries_csv(y)
     plot_weekday_seasonal_csv(y)
 
+# ### Trend ####
+# def detect_plot_trend(y, obs_in_window):
+#     moving_average = y.rolling(
+#         window=obs_in_window,       # 366-day window
+#         center=True,      # puts the average at the center of the window
+#         min_periods=np.floor(obs_in_window/2, casting="unsafe", dtype=int),  # choose about half the window size
+#     ).mean()              # compute the mean (could also do median, std, min, max, ...)
+
+#     ax = y.plot(style=".", color="0.5")
+#     moving_average.plot(
+#         ax=ax, linewidth=3, title=f"France champignon Conso - {obs_in_window} obs for Moving Average", legend=False,
+#     )
+#     plt.tight_layout()
+#     plt.show()
+
+#     # CCL: no trend 
+# ###
+
+
+#### Seasonality #####
+def plot_periodogram(ts, detrend=None, ax=None):
+    from scipy.signal import periodogram
+    fs = pd.Timedelta("366D") / pd.Timedelta("1h") # donne 8784 observations
+    frequencies, spectrum = periodogram(
+        ts,
+        fs=fs,
+        detrend=detrend,
+        window="boxcar",
+        scaling='spectrum',
+        axis=0 # because y is a series, not an array
+    )
+    if ax is None:
+        _, ax = plt.subplots()
+    ax.step(frequencies, spectrum, color="purple")
+    ax.set_xscale("log")
+    ax.set_xticks([1, 2, 4, 6, 12, 26, 52, 104])
+    ax.set_xticklabels(
+        [
+            "Annual (1)",
+            "Semiannual (2)",
+            "Quarterly (4)",
+            "Bimonthly (6)",
+            "Monthly (12)",
+            "Biweekly (26)",
+            "Weekly (52)",
+            "Semiweekly (104)",
+        ],
+        rotation=30,
+    )
+    ax.ticklabel_format(axis="y", style="sci", scilimits=(0, 0))
+    ax.set_ylabel("Variance")
+    ax.set_title("Periodogram")
+    plt.tight_layout()
+    plt.show()
+
+
 if __name__ == "__main__":
     y = data_workflow()
-    plot_workflow(y)
+    plot_periodogram(y)
+    
