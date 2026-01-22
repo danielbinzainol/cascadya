@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from statsmodels.graphics.tsaplots import plot_pacf, plot_acf
 import seaborn as sns
+from statsmodels.tsa.deterministic import DeterministicProcess
+from sklearn.linear_model import LinearRegression
 
 def input_csv(
     csv_path: str = r"D:\Cascadya\Cascadya - Documents\8. COMPTE CLIENT\__Dossier Simulation MBC\France champignon\données_bonduelle.csv",
@@ -194,7 +196,37 @@ def make_lags(ts, lags):
 
 
 if __name__ == "__main__":
-    y = data_workflow()
-    Y = make_lags(y["MWh use"], lags=27)
-    Y = Y.fillna(0.0)    
-    
+    steam_cons = data_workflow()
+    # give information on the frequency of the index:
+    steam_cons = steam_cons.asfreq('h')
+
+    # X = make_lags(steam_cons["MWh use"], lags=27)
+    # X = X.fillna(0.0)    
+
+    # seasonality: create the feature set
+    dp = DeterministicProcess(
+        index=steam_cons.index,  # dates from the training data
+        constant=True,       # dummy feature for the bias (y_intercept)
+        order=1,             # the time dummy (trend)
+        seasonal=True,       # weekly seasonality (indicators)
+        drop=True,           # drop terms if necessary to avoid collinearity
+    )
+    # `in_sample` creates features for the dates given in the `index` argument
+    X = dp.in_sample()
+
+    X.head()    
+
+    # seasonality: fit the model
+    y = steam_cons["MWh use"] # the target
+
+    model = LinearRegression(fit_intercept=False)
+    model.fit(X, y)
+
+    y_pred = pd.Series(model.predict(X), index=y.index)
+    X_fore = dp.out_of_sample(steps=96)
+    y_fore = pd.Series(model.predict(X_fore), index=X_fore.index)
+
+    ax = y.plot(color='0.25', style='.', title="Steam consumption")
+    ax = y_pred.plot(ax=ax, label="Seasonal")
+    ax = y_fore.plot(ax=ax, label="Seasonal Forecast", color='C3')
+    _ = ax.legend()
