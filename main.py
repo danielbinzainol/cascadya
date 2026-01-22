@@ -4,11 +4,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 from statsmodels.graphics.tsaplots import plot_pacf, plot_acf
 import seaborn as sns
-from statsmodels.tsa.deterministic import DeterministicProcess
+from statsmodels.tsa.deterministic import DeterministicProcess, Seasonality
 from sklearn.linear_model import LinearRegression
 
 def input_csv(
-    csv_path: str = r"D:\Cascadya\Cascadya - Documents\8. COMPTE CLIENT\__Dossier Simulation MBC\France champignon\données_bonduelle.csv",
+    csv_path: str = r"C:\Users\Loris Amabile\Documents\france champignon debut ML timeseries kaggle\données_bonduelle.csv",
 ):
     path = Path(csv_path)
     if not path.exists():
@@ -56,17 +56,30 @@ def plot_timeseries_csv(
 
 def plot_weekday_seasonal_csv(
         y: pd.DataFrame,
+        option_mean= False
 ):
-    weekday_means = y.groupby(y.index.dayofweek).mean().reindex(range(7))
-    ax = weekday_means.plot(figsize=(10, 6))
-    ax.set_xlabel("Weekday")
-    ax.set_ylabel("Mean value")
-    # ax.set_title(f"{path.name} (Weekday seasonal plot)")
-    ax.set_xticks(range(7))
-    ax.set_xticklabels(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])
-    ax.legend(loc="best")
-    plt.tight_layout()
-    plt.show()
+    if option_mean:
+        weekday_means = y.groupby(y.index.dayofweek).mean().reindex(range(7))
+        ax = weekday_means.plot(figsize=(10, 6))
+        ax.set_xlabel("Weekday")
+        ax.set_ylabel("Mean value")
+        # ax.set_title(f"{path.name} (Weekday seasonal plot)")
+        ax.set_xticks(range(7))
+        ax.set_xticklabels(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])
+        ax.legend(loc="best")
+        plt.tight_layout()
+        plt.show()
+    else:
+        y["day"] = y.index.dayofweek
+        # weekday_means = y.groupby(y.index.dayofweek).mean().reindex(range(7))
+        ax = y.plot.scatter(x="day", y="MWh use", figsize=(10, 6), alpha=0.4)
+        ax.set_xlabel("Weekday")
+        ax.set_ylabel("MWh use")
+        ax.set_xticks(range(7))
+        ax.set_xticklabels(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])
+        ax.legend(loc="best")
+        plt.tight_layout()
+        plt.show()        
 
 def data_workflow():
     df = input_csv()
@@ -76,6 +89,39 @@ def data_workflow():
 def plot_workflow(y):
     plot_timeseries_csv(y)
     plot_weekday_seasonal_csv(y)
+
+### Simple regression on lag of 1 hour ###
+def simple_lag(steam_cons):
+    # simple lag
+    steam_cons['Lag_1'] = steam_cons['MWh use'].shift(1)
+    steam_cons.head()    
+
+
+    X = steam_cons.loc[:, ['Lag_1']]
+    X.dropna(inplace=True)  # drop missing values in the feature set
+    y = steam_cons.loc[:, 'MWh use']  # create the target
+    y, X = y.align(X, join='inner')  # drop corresponding values in target
+
+    model = LinearRegression()
+    model.fit(X, y)
+
+    y_pred = pd.Series(model.predict(X), index=X.index)
+
+    # lag plot, show relationship of MWh use at H and H-1
+    fig, ax = plt.subplots()
+    ax.plot(X['Lag_1'], y, '.', color='0.25')
+    ax.plot(X['Lag_1'], y_pred)
+    ax.set_aspect('equal')
+    ax.set_ylabel('MWh use')
+    ax.set_xlabel('Lag_1')
+    ax.set_title('Lag Plot of MWH use');    
+    plt.show()
+
+    # show accuracy of forecast cmopared to read data
+    ax = y.plot()
+    ax = y_pred.plot()
+
+    plt.show()
 
 # ### Trend ####
 # def detect_plot_trend(y, obs_in_window):
@@ -199,7 +245,8 @@ if __name__ == "__main__":
     steam_cons = data_workflow()
     # give information on the frequency of the index:
     steam_cons = steam_cons.asfreq('h')
-
+    
+    # complex lags
     # X = make_lags(steam_cons["MWh use"], lags=27)
     # X = X.fillna(0.0)    
 
@@ -207,8 +254,8 @@ if __name__ == "__main__":
     dp = DeterministicProcess(
         index=steam_cons.index,  # dates from the training data
         constant=True,       # dummy feature for the bias (y_intercept)
-        order=1,             # the time dummy (trend)
-        seasonal=True,       # weekly seasonality (indicators)
+        additional_terms=[Seasonality(period=24*7)],  # 168 hour-of-week dummies
+        seasonal=True,       # seasonality (based on the frequency of the data. hourly data->24-hour cycle)
         drop=True,           # drop terms if necessary to avoid collinearity
     )
     # `in_sample` creates features for the dates given in the `index` argument
@@ -230,3 +277,4 @@ if __name__ == "__main__":
     ax = y_pred.plot(ax=ax, label="Seasonal")
     ax = y_fore.plot(ax=ax, label="Seasonal Forecast", color='C3')
     _ = ax.legend()
+    plt.show()
