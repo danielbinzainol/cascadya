@@ -255,7 +255,6 @@ if __name__ == "__main__":
         index=steam_cons.index,  # dates from the training data
         constant=True,       # dummy feature for the bias (y_intercept)
         additional_terms=[Seasonality(period=24*7)],  # 168 hour-of-week dummies
-        seasonal=True,       # seasonality (based on the frequency of the data. hourly data->24-hour cycle)
         drop=True,           # drop terms if necessary to avoid collinearity
     )
     # `in_sample` creates features for the dates given in the `index` argument
@@ -266,12 +265,32 @@ if __name__ == "__main__":
     # seasonality: fit the model
     y = steam_cons["MWh use"] # the target
 
-    model = LinearRegression(fit_intercept=False)
-    model.fit(X, y)
 
-    y_pred = pd.Series(model.predict(X), index=y.index)
-    X_fore = dp.out_of_sample(steps=96)
-    y_fore = pd.Series(model.predict(X_fore), index=X_fore.index)
+    # add lags
+    hour_of_week = pd.Series(steam_cons.index.dayofweek * 24 + steam_cons.index.hour, index=steam_cons.index, name="how")
+    X_lags = make_lags(y, lags=168)[["y_lag_1", "y_lag_24", "y_lag_168"]]
+    X = pd.concat([X, X_lags], axis=1).dropna()
+
+    y = y.loc[X.index] # because X is now shorter, as we dropped the lines with at least a NaN. 168 hours lag, so we lose a week.
+
+
+    ########## split training and test sets #######
+    # start splitting in November, then test with later splits
+    X_train = X[X.index < "2024-11-01"]
+    y_train = y.loc[X_train.index]
+
+    X_test = X[X.index >= "2024-11-01"]
+    # y_test = y.loc[X_test.index]
+
+    ############ end ############
+
+    model = LinearRegression(fit_intercept=False)
+    model.fit(X_train, y_train)
+
+    y_pred = pd.Series(model.predict(X_train), index=X_train.index)
+
+    y_fore = pd.Series(model.predict(X_test), index=X_test.index)
+
 
     ax = y.plot(color='0.25', style='.', title="Steam consumption")
     ax = y_pred.plot(ax=ax, label="Seasonal")
