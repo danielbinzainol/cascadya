@@ -9,6 +9,7 @@ from sklearn.linear_model import LinearRegression
 import holidays
 from sklearn.metrics import root_mean_squared_error
 from scipy.stats import norm
+from sklearn.model_selection import TimeSeriesSplit, cross_validate, cross_val_predict
 
 def input_csv(
     csv_path: str = r"C:\Users\Loris Amabile\Documents\france champignon debut ML timeseries kaggle\données_bonduelle.csv",
@@ -264,7 +265,61 @@ def pred_interval(prediction,y_test,y_fore,alpha=0.95):
     interval = z*std
     return [prediction-interval,prediction,prediction+interval] 
 
+def confidence_interval(y_test, y_fore):
+    prediction_interval = []
+    for i in range(y_test.shape[0]):
+        prediction_interval.append(pred_interval(y_fore.iloc[i],y_test,y_fore))
+    pred_int = pd.DataFrame(prediction_interval,columns=['Lower','Actual','Upper']) 
+    return pred_int
 
+def cv_evaluate(model, X, y, ts_cv, model_prop=None, model_step=None):
+    cv_results = cross_validate(
+        model,
+        X,
+        y,
+        cv=ts_cv,
+        scoring=["neg_mean_absolute_error", "neg_root_mean_squared_error"],
+        return_estimator=model_prop is not None,
+        return_indices=True,
+    )
+    if model_prop is not None:
+        if model_step is not None:
+            values = [
+                getattr(m[model_step], model_prop) for m in cv_results["estimator"]
+            ]
+        else:
+            values = [getattr(m, model_prop) for m in cv_results["estimator"]]
+        print(f"Mean model.{model_prop} = {np.mean(values)}")
+    mae = -cv_results["test_neg_mean_absolute_error"]
+    rmse = -cv_results["test_neg_root_mean_squared_error"]
+    print(
+        f"Mean Absolute Error:     {mae.mean():.3f} +/- {mae.std():.3f}\n"
+        f"Root Mean Squared Error: {rmse.mean():.3f} +/- {rmse.std():.3f}"
+    )
+    return cv_results
+
+def cool_plot(y, y_fore, pred_int, y_pred):
+    ax = y.plot(color='0.25', style='.', title="Steam consumption")
+    ax = y_pred.plot(ax=ax, label="Seasonal")
+    ax = y_fore.plot(ax=ax, label="Seasonal Forecast", color='C3')
+    plt.fill_between(y_fore.index,pred_int['Lower'],pred_int['Upper'],label='Forecast Interval',color="tab:blue",alpha=0.2)
+    _ = ax.legend()
+    plt.show()
+
+def fit_pred_fore_priori_plot_workflow(model, X_train, X_test):
+        y_train = y.loc[X_train.index]
+        y_test = y.loc[X_test.index]
+
+        model.fit(X_train, y_train)
+
+        y_pred = pd.Series(model.predict(X_train), index=X_train.index)
+        y_pred = np.maximum(0., y_pred)
+
+        y_fore = pd.Series(model.predict(X_test), index=X_test.index)
+        y_fore = np.maximum(0., y_fore)
+
+        pred_int = confidence_interval(y_test, y_fore)
+        cool_plot(y, y_fore, pred_int, y_pred)
 
 if __name__ == "__main__":
     steam_cons = data_workflow()
@@ -303,39 +358,37 @@ if __name__ == "__main__":
     holiday_dates = set(fr_holidays.keys())
     X["holidays"] = pd.Index(X.index.date).isin(holiday_dates)
 
-    ########## split training and test sets #######
-    # start splitting in November, then test with later splits
-    X_train = X[X.index < "2024-11-01"]
-    y_train = y.loc[X_train.index]
-
-    X_test = X[X.index >= "2024-11-01"]
-    y_test = y.loc[X_test.index]
-
-    ############ end ############
-
+    # instanciate the model
     model = LinearRegression(fit_intercept=False)
-    model.fit(X_train, y_train)
 
-    y_pred = pd.Series(model.predict(X_train), index=X_train.index)
-    y_pred = np.maximum(0., y_pred)
+    ######## CV workflow ########
+    ########## split training and test sets #######
+    ts_cv = TimeSeriesSplit(
+        n_splits=6, # 6 weeks?
+        # gap=24, # assume unavailable data for 24 hours ? Je ne comprends pour l'instant comment avoir un gap de 1 jour et utiliser un lag de 1h
+        test_size=7*24,
+    )
 
-    y_fore = pd.Series(model.predict(X_test), index=X_test.index)
-    y_fore = np.maximum(0., y_fore)
+    all_splits = list(ts_cv.split(X, y))
 
-    ###### compute confidence interval
-    prediction_interval = []
-    for i in range(y_test.shape[0]):
-        prediction_interval.append(pred_interval(y_fore[i],y_test,y_fore))
-    pred_int = pd.DataFrame(prediction_interval,columns=['Lower','Actual','Upper'])    
+    # predict and plot for each fold
+    for ind, el in enumerate(all_splits):
+        train_split, test_split = all_splits[ind]
+        X_train = X.iloc[train_split]
+        X_test = X.iloc[test_split]
 
-    ax = y.plot(color='0.25', style='.', title="Steam consumption")
-    ax = y_pred.plot(ax=ax, label="Seasonal")
-    ax = y_fore.plot(ax=ax, label="Seasonal Forecast", color='C3')
-    plt.fill_between(y_fore.index,pred_int['Lower'],pred_int['Upper'],label='Forecast Interval',color="tab:blue",alpha=0.2)
-    _ = ax.legend()
-    plt.show()
+        fit_pred_fore_priori_plot_workflow(model, X_train, X_test)
 
-    ####### Evaluation metrics
-    rmse = root_mean_squared_error(y_test, y_fore)
+    # evaluate model through cross-validation for time series
+    cv_results = cv_evaluate(model, X, y, ts_cv=ts_cv, model_prop="n_features_in_")
 
-    print("Root Mean Square Error (RMSE):", rmse)
+    # ######## simple 80/20 split workflow
+    # # naive 80/20 approach, splitting in November
+    # X_train = X[X.index < "2024-11-01"]
+    # X_test = X[X.index >= "2024-11-01"]
+
+    # fit_pred_fore_priori_plot_workflow(model, X_train, X_test)
+
+    # ####### Evaluation metrics
+    # rmse = root_mean_squared_error(y_test, y_fore)
+    # print("Root Mean Square Error (RMSE):", rmse)
