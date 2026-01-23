@@ -6,6 +6,9 @@ from statsmodels.graphics.tsaplots import plot_pacf, plot_acf
 import seaborn as sns
 from statsmodels.tsa.deterministic import DeterministicProcess, Seasonality
 from sklearn.linear_model import LinearRegression
+import holidays
+from sklearn.metrics import root_mean_squared_error
+from scipy.stats import norm
 
 def input_csv(
     csv_path: str = r"C:\Users\Loris Amabile\Documents\france champignon debut ML timeseries kaggle\données_bonduelle.csv",
@@ -239,6 +242,28 @@ def make_lags(ts, lags):
         },
         axis=1)
 
+######### 95% confidence interval
+def pred_interval(prediction,y_test,y_fore,alpha=0.95):
+    """
+    Obtain the prediction interval for each of the prediction
+    Input: single prediction, entire test data, test set predictions
+    Output: Prediction intervals and the actual prediction
+    """
+    y_fore = np.array(y_fore)
+
+    # Calculate the sum of squares of the residuals
+    err = np.sum(np.square((y_test - y_fore)))
+
+    # Estimate the standard error 
+    std = np.sqrt((1 / (y_test.shape[0] - 2)) * err) ## why -2?
+
+    # Compute the z-score
+    z = norm.ppf(1 - (1-alpha)/2) # 1.96 for alpha=0.95
+
+    # Calculate the interval
+    interval = z*std
+    return [prediction-interval,prediction,prediction+interval] 
+
 
 
 if __name__ == "__main__":
@@ -273,6 +298,10 @@ if __name__ == "__main__":
 
     y = y.loc[X.index] # because X is now shorter, as we dropped the lines with at least a NaN. 168 hours lag, so we lose a week.
 
+    # add holidays knowledge
+    fr_holidays = holidays.FR()
+    holiday_dates = set(fr_holidays.keys())
+    X["holidays"] = pd.Index(X.index.date).isin(holiday_dates)
 
     ########## split training and test sets #######
     # start splitting in November, then test with later splits
@@ -280,7 +309,7 @@ if __name__ == "__main__":
     y_train = y.loc[X_train.index]
 
     X_test = X[X.index >= "2024-11-01"]
-    # y_test = y.loc[X_test.index]
+    y_test = y.loc[X_test.index]
 
     ############ end ############
 
@@ -288,12 +317,25 @@ if __name__ == "__main__":
     model.fit(X_train, y_train)
 
     y_pred = pd.Series(model.predict(X_train), index=X_train.index)
+    y_pred = np.maximum(0., y_pred)
 
     y_fore = pd.Series(model.predict(X_test), index=X_test.index)
+    y_fore = np.maximum(0., y_fore)
 
+    ###### compute confidence interval
+    prediction_interval = []
+    for i in range(y_test.shape[0]):
+        prediction_interval.append(pred_interval(y_fore[i],y_test,y_fore))
+    pred_int = pd.DataFrame(prediction_interval,columns=['Lower','Actual','Upper'])    
 
     ax = y.plot(color='0.25', style='.', title="Steam consumption")
     ax = y_pred.plot(ax=ax, label="Seasonal")
     ax = y_fore.plot(ax=ax, label="Seasonal Forecast", color='C3')
+    plt.fill_between(y_fore.index,pred_int['Lower'],pred_int['Upper'],label='Forecast Interval',color="tab:blue",alpha=0.2)
     _ = ax.legend()
     plt.show()
+
+    ####### Evaluation metrics
+    rmse = root_mean_squared_error(y_test, y_fore)
+
+    print("Root Mean Square Error (RMSE):", rmse)
