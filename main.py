@@ -2,9 +2,17 @@ from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
+from statsmodels.graphics.tsaplots import plot_pacf, plot_acf
+import seaborn as sns
+from statsmodels.tsa.deterministic import DeterministicProcess, Seasonality
+from sklearn.linear_model import LinearRegression
+import holidays
+from sklearn.metrics import root_mean_squared_error
+from scipy.stats import norm
+from sklearn.model_selection import TimeSeriesSplit, cross_validate, cross_val_predict
 
 def input_csv(
-    csv_path: str = r"D:\Cascadya\Cascadya - Documents\8. COMPTE CLIENT\__Dossier Simulation MBC\France champignon\données_bonduelle.csv",
+    csv_path: str = r"C:\Users\Loris Amabile\Documents\france champignon debut ML timeseries kaggle\données_bonduelle.csv",
 ):
     path = Path(csv_path)
     if not path.exists():
@@ -52,17 +60,30 @@ def plot_timeseries_csv(
 
 def plot_weekday_seasonal_csv(
         y: pd.DataFrame,
+        option_mean= False
 ):
-    weekday_means = y.groupby(y.index.dayofweek).mean().reindex(range(7))
-    ax = weekday_means.plot(figsize=(10, 6))
-    ax.set_xlabel("Weekday")
-    ax.set_ylabel("Mean value")
-    # ax.set_title(f"{path.name} (Weekday seasonal plot)")
-    ax.set_xticks(range(7))
-    ax.set_xticklabels(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])
-    ax.legend(loc="best")
-    plt.tight_layout()
-    plt.show()
+    if option_mean:
+        weekday_means = y.groupby(y.index.dayofweek).mean().reindex(range(7))
+        ax = weekday_means.plot(figsize=(10, 6))
+        ax.set_xlabel("Weekday")
+        ax.set_ylabel("Mean value")
+        # ax.set_title(f"{path.name} (Weekday seasonal plot)")
+        ax.set_xticks(range(7))
+        ax.set_xticklabels(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])
+        ax.legend(loc="best")
+        plt.tight_layout()
+        plt.show()
+    else:
+        y["day"] = y.index.dayofweek
+        # weekday_means = y.groupby(y.index.dayofweek).mean().reindex(range(7))
+        ax = y.plot.scatter(x="day", y="MWh use", figsize=(10, 6), alpha=0.4)
+        ax.set_xlabel("Weekday")
+        ax.set_ylabel("MWh use")
+        ax.set_xticks(range(7))
+        ax.set_xticklabels(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])
+        ax.legend(loc="best")
+        plt.tight_layout()
+        plt.show()        
 
 def data_workflow():
     df = input_csv()
@@ -72,6 +93,39 @@ def data_workflow():
 def plot_workflow(y):
     plot_timeseries_csv(y)
     plot_weekday_seasonal_csv(y)
+
+### Simple regression on lag of 1 hour ###
+def simple_lag(steam_cons):
+    # simple lag
+    steam_cons['Lag_1'] = steam_cons['MWh use'].shift(1)
+    steam_cons.head()    
+
+
+    X = steam_cons.loc[:, ['Lag_1']]
+    X.dropna(inplace=True)  # drop missing values in the feature set
+    y = steam_cons.loc[:, 'MWh use']  # create the target
+    y, X = y.align(X, join='inner')  # drop corresponding values in target
+
+    model = LinearRegression()
+    model.fit(X, y)
+
+    y_pred = pd.Series(model.predict(X), index=X.index)
+
+    # lag plot, show relationship of MWh use at H and H-1
+    fig, ax = plt.subplots()
+    ax.plot(X['Lag_1'], y, '.', color='0.25')
+    ax.plot(X['Lag_1'], y_pred)
+    ax.set_aspect('equal')
+    ax.set_ylabel('MWh use')
+    ax.set_xlabel('Lag_1')
+    ax.set_title('Lag Plot of MWH use');    
+    plt.show()
+
+    # show accuracy of forecast cmopared to read data
+    ax = y.plot()
+    ax = y_pred.plot()
+
+    plt.show()
 
 # ### Trend ####
 # def detect_plot_trend(y, obs_in_window):
@@ -128,8 +182,213 @@ def plot_periodogram(ts, detrend=None, ax=None):
     plt.tight_layout()
     plt.show()
 
+def lagplot(x, y=None, lag=1, standardize=False, ax=None, **kwargs):
+    from matplotlib.offsetbox import AnchoredText
+    x_ = x.shift(lag)
+    if standardize:
+        x_ = (x_ - x_.mean()) / x_.std()
+    if y is not None:
+        y_ = (y - y.mean()) / y.std() if standardize else y
+    else:
+        y_ = x
+    corr = y_.corr(x_)
+    if ax is None:
+        fig, ax = plt.subplots()
+    scatter_kws = dict(
+        alpha=0.75,
+        s=3,
+    )
+    line_kws = dict(color='C3', )
+    ax = sns.regplot(x=x_,
+                     y=y_,
+                     scatter_kws=scatter_kws,
+                     line_kws=line_kws,
+                     lowess=True,
+                     ax=ax,
+                     **kwargs)
+    at = AnchoredText(
+        f"{corr:.2f}",
+        prop=dict(size="large"),
+        frameon=True,
+        loc="upper left",
+    )
+    at.patch.set_boxstyle("square, pad=0.0")
+    ax.add_artist(at)
+    ax.set(title=f"Lag {lag}", xlabel=x_.name, ylabel=y_.name)
+    return ax
+
+def plot_lags(x, y=None, lags=6, nrows=1, lagplot_kwargs={}, **kwargs):
+    import math
+    kwargs.setdefault('nrows', nrows)
+    kwargs.setdefault('ncols', math.ceil(lags / nrows))
+    kwargs.setdefault('figsize', (kwargs['ncols'] * 2, nrows * 2 + 0.5))
+    fig, axs = plt.subplots(sharex=True, sharey=True, squeeze=False, **kwargs)
+    for ax, k in zip(fig.get_axes(), range(kwargs['nrows'] * kwargs['ncols'])):
+        if k + 1 <= lags:
+            ax = lagplot(x, y, lag=k + 1, ax=ax, **lagplot_kwargs)
+            ax.set_title(f"Lag {k + 1}", fontdict=dict(fontsize=14))
+            ax.set(xlabel="", ylabel="")
+        else:
+            ax.axis('off')
+    plt.setp(axs[-1, :], xlabel=x.name)
+    plt.setp(axs[:, 0], ylabel=y.name if y is not None else x.name)
+    fig.tight_layout(w_pad=0.1, h_pad=0.1)
+    return fig
+
+def make_lags(ts, lags):
+    return pd.concat(
+        {
+            f'y_lag_{i}': ts.shift(i)
+            for i in range(1, lags + 1)
+        },
+        axis=1)
+
+######### 95% confidence interval
+def pred_interval(prediction,y_test,y_fore,alpha=0.95):
+    """
+    Obtain the prediction interval for each of the prediction
+    Input: single prediction, entire test data, test set predictions
+    Output: Prediction intervals and the actual prediction
+    """
+    y_fore = np.array(y_fore)
+
+    # Calculate the sum of squares of the residuals
+    err = np.sum(np.square((y_test - y_fore)))
+
+    # Estimate the standard error 
+    std = np.sqrt((1 / (y_test.shape[0] - 2)) * err) ## why -2?
+
+    # Compute the z-score
+    z = norm.ppf(1 - (1-alpha)/2) # 1.96 for alpha=0.95
+
+    # Calculate the interval
+    interval = z*std
+    return [prediction-interval,prediction,prediction+interval] 
+
+def confidence_interval(y_test, y_fore):
+    prediction_interval = []
+    for i in range(y_test.shape[0]):
+        prediction_interval.append(pred_interval(y_fore.iloc[i],y_test,y_fore))
+    pred_int = pd.DataFrame(prediction_interval,columns=['Lower','Actual','Upper']) 
+    return pred_int
+
+def cv_evaluate(model, X, y, ts_cv, model_prop=None, model_step=None):
+    cv_results = cross_validate(
+        model,
+        X,
+        y,
+        cv=ts_cv,
+        scoring=["neg_mean_absolute_error", "neg_root_mean_squared_error"],
+        return_estimator=model_prop is not None,
+        return_indices=True,
+    )
+    if model_prop is not None:
+        if model_step is not None:
+            values = [
+                getattr(m[model_step], model_prop) for m in cv_results["estimator"]
+            ]
+        else:
+            values = [getattr(m, model_prop) for m in cv_results["estimator"]]
+        print(f"Mean model.{model_prop} = {np.mean(values)}")
+    mae = -cv_results["test_neg_mean_absolute_error"]
+    rmse = -cv_results["test_neg_root_mean_squared_error"]
+    print(
+        f"Mean Absolute Error:     {mae.mean():.3f} +/- {mae.std():.3f}\n"
+        f"Root Mean Squared Error: {rmse.mean():.3f} +/- {rmse.std():.3f}"
+    )
+    return cv_results
+
+def cool_plot(y, y_fore, pred_int, y_pred):
+    ax = y.plot(color='0.25', style='.', title="Steam consumption")
+    ax = y_pred.plot(ax=ax, label="Seasonal")
+    ax = y_fore.plot(ax=ax, label="Seasonal Forecast", color='C3')
+    plt.fill_between(y_fore.index,pred_int['Lower'],pred_int['Upper'],label='Forecast Interval',color="tab:blue",alpha=0.2)
+    _ = ax.legend()
+    plt.show()
+
+def fit_pred_fore_priori_plot_workflow(model, X_train, X_test):
+        y_train = y.loc[X_train.index]
+        y_test = y.loc[X_test.index]
+
+        model.fit(X_train, y_train)
+
+        y_pred = pd.Series(model.predict(X_train), index=X_train.index)
+        y_pred = np.maximum(0., y_pred)
+
+        y_fore = pd.Series(model.predict(X_test), index=X_test.index)
+        y_fore = np.maximum(0., y_fore)
+
+        pred_int = confidence_interval(y_test, y_fore)
+        cool_plot(y, y_fore, pred_int, y_pred)
 
 if __name__ == "__main__":
-    y = data_workflow()
-    plot_periodogram(y)
+    steam_cons = data_workflow()
+    # give information on the frequency of the index:
+    steam_cons = steam_cons.asfreq('h')
     
+    # complex lags
+    # X = make_lags(steam_cons["MWh use"], lags=27)
+    # X = X.fillna(0.0)    
+
+    # seasonality: create the feature set
+    dp = DeterministicProcess(
+        index=steam_cons.index,  # dates from the training data
+        constant=True,       # dummy feature for the bias (y_intercept)
+        additional_terms=[Seasonality(period=24*7)],  # 168 hour-of-week dummies
+        drop=True,           # drop terms if necessary to avoid collinearity
+    )
+    # `in_sample` creates features for the dates given in the `index` argument
+    X = dp.in_sample()
+
+    X.head()    
+
+    # seasonality: fit the model
+    y = steam_cons["MWh use"] # the target
+
+
+    # add lags
+    hour_of_week = pd.Series(steam_cons.index.dayofweek * 24 + steam_cons.index.hour, index=steam_cons.index, name="how")
+    X_lags = make_lags(y, lags=168)[["y_lag_1", "y_lag_24", "y_lag_168"]]
+    X = pd.concat([X, X_lags], axis=1).dropna()
+
+    y = y.loc[X.index] # because X is now shorter, as we dropped the lines with at least a NaN. 168 hours lag, so we lose a week.
+
+    # add holidays knowledge
+    fr_holidays = holidays.FR()
+    holiday_dates = set(fr_holidays.keys())
+    X["holidays"] = pd.Index(X.index.date).isin(holiday_dates)
+
+    # instanciate the model
+    model = LinearRegression(fit_intercept=False)
+
+    ######## CV workflow ########
+    ########## split training and test sets #######
+    ts_cv = TimeSeriesSplit(
+        n_splits=6, # 6 weeks?
+        # gap=24, # assume unavailable data for 24 hours ? Je ne comprends pour l'instant comment avoir un gap de 1 jour et utiliser un lag de 1h
+        test_size=7*24,
+    )
+
+    all_splits = list(ts_cv.split(X, y))
+
+    # predict and plot for each fold
+    for ind, el in enumerate(all_splits):
+        train_split, test_split = all_splits[ind]
+        X_train = X.iloc[train_split]
+        X_test = X.iloc[test_split]
+
+        fit_pred_fore_priori_plot_workflow(model, X_train, X_test)
+
+    # evaluate model through cross-validation for time series
+    cv_results = cv_evaluate(model, X, y, ts_cv=ts_cv, model_prop="n_features_in_")
+
+    # ######## simple 80/20 split workflow
+    # # naive 80/20 approach, splitting in November
+    # X_train = X[X.index < "2024-11-01"]
+    # X_test = X[X.index >= "2024-11-01"]
+
+    # fit_pred_fore_priori_plot_workflow(model, X_train, X_test)
+
+    # ####### Evaluation metrics
+    # rmse = root_mean_squared_error(y_test, y_fore)
+    # print("Root Mean Square Error (RMSE):", rmse)
