@@ -1,0 +1,10 @@
+france-champignon:
+  data: 
+    path: "C:\Users\Loris Amabile\Documents\france champignon debut ML timeseries kaggle\données_bonduelle.csv"
+    frequency: "h"
+
+models:
+  linear-regression:
+    name: LinearRegression
+    params:
+      fit_intercept: False
