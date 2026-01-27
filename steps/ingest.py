@@ -1,7 +1,7 @@
 from pathlib import Path
 import pandas as pd
 #
-from utils import load_config
+from steps.utils import load_config
 
         
 def input_csv(project: str):
@@ -43,6 +43,7 @@ def data_workflow(project: str):
     y = parse_date_col(df)
 
     config = load_config() 
+    # give information on the frequency of the index:
     y = y.asfreq(config[project]["data"]["frequency"])
     
     return y

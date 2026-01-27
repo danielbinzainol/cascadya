@@ -4,7 +4,7 @@ from statsmodels.tsa.deterministic import DeterministicProcess, Seasonality
 import holidays
 
 #
-from utils import load_config
+from steps.utils import load_config
 
 
 def model_choice(model_name):
@@ -14,7 +14,9 @@ def model_choice(model_name):
             # 'GradientBoostingClassifier': GradientBoostingClassifier
         }
     
-        model_params = load_config()
+        config = load_config()
+        model_params = config["models"][model_name]["params"]
+
         model_class = model_map[model_name]
         model = model_class(**model_params)    
 

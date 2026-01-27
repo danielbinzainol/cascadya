@@ -51,10 +51,9 @@ def fit_pred_fore_priori_plot_workflow(model, X_train, X_test):
 ##############################
 if __name__ == "__main__":
     y = data_workflow("france_champignon")
-    # give information on the frequency of the index:
-    
     # target
-    # y = steam_cons["MWh use"] # the target ## faudrait garder ??
+    y = y["MWh use"]
+    
 
     X = create_feature(y)
 
