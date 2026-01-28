@@ -1,0 +1,9 @@
+france_champignon:
+  data: 
+    path: data\france_champignon\data_bonduelle.csv
+    frequency: "h"
+
+models:
+  LinearRegression:
+    params:
+      fit_intercept: False
