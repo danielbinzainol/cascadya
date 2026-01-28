@@ -4,12 +4,14 @@ from pathlib import Path
 import pandas as pd
 from tqdm import tqdm
 
+from plots import plot_timeseries_csv
+
 DEFAULT_INPUT_DIR = Path(
     r"D:\Cascadya\Cascadya - Documents\08. COMPTE CLIENT\Tarkett_Sedan\2. Données sous NDA\Données de Consommation gaz 2025"
 )
-DEFAULT_INTERIM_OUTPUT_PATH = Path("data\tarkett\interim") / "data_tarkett_not_sampled.csv"
+DEFAULT_INTERIM_OUTPUT_PATH = Path(r"data\tarkett\interim") / "data_tarkett_not_sampled.csv"
 
-DEFAULT_OUTPUT_PATH = Path("data\tarkett\processed") / "data_tarkett.csv"
+DEFAULT_OUTPUT_PATH = Path(r"data\tarkett\processed") / "data_tarkett.csv"
 
 REQUIRED_COLUMNS = [
     "Désignation caractéristique",
@@ -93,6 +95,19 @@ def detect_duplicate_timestamps(
     return df.loc[duplicates].sort_values(timestamp_col)
 
 
+def find_duplicate_timestamps_with_same_value(
+    duplicates_df: pd.DataFrame,
+    timestamp_col: str = "Valeur mesurée le",
+    value_col: str = "Valeur mesurée",
+) -> list[pd.Timestamp]:
+    if duplicates_df.empty:
+        return []
+    nunique_by_timestamp = duplicates_df.groupby(timestamp_col)[value_col].nunique(
+        dropna=False
+    )
+    return list(nunique_by_timestamp[nunique_by_timestamp == 1].index)
+
+
 def add_mwh_measure(
     df: pd.DataFrame,
     coeff_m3_nm3: float = COEFF_M3_NM3,
@@ -160,31 +175,77 @@ def find_missing_timestamps_full_year(
     return pd.DataFrame({timestamp_col: missing})
 
 
+def detect_elapsed_time_anomalies(
+    df: pd.DataFrame,
+    timestamp_col: str = "Valeur mesurée le",
+) -> tuple[pd.DataFrame, pd.Timedelta]:
+    timestamps = pd.to_datetime(
+        df[timestamp_col],
+        errors="coerce",
+        dayfirst=True,
+    )
+    df = df.assign(**{timestamp_col: timestamps}).dropna(subset=[timestamp_col])
+    df = df.sort_values(timestamp_col)
+
+    elapsed = df[timestamp_col].diff()
+    expected = elapsed.dropna().mode()
+    expected_delta = expected.iloc[0] if not expected.empty else pd.Timedelta(0)
+
+    anomalies_mask = elapsed.notna() & ((elapsed < expected_delta * 0.9) | (elapsed > expected_delta * 1.1))
+    anomalies = df.loc[anomalies_mask, [timestamp_col]].copy()
+    anomalies["Previous timestamp"] = df[timestamp_col].shift(1)
+    anomalies["Elapsed"] = elapsed[anomalies_mask]
+    anomalies["Expected elapsed"] = expected_delta
+
+    return anomalies, expected_delta
+
+
 def build_tarkett_dataset(
     input_dir: Path | str = DEFAULT_INPUT_DIR,
     output_interim_path: Path | str = DEFAULT_INTERIM_OUTPUT_PATH,
     output_path: Path | str = DEFAULT_OUTPUT_PATH,
     sep: str = ";",
     decimal: str = ",",
-    missing_year: int = 2025,
-    missing_freq: str = "h",
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    
-    df = load_tarkett_files(input_dir)
+
+    output_interim_path = Path(output_interim_path)
+    output_interim_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if output_interim_path.exists():
+        print("---------------- loading existing interim files (cache) ------------")
+        df = pd.read_csv(output_interim_path, sep=sep, decimal=decimal)
+        if "Valeur mesurée le" in df.columns:
+            df["Valeur mesurée le"] = pd.to_datetime(
+                df["Valeur mesurée le"],
+                errors="coerce",
+                yearfirst=True,
+                format="ISO8601"
+            )
+    else:
+        df = load_tarkett_files(input_dir)
+        df = df.sort_values("Valeur mesurée le")
+        df.to_csv(output_interim_path, index=False, sep=sep, decimal=decimal)
+
     print("---------------- loading files completed ------------")
-    df = df.sort_values("Valeur mesurée le")
-
-    df.to_csv(output_interim_path, index=False, sep=sep, decimal=decimal)
-
+    
     duplicates = detect_duplicate_timestamps(df)
-    missing_timestamps = find_missing_timestamps_full_year(
-        df,
-        year=missing_year,
-        freq=missing_freq,
+    duplicate_timestamps_that_can_be_removed = (
+        find_duplicate_timestamps_with_same_value(duplicates)
     )
+
+    elapsed_anomalies, expected_delta = detect_elapsed_time_anomalies(df)
     print(
-        f"---------------- missing timestamps ({missing_year}) : {len(missing_timestamps)} ------------"
+        "---------------- elapsed anomalies : "
+        f"{len(elapsed_anomalies)} (expected {expected_delta}) ------------"
     )
+
+    if duplicate_timestamps_that_can_be_removed:
+        removable_mask = (
+            df["Valeur mesurée le"].isin(duplicate_timestamps_that_can_be_removed)
+            & df.duplicated(subset=["Valeur mesurée le"], keep="first")
+        )
+        df = df.loc[~removable_mask]
+
     df = add_mwh_measure(df)
     df = add_mwh_use(df)
 
@@ -195,4 +256,6 @@ def build_tarkett_dataset(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     df_hourly.to_csv(output_path, index=False, sep=sep, decimal=decimal)
 
-    return df_hourly, duplicates, missing_timestamps
+    plot_timeseries_csv(df_hourly.set_index("Valeur mesurée le"))
+
+    return df_hourly, duplicates, elapsed_anomalies
