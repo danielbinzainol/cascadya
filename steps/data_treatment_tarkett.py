@@ -27,10 +27,17 @@ def _coerce_numeric(series: pd.Series) -> pd.Series:
 
 
 def _read_tarkett_excel(path: Path) -> pd.DataFrame:
-    
     print(f"---------------- Start reading {path} ------------")
 
-    df = pd.read_excel(path, header=1)
+    while True:
+        try:
+            df = pd.read_excel(path, header=1)
+            break
+        except PermissionError:
+            input(
+                f"PermissionError: {path} is open elsewhere. "
+                "Please close it, then press Enter to retry."
+            )
     missing = [col for col in REQUIRED_COLUMNS if col not in df.columns]
     if missing:
         missing_str = ", ".join(missing)
