@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 import pandas as pd
+from tqdm import tqdm
 
 DEFAULT_INPUT_DIR = Path(
-    r"D:\Cascadya\Cascadya - Documents\8. COMPTE CLIENT\Tarkett_Sedan\2. Données sous NDA\Données de Consommation gaz 2025"
+    r"D:\Cascadya\Cascadya - Documents\08. COMPTE CLIENT\Tarkett_Sedan\2. Données sous NDA\Données de Consommation gaz 2025"
 )
-DEFAULT_OUTPUT_PATH = Path("data") / "data_tarkett.csv"
+DEFAULT_INTERIM_OUTPUT_PATH = Path("data\tarkett\interim") / "data_tarkett_not_sampled.csv"
+
+DEFAULT_OUTPUT_PATH = Path("data\tarkett\processed") / "data_tarkett.csv"
 
 REQUIRED_COLUMNS = [
     "Désignation caractéristique",
@@ -27,7 +30,7 @@ def _coerce_numeric(series: pd.Series) -> pd.Series:
 
 
 def _read_tarkett_excel(path: Path) -> pd.DataFrame:
-    print(f"---------------- Start reading {path} ------------")
+    # print(f"---------------- Start reading {path} ------------")
 
     while True:
         try:
@@ -76,7 +79,9 @@ def load_tarkett_files(input_dir: Path | str = DEFAULT_INPUT_DIR) -> pd.DataFram
     if not files:
         raise FileNotFoundError(f"No Excel files found in {input_path}")
 
-    frames = [_read_tarkett_excel(path) for path in files]
+    frames = []
+    for path in tqdm(files, desc="Reading Excel files", unit="file"):
+        frames.append(_read_tarkett_excel(path))
     return pd.concat(frames, ignore_index=True)
 
 
@@ -113,7 +118,7 @@ def add_mwh_use(
 def aggregate_hourly(
     df: pd.DataFrame,
     timestamp_col: str = "Valeur mesurée le",
-    value_col: str = "MWh mesure",
+    value_col: str = "MWh use",
 ) -> pd.DataFrame:
     df = df.sort_values(timestamp_col)
     hourly = (
@@ -157,15 +162,19 @@ def find_missing_timestamps_full_year(
 
 def build_tarkett_dataset(
     input_dir: Path | str = DEFAULT_INPUT_DIR,
+    output_interim_path: Path | str = DEFAULT_INTERIM_OUTPUT_PATH,
     output_path: Path | str = DEFAULT_OUTPUT_PATH,
     sep: str = ";",
     decimal: str = ",",
     missing_year: int = 2025,
     missing_freq: str = "h",
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    
     df = load_tarkett_files(input_dir)
     print("---------------- loading files completed ------------")
     df = df.sort_values("Valeur mesurée le")
+
+    df.to_csv(output_interim_path, index=False, sep=sep, decimal=decimal)
 
     duplicates = detect_duplicate_timestamps(df)
     missing_timestamps = find_missing_timestamps_full_year(
