@@ -157,9 +157,50 @@ def aggregate_hourly(
         .sum(min_count=1)
         .reset_index()
     )
-    return hourly
+    return hourly #todo remplir début et fin d'année
+
+def tag_activity_loris(
+    df: pd.DataFrame,
+    timestamp_col: str = "Valeur mesurée le",
+    value_col: str = "MWh use",
+) -> pd.DataFrame:
+
+    df["_date"] = df[timestamp_col].dt.date
+    # activity_status = df.groupby(["_date"])[timestamp_col]
+
+    df["_weekday"] = df[timestamp_col].dt.weekday
+    # first pass
+    df["activity"] = "active"
+    off_days = set(JOURS_FERIES_ET_PONTS)
+    off_mask = df["_weekday"].isin([6]) | df["_date"].isin(off_days)
+    df.loc[off_mask, "activity"] = "off"
+    #
+    unique_dates = [d for d in df["_date"].dropna().unique()]
+    # back_to_work: first "active" after "off" 
+    back_to_work_days = [
+        d
+        for d in unique_dates
+        if df.loc[df["_date"] == d, "activity"].eq("active").all()
+        and df.loc[df["_date"] == d - datetime.timedelta(days=1), "activity"].eq("off").all()
+    ]
+    back_to_work_mask = df["_date"].isin(back_to_work_days)
+    # end_of_work: first "off" after a "active" and before "off"
+    end_of_work_days = [
+        d
+        for d in unique_dates
+        if df.loc[df["_date"] == d - datetime.timedelta(days=1), "activity"].eq("active").all()
+        and  df.loc[df["_date"] == d + datetime.timedelta(days=1), "activity"].eq("off").all()
+    ]
+    end_of_work_mask = df["_date"].isin(end_of_work_days)
+    #
+    df.loc[back_to_work_mask, "activity"] = "back_to_work"
+    df.loc[end_of_work_mask, "activity"] = "end_of_work"
+    # anomaly: only one stop
+    # limites : celui qui se termine à 20h, le 8-14, todo?
+    return df
 
 
+    
 def gap_fill_hourly_timeseries(
     df_hourly: pd.DataFrame,
     timestamp_col: str = "Valeur mesurée le",
@@ -213,7 +254,7 @@ def gap_fill_hourly_timeseries(
     weekday_hour_median = stats.median()
     weekday_hour_q1 = stats.quantile(0.25)
 
-    # Fill with zeroes the missing values for sundays, early mondays, and off-days
+    # Fill with zeros the missing values for sundays, early mondays, and off-days
     zero_fill_mask = missing_mask & (
         (df["_weekday"] == 6)
         | ((df["_weekday"] == 0) & (df["_hour"] <= 3))
@@ -405,6 +446,7 @@ def build_tarkett_dataset(
                 format="ISO8601"
             )
     else:
+        # contient les timestamps duplicates et les timestamps manquants
         df = load_tarkett_files(input_dir)
         df = df.sort_values("Valeur mesurée le")
         df.to_csv(output_interim_path_not_sampled, index=False, sep=sep, decimal=decimal)
@@ -434,7 +476,15 @@ def build_tarkett_dataset(
 
     df_hourly = aggregate_hourly(df)
     df_hourly = df_hourly[["Valeur mesurée le", "MWh use"]]
+
+    # gap fill with zeros, to try and tag easily the days, to simplify the gap-filling
+    df_hourly_with_zeros = df_hourly.fillna(0)
+    plot_timeseries_csv(df_hourly_with_zeros.set_index("Valeur mesurée le"))
+    missing_dates = find_missing_timestamps_full_year(df_hourly, 2025)
+
     df_hourly_gap_filled = gap_fill_hourly_timeseries(df_hourly)
+
+    df_hourly_gap_filled = tag_activity_loris(df_hourly_gap_filled)
 
     output_interim_path = Path(output_interim_path)
     output_interim_path.parent.mkdir(parents=True, exist_ok=True)
