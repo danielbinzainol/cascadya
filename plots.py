@@ -186,3 +186,73 @@ def cool_plot(y, y_fore, pred_int, y_pred):
     plt.fill_between(y_fore.index,pred_int['Lower'],pred_int['Upper'],label='Forecast Interval',color="tab:blue",alpha=0.2)
     _ = ax.legend()
     plt.show()
+
+
+def plot_gap_filled_timeseries(
+    df: pd.DataFrame,
+    timestamp_col: str = "Valeur mesurée le",
+    value_col: str = "MWh use",
+    tag_col: str = "tag",
+):
+    if tag_col not in df.columns:
+        raise ValueError(f"Missing '{tag_col}' column for gap-filled plot.")
+
+    if timestamp_col in df.columns:
+        x = df[timestamp_col]
+    else:
+        x = df.index
+
+    plt.ion() # to enable to see the figure without blocking the shell
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(x, df[value_col], color="0.8", linewidth=1, label="series")
+
+    tag_colors = {
+        "original": "tab:blue",
+        "gap-filled with zeros because the stats info is missing": "tab:brown",
+        "considered, not modified, because the stats info is missing": "tab:purple",
+        "gap-filled implying modification": "tab:red",
+        "gap-filled rest of block because threshold of modification already reached": "tab:pink",
+        "gap-filled with 0 because later points already filled at 0": "tab:cyan",
+        "modified": "tab:orange",
+        "considered, not modified": "tab:green",
+        "gap-filled with zero for holidays": "tab:gray",
+    }
+    for tag, color in tag_colors.items():
+        subset = df[df[tag_col] == tag]
+        if subset.empty:
+            continue
+        x_subset = subset[timestamp_col] if timestamp_col in df.columns else subset.index
+        ax.scatter(
+            x_subset,
+            subset[value_col],
+            s=12,
+            alpha=0.8,
+            color=color,
+            label=tag,
+        )
+
+    # display activity
+    activity_colors = {
+        "active": "tab:blue",
+        "off": "tab:red",
+        "back_to_work": "tab:green",
+        "end_of_work": "tab:orange",
+        "holidays": "tab:gray",
+    }
+    for tag, color in activity_colors.items():
+        subset = df[df["activity"] == tag]
+        if subset.empty:
+            continue
+        x_subset = subset[timestamp_col] if timestamp_col in df.columns else subset.index    
+        ax.scatter(
+            x_subset,
+            [-0.05]*len(x_subset),
+            s=12,
+            alpha=0.8,
+            color=color,
+        )
+
+    ax.set_ylabel("Value")
+    ax.legend(loc="best")
+    plt.tight_layout()
+    plt.show()
