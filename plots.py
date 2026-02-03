@@ -208,9 +208,14 @@ def plot_gap_filled_timeseries(
 
     tag_colors = {
         "original": "tab:blue",
-        "gap-filled": "tab:red",
+        "gap-filled with zeros because the stats info is missing": "tab:brown",
+        "considered, not modified, because the stats info is missing": "tab:purple",
+        "gap-filled implying modification": "tab:red",
+        "gap-filled rest of block because threshold of modification already reached": "tab:pink",
+        "gap-filled with 0 because later points already filled at 0": "tab:cyan",
         "modified": "tab:orange",
         "considered, not modified": "tab:green",
+        "gap-filled with zero for holidays": "tab:gray",
     }
     for tag, color in tag_colors.items():
         subset = df[df[tag_col] == tag]
@@ -224,6 +229,27 @@ def plot_gap_filled_timeseries(
             alpha=0.8,
             color=color,
             label=tag,
+        )
+
+    # display activity
+    activity_colors = {
+        "active": "tab:blue",
+        "off": "tab:red",
+        "back_to_work": "tab:green",
+        "end_of_work": "tab:orange",
+        "holidays": "tab:gray",
+    }
+    for tag, color in activity_colors.items():
+        subset = df[df["activity"] == tag]
+        if subset.empty:
+            continue
+        x_subset = subset[timestamp_col] if timestamp_col in df.columns else subset.index    
+        ax.scatter(
+            x_subset,
+            [-0.05]*len(x_subset),
+            s=12,
+            alpha=0.8,
+            color=color,
         )
 
     ax.set_ylabel("Value")

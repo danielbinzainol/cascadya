@@ -25,19 +25,43 @@ REQUIRED_COLUMNS = [
 COEFF_M3_NM3 = 1.2
 COEFF_PCS_KWH_NM3 = 11.35
 
-JOURS_FERIES_ET_PONTS = [datetime.date(2025, 4, 21), 
-                         datetime.date(2025, 5, 1),
-                         datetime.date(2025, 5, 2), # pont
-                         datetime.date(2025, 5, 29),
-                         datetime.date(2025, 5, 30), #pont
-                         datetime.date(2025, 7, 14),
-                         datetime.date(2025, 8, 15),
-                         datetime.date(2025, 11, 1),
-                         datetime.date(2025, 11, 10), #pont
-                         datetime.date(2025, 11, 11),
-                         ]
+JOURS_OFF_PRESENTS = [datetime.date(2025, 5, 1), # férié
+                      datetime.date(2025, 5, 29), # férié
+                      datetime.date(2025, 5, 30), #pont
+                      ]
 
 CRENEAUX_3_8 = 4 # [4, 12, 20] # en vrai, plutôt à ces heures-là et demi, on suppose
+
+
+# sur lesquels il manque de la donnée, en plus des dimanche
+# il existe des jours fériés sur lesquels il ne manque pas de donnée, est déjà à 0
+JOURS_OFF_MANQUANTS = [datetime.date(2025, 4, 21), # férié
+                       datetime.date(2025, 5, 2), # pont
+                       datetime.date(2025, 5, 3), # samedi pont, juste pour le tag
+                       datetime.date(2025, 5, 31), # samedi pont, juste pour le tag
+                       datetime.date(2025, 7, 14), # férié
+                       datetime.date(2025, 7, 19), # je ne sais pas pourquoi
+                       datetime.date(2025, 8, 15), # férié
+                       datetime.date(2025, 8, 16), # pont
+                       datetime.date(2025, 11, 10), #pont
+                       datetime.date(2025, 11, 11), # férié
+                       datetime.date(2025, 12, 13), # je ne sais pas pourquoi
+                       ]
+
+# sur lesquels il manque de la donnée.
+JOURS_END_MANQUANTS = [datetime.date(2025, 7, 18), # je ne sais pas pourquoi
+                       datetime.date(2025, 8, 14), # veille de férié complet
+                       datetime.date(2025, 11, 1), # férié
+                       datetime.date(2025, 12, 12), # je ne sais pas pourquoi
+                       ]
+
+JOURS_BACK_MANQUANTS = [datetime.date(2025, 1, 6), # lendemain de vacances
+                        datetime.date(2025, 4, 22), # lendemain de férié
+                        datetime.date(2025, 7, 15), # lendemain de férié
+                        datetime.date(2025, 11, 12), # lendemain de férié
+                        ]
+
+
 
 def _coerce_numeric(series: pd.Series) -> pd.Series:
     if pd.api.types.is_numeric_dtype(series):
@@ -159,213 +183,230 @@ def aggregate_hourly(
     )
     return hourly #todo remplir début et fin d'année
 
-def tag_activity_loris(
-    df: pd.DataFrame,
-    timestamp_col: str = "Valeur mesurée le",
-    value_col: str = "MWh use",
+def tag_activity(
+        df: pd.DataFrame, 
+        timestamp_col: str = "Valeur mesurée le",
 ) -> pd.DataFrame:
+    # utils
+    df[timestamp_col] = pd.to_datetime(df[timestamp_col], errors="coerce")
+    df = df.sort_values(timestamp_col).reset_index(drop=True)
 
     df["_date"] = df[timestamp_col].dt.date
-    # activity_status = df.groupby(["_date"])[timestamp_col]
-
-    df["_weekday"] = df[timestamp_col].dt.weekday
-    # first pass
-    df["activity"] = "active"
-    off_days = set(JOURS_FERIES_ET_PONTS)
-    off_mask = df["_weekday"].isin([6]) | df["_date"].isin(off_days)
-    df.loc[off_mask, "activity"] = "off"
-    #
-    unique_dates = [d for d in df["_date"].dropna().unique()]
-    # back_to_work: first "active" after "off" 
-    back_to_work_days = [
-        d
-        for d in unique_dates
-        if df.loc[df["_date"] == d, "activity"].eq("active").all()
-        and df.loc[df["_date"] == d - datetime.timedelta(days=1), "activity"].eq("off").all()
-    ]
-    back_to_work_mask = df["_date"].isin(back_to_work_days)
-    # end_of_work: first "off" after a "active" and before "off"
-    end_of_work_days = [
-        d
-        for d in unique_dates
-        if df.loc[df["_date"] == d - datetime.timedelta(days=1), "activity"].eq("active").all()
-        and  df.loc[df["_date"] == d + datetime.timedelta(days=1), "activity"].eq("off").all()
-    ]
-    end_of_work_mask = df["_date"].isin(end_of_work_days)
-    #
-    df.loc[back_to_work_mask, "activity"] = "back_to_work"
-    df.loc[end_of_work_mask, "activity"] = "end_of_work"
-    # anomaly: only one stop
-    # limites : celui qui se termine à 20h, le 8-14, todo?
-    return df
-
-
     
+    unique_dates = [d for d in df["_date"].dropna().unique()]
+
+    missing_off_days = set(JOURS_OFF_MANQUANTS)
+    present_off_days = set(JOURS_OFF_PRESENTS)
+    missing_end_of_work_days = set(JOURS_END_MANQUANTS)
+    missing_back_to_work_days = set(JOURS_BACK_MANQUANTS)
+
+    # back_to_work
+    back_to_work_mondays = {
+        d
+        for d in unique_dates
+        if d not in missing_off_days
+        and d not in missing_end_of_work_days
+        and d.weekday() == 0
+    }
+
+    all_back_to_work_days = missing_back_to_work_days.union(back_to_work_mondays)
+
+    # off
+    sundays = {
+        d
+        for d in unique_dates
+        if d.weekday() == 6
+    }
+
+    non_sunday_off_days = missing_off_days.union(present_off_days)
+    all_off_days = non_sunday_off_days.union(sundays)
+
+    # end_of_work
+    end_of_work_saturdays = {
+        d
+        for d in unique_dates
+        if d not in missing_off_days
+        and d not in missing_back_to_work_days
+        and d.weekday() == 5
+    }
+
+    all_end_of_work_days = missing_end_of_work_days.union(end_of_work_saturdays)
+
+    # perform tag
+    df["activity"] = "active"
+
+    back_to_work_mask = df["_date"].isin(all_back_to_work_days)
+    df.loc[back_to_work_mask, "activity"] = "back_to_work"
+
+    off_mask = df["_date"].isin(all_off_days)
+    df.loc[off_mask, "activity"] = "off"
+
+    end_of_work_mask = df["_date"].isin(all_end_of_work_days)
+    df.loc[end_of_work_mask, "activity"] = "end_of_work"
+
+    return df, non_sunday_off_days, all_back_to_work_days
+
 def gap_fill_hourly_timeseries(
     df_hourly: pd.DataFrame,
+    non_sunday_off_days,
+    all_back_to_work_days,
     timestamp_col: str = "Valeur mesurée le",
     value_col: str = "MWh use",
 ) -> pd.DataFrame:
-
+    # utils
     df = df_hourly.copy()
     df[timestamp_col] = pd.to_datetime(df[timestamp_col], errors="coerce")
     df = df.sort_values(timestamp_col).reset_index(drop=True)
 
-    df["tag"] = "original"
     df["_hour"] = df[timestamp_col].dt.hour
     df["_weekday"] = df[timestamp_col].dt.weekday
-    df["_date"] = df[timestamp_col].dt.date
+    df["_date"] = df[timestamp_col].dt.date    
 
-    off_days = set(JOURS_FERIES_ET_PONTS)
-    df["_is_off_day"] = df["_date"].isin(off_days)
-    unique_dates = [d for d in df["_date"].dropna().unique()]
 
-    def _previous_workday(day: datetime.date) -> datetime.date:
-        prev = day - datetime.timedelta(days=1)
-        while prev.weekday() >= 5:
-            prev -= datetime.timedelta(days=1)
-        return prev
+    # off_days = set(JOURS_FERIES_ET_PONTS)
+    # df["_is_off_day"] = df["_date"].isin(off_days)
+    # unique_dates = [d for d in df["_date"].dropna().unique()]
 
-    back_to_work_days = {
-        d
-        for d in unique_dates
-        if d not in off_days
-        and d.weekday() < 5
-        and _previous_workday(d) in off_days
-    }
-    end_of_work_off_days = {
-        d
-        for d in unique_dates
-        if d in off_days
-        and (d - datetime.timedelta(days=1)) not in off_days
-        and (d - datetime.timedelta(days=1)).weekday() < 5
-    }
+    # def _previous_workday(day: datetime.date) -> datetime.date:
+    #     prev = day - datetime.timedelta(days=1)
+    #     while prev.weekday() >= 5:
+    #         prev -= datetime.timedelta(days=1)
+    #     return prev
 
-    if isinstance(CRENEAUX_3_8, (list, tuple, set)):
-        end_of_work_hour_mask = df["_hour"].isin(CRENEAUX_3_8)
-    else:
-        end_of_work_hour_mask = df["_hour"] <= CRENEAUX_3_8
+    # back_to_work_days = {
+    #     d
+    #     for d in unique_dates
+    #     if d not in off_days
+    #     and d.weekday() < 5
+    #     and _previous_workday(d) in off_days
+    # }
+    # end_of_work_off_days = {
+    #     d
+    #     for d in unique_dates
+    #     if d in off_days
+    #     and (d - datetime.timedelta(days=1)) not in off_days
+    #     and (d - datetime.timedelta(days=1)).weekday() < 5
+    # }
 
+    # if isinstance(CRENEAUX_3_8, (list, tuple, set)):
+    #     end_of_work_hour_mask = df["_hour"].isin(CRENEAUX_3_8)
+    # else:
+    #     end_of_work_hour_mask = df["_hour"] <= CRENEAUX_3_8
+
+    # stats: remove NaNs and days taggued as OFF from stats
+    ##todo can be deleted because same as below but better below?
     missing_mask = df[value_col].isna()
     original_mask = ~missing_mask
+        
+    df.loc[original_mask, "tag"] = "original"
 
-    stats_mask = original_mask & ~(df["_is_off_day"] & (df[value_col] == 0))
+    ##
+    stats_mask = original_mask & ~df["_date"].isin(non_sunday_off_days)
+
+    # stats_mask = original_mask & ~(df["_is_off_day"] & (df[value_col] == 0))
     stats = df.loc[stats_mask].groupby(["_weekday", "_hour"])[value_col]
     weekday_hour_median = stats.median()
     weekday_hour_q1 = stats.quantile(0.25)
 
-    # Fill with zeros the missing values for sundays, early mondays, and off-days
-    zero_fill_mask = missing_mask & (
-        (df["_weekday"] == 6)
-        | ((df["_weekday"] == 0) & (df["_hour"] <= 3))
-        | (
-            df["_is_off_day"]
-            & ~(
-                df["_date"].isin(end_of_work_off_days)
-                & end_of_work_hour_mask
-            )
-        )
-    )
-    df.loc[zero_fill_mask, value_col] = 0
-    df.loc[zero_fill_mask, "tag"] = "gap-filled"
-
     def _median_for_idx(row_idx: int) -> float:
         hour = df.at[row_idx, "_hour"]
         date = df.at[row_idx, "_date"]
-        is_end_hour = end_of_work_hour_mask.iat[row_idx]
-        if date in end_of_work_off_days and is_end_hour:
-            source_weekday = 5
-        elif date in back_to_work_days:
+        # is_end_hour = end_of_work_hour_mask.iat[row_idx]
+        if date in all_back_to_work_days:
             source_weekday = 0
         else:
             source_weekday = df.at[row_idx, "_weekday"]
         return weekday_hour_median.get((source_weekday, hour))
 
-    # Fill remaining gaps from the end, validating against the target hour's weekday Q1
-    remaining_mask = df[value_col].isna()
-    if remaining_mask.any():
-        remaining_mask_arr = remaining_mask.to_numpy()
+    # Fill gaps from the end, 
+    # if weekday: validating against the target hour's weekday Q1
+    # if back_to_work day: validating against the target hour's back_to_work monday Q1
+    if missing_mask.any():
+        missing_mask_arr = missing_mask.to_numpy()
         original_mask_arr = original_mask.to_numpy()
         n_rows = len(df)
         i = 0
 
         # Scan the full series for the next contiguous missing block (can span days).
         while i < n_rows:
-            if not remaining_mask_arr[i]:
+            if not missing_mask_arr[i]:
                 i += 1
                 continue
             start = i
-            while i < n_rows and remaining_mask_arr[i]:
+            while i < n_rows and missing_mask_arr[i]:
                 i += 1
             end = i - 1
 
-            j = i
-            while j < n_rows and not original_mask_arr[j]:
-                j += 1
-
-            # If no following original value exists, fill this block directly.
-            if j >= n_rows:
-                for k in range(end, start - 1, -1):
-                    median_val = _median_for_idx(k)
-                    if pd.isna(median_val):
-                        continue
-                    df.at[k, value_col] = median_val
-                    df.at[k, "tag"] = "gap-filled"
-                continue
-
-            target_idx = j
+            target_idx = i
             target_hour = df.at[target_idx, "_hour"]
             target_weekday = df.at[target_idx, "_weekday"]
             q1_target = weekday_hour_q1.get((target_weekday, target_hour))
-            current_value = df.at[target_idx, value_col]
+            current_value_of_target = df.at[target_idx, value_col]
 
             modified = False
-            considered = False
 
             # Walk backward through the block, validating against the target value.
             k = end
             while k >= start:
-                median_val = _median_for_idx(k)
-                considered = True
-                if pd.isna(median_val) or pd.isna(current_value):
-                    # If stats/target are missing, fill the rest with zeros and stop.
+                median_val_for_gap = _median_for_idx(k)
+                # If stats/target are missing, fill the rest with zeros and stop.
+                if pd.isna(median_val_for_gap) or pd.isna(current_value_of_target):
                     for m in range(k, start - 1, -1):
                         df.at[m, value_col] = 0
-                        df.at[m, "tag"] = "gap-filled"
+                        df.at[m, "tag"] = "gap-filled with zeros because the stats info is missing"
                     if not modified:
-                        df.at[target_idx, "tag"] = "considered, not modified"
+                        df.at[target_idx, "tag"] = "considered, not modified, because the stats info is missing"
                     break
 
-                candidate = current_value - median_val
-                threshold_ok = candidate >= 0
+                # check median_val_for_gap against its impact on target compared to q1
+                candidate_for_target = current_value_of_target - median_val_for_gap
                 if not pd.isna(q1_target):
-                    threshold_ok = threshold_ok and candidate > q1_target
+                    threshold_ok = candidate_for_target > q1_target
+                else:
+                    raise ValueError(f"Missing Q1 info for target. weekday_hour_q1: {weekday_hour_q1}, target_weekday: {target_weekday}, target_hour: {target_hour}")
 
-                # Accept this fill and update the target value for the next step.
+                # If the gap-filled value is zero, gap-fill all previous points with a 0
+                if median_val_for_gap == 0.0:
+                    for m in range(k, start - 1, -1):
+                        df.at[m, value_col] = 0
+                        df.at[m, "tag"] = "gap-filled with 0 because later points already filled at 0"
+                    break
+
+                # If the test is valid, accept this fill and update the target value for the next step.
                 if threshold_ok:
-                    df.at[k, value_col] = median_val
-                    df.at[k, "tag"] = "gap-filled"
-                    current_value = candidate
+                    df.at[k, value_col] = median_val_for_gap
+                    df.at[k, "tag"] = "gap-filled implying modification"
+                    current_value_of_target = candidate_for_target
                     modified = True
                     k -= 1
-                    continue
+                    continue # passe au prochain tour de boucle
 
-                # Reject the remaining block; fill zeros and mark the target as considered.
+                # If the test is invalid, fill the rest of the beginning of the block; fill with zeros, break the while loop
                 for m in range(k, start - 1, -1):
                     df.at[m, value_col] = 0
-                    df.at[m, "tag"] = "gap-filled"
-                if not modified:
-                    df.at[target_idx, "tag"] = "considered, not modified"
+                    df.at[m, "tag"] = "gap-filled rest of block because threshold of modification already reached"
                 break
 
-            # Commit the modified target value (or mark it as considered).
+            # Commit the final modified target value
             if modified:
-                df.at[target_idx, value_col] = current_value
+                df.at[target_idx, value_col] = current_value_of_target
                 df.at[target_idx, "tag"] = "modified"
-            elif considered and df.at[target_idx, "tag"] == "original":
+            # if no test has been seen as valid, the target has not been modified   
+            else:
                 df.at[target_idx, "tag"] = "considered, not modified"
 
-    return df.drop(columns=["_hour", "_weekday", "_date", "_is_off_day"])
+    # Create index for missing dates for Christmas holidays, and fill with zeros all remaining missing values
+    df = df.set_index("Valeur mesurée le")
+    date_index2 = pd.date_range(start="2025-01-01 00:00:00", end="2025-12-31 23:00:00", freq="h")
+    df = df.reindex(date_index2)
+    df = df.reset_index(names="Valeur mesurée le")
+    
+    holidays_mask = df["tag"].isna()
+    df.loc[holidays_mask, "activity"] = "holidays"
+    df.loc[holidays_mask, "tag"] = "gap-filled with zero for holidays"
+    df.loc[holidays_mask, value_col] = 0
+
+    return df.drop(columns=["_hour", "_weekday", "_date"]) #, "_is_off_day"
 
 
 def find_missing_timestamps_full_year(
@@ -477,18 +518,13 @@ def build_tarkett_dataset(
     df_hourly = aggregate_hourly(df)
     df_hourly = df_hourly[["Valeur mesurée le", "MWh use"]]
 
-    # gap fill with zeros, to try and tag easily the days, to simplify the gap-filling
-    df_hourly_with_zeros = df_hourly.fillna(0)
-    plot_timeseries_csv(df_hourly_with_zeros.set_index("Valeur mesurée le"))
-    missing_dates = find_missing_timestamps_full_year(df_hourly, 2025)
-
-    df_hourly_gap_filled = gap_fill_hourly_timeseries(df_hourly)
-
-    df_hourly_gap_filled = tag_activity_loris(df_hourly_gap_filled)
-
     output_interim_path = Path(output_interim_path)
     output_interim_path.parent.mkdir(parents=True, exist_ok=True)
     df_hourly.to_csv(output_interim_path, index=False, sep=sep, decimal=decimal)
+
+    # gap-filling
+    df_hourly, non_sunday_off_days, all_back_to_work_days = tag_activity(df_hourly)
+    df_hourly_gap_filled = gap_fill_hourly_timeseries(df_hourly, non_sunday_off_days, all_back_to_work_days)
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)    
