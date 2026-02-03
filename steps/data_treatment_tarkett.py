@@ -10,7 +10,7 @@ from plots import plot_timeseries_csv, plot_gap_filled_timeseries
 DEFAULT_INPUT_DIR = Path(
     r"D:\Cascadya\Cascadya - Documents\08. COMPTE CLIENT\Tarkett_Sedan\2. Données sous NDA\Données de Consommation gaz 2025"
 )
-DEFAULT_INTERIM_OUTPUT_PATH_NOT_SAMPLED = Path(r"data\tarkett\interim") / "data_tarkett_not_sampled.csv"
+DEFAULT_INTERIM_OUTPUT_PATH_NOT_SAMPLED = Path(r"data\tarkett\intermediary") / "data_tarkett_not_sampled.csv"
 DEFAULT_INTERIM_OUTPUT_PATH = Path(r"data\tarkett\interim") / "data_tarkett.csv"
 
 DEFAULT_OUTPUT_PATH = Path(r"data\tarkett\processed") / "data_tarkett_gap_filled.csv"
@@ -181,7 +181,7 @@ def aggregate_hourly(
         .sum(min_count=1)
         .reset_index()
     )
-    return hourly #todo remplir début et fin d'année
+    return hourly
 
 def tag_activity(
         df: pd.DataFrame, 
@@ -262,39 +262,7 @@ def gap_fill_hourly_timeseries(
     df["_weekday"] = df[timestamp_col].dt.weekday
     df["_date"] = df[timestamp_col].dt.date    
 
-
-    # off_days = set(JOURS_FERIES_ET_PONTS)
-    # df["_is_off_day"] = df["_date"].isin(off_days)
-    # unique_dates = [d for d in df["_date"].dropna().unique()]
-
-    # def _previous_workday(day: datetime.date) -> datetime.date:
-    #     prev = day - datetime.timedelta(days=1)
-    #     while prev.weekday() >= 5:
-    #         prev -= datetime.timedelta(days=1)
-    #     return prev
-
-    # back_to_work_days = {
-    #     d
-    #     for d in unique_dates
-    #     if d not in off_days
-    #     and d.weekday() < 5
-    #     and _previous_workday(d) in off_days
-    # }
-    # end_of_work_off_days = {
-    #     d
-    #     for d in unique_dates
-    #     if d in off_days
-    #     and (d - datetime.timedelta(days=1)) not in off_days
-    #     and (d - datetime.timedelta(days=1)).weekday() < 5
-    # }
-
-    # if isinstance(CRENEAUX_3_8, (list, tuple, set)):
-    #     end_of_work_hour_mask = df["_hour"].isin(CRENEAUX_3_8)
-    # else:
-    #     end_of_work_hour_mask = df["_hour"] <= CRENEAUX_3_8
-
     # stats: remove NaNs and days taggued as OFF from stats
-    ##todo can be deleted because same as below but better below?
     missing_mask = df[value_col].isna()
     original_mask = ~missing_mask
         
@@ -323,7 +291,6 @@ def gap_fill_hourly_timeseries(
     # if back_to_work day: validating against the target hour's back_to_work monday Q1
     if missing_mask.any():
         missing_mask_arr = missing_mask.to_numpy()
-        original_mask_arr = original_mask.to_numpy()
         n_rows = len(df)
         i = 0
 
