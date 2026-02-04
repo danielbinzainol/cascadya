@@ -46,7 +46,7 @@ def create_feature(y):
     X = pd.concat([X, X_lags], axis=1).dropna()
 
     # add holidays knowledge
-    fr_holidays = holidays.FR()
+    fr_holidays = holidays.FR(years=2025)
     holiday_dates = set(fr_holidays.keys())
     X["holidays"] = pd.Index(X.index.date).isin(holiday_dates)
 
