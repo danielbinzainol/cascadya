@@ -10,10 +10,11 @@ from plots import plot_timeseries_csv, plot_gap_filled_timeseries
 DEFAULT_INPUT_DIR = Path(
     r"D:\Cascadya\Cascadya - Documents\08. COMPTE CLIENT\Tarkett_Sedan\2. Données sous NDA\Données de Consommation gaz 2025"
 )
-DEFAULT_INTERIM_OUTPUT_PATH_NOT_SAMPLED = Path(r"data\tarkett\intermediary") / "data_tarkett_not_sampled.csv"
-DEFAULT_INTERIM_OUTPUT_PATH = Path(r"data\tarkett\interim") / "data_tarkett.csv"
+DEFAULT_INTERMEDIARY_OUTPUT_PATH_NOT_SAMPLED = Path(r"data\tarkett\intermediary") / "data_tarkett_not_sampled.csv"
+DEFAULT_INTERMEDIARY_OUTPUT_PATH = Path(r"data\tarkett\intermediary") / "data_tarkett.csv"
 
 DEFAULT_OUTPUT_PATH = Path(r"data\tarkett\processed") / "data_tarkett_gap_filled.csv"
+DEFAULT_SOURCE_TIMEZONE = "Europe/Paris"
 
 REQUIRED_COLUMNS = [
     "Désignation caractéristique",
@@ -124,6 +125,29 @@ def load_tarkett_files(input_dir: Path | str = DEFAULT_INPUT_DIR) -> pd.DataFram
     for path in tqdm(files, desc="Reading Excel files", unit="file"):
         frames.append(_read_tarkett_excel(path))
     return pd.concat(frames, ignore_index=True)
+
+
+def convert_timestamps_to_utc(
+    df: pd.DataFrame,
+    source_timezone: str | None,
+    timestamp_col: str = "Valeur mesurée le",
+    local_col: str | None = None,
+    tz_col: str = "source_timezone",
+) -> pd.DataFrame:
+    df = df.copy()
+    timestamps = pd.to_datetime(df[timestamp_col], errors="coerce")
+    if timestamps.dt.tz is None:
+        if source_timezone is None:
+            raise ValueError(f"source_timezone is required to localize timestamps. Not found in column '{timestamp_col}' nor provided as argument.")
+        localized = timestamps.dt.tz_localize(source_timezone)
+    else:
+        localized = timestamps
+    if local_col is None:
+        local_col = f"{timestamp_col} (heure locale)"
+    df[local_col] = localized
+    df[timestamp_col] = localized.dt.tz_convert("UTC")
+    df[tz_col] = str(source_timezone or localized.dt.tz)
+    return df
 
 
 def detect_duplicate_timestamps(
@@ -433,19 +457,20 @@ def detect_elapsed_time_anomalies(
 
 def build_tarkett_dataset(
     input_dir: Path | str = DEFAULT_INPUT_DIR,
-    output_interim_path_not_sampled: Path | str = DEFAULT_INTERIM_OUTPUT_PATH_NOT_SAMPLED,
-    output_interim_path: Path | str = DEFAULT_INTERIM_OUTPUT_PATH,
+    output_intermediary_path_not_sampled: Path | str = DEFAULT_INTERMEDIARY_OUTPUT_PATH_NOT_SAMPLED,
+    output_intermediary_path: Path | str = DEFAULT_INTERMEDIARY_OUTPUT_PATH,
     output_path: Path | str = DEFAULT_OUTPUT_PATH,
+    source_timezone: str | None = DEFAULT_SOURCE_TIMEZONE,
     sep: str = ";",
     decimal: str = ",",
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
 
-    output_interim_path_not_sampled = Path(output_interim_path_not_sampled)
-    output_interim_path_not_sampled.parent.mkdir(parents=True, exist_ok=True)
+    output_intermediary_path_not_sampled = Path(output_intermediary_path_not_sampled)
+    output_intermediary_path_not_sampled.parent.mkdir(parents=True, exist_ok=True)
 
-    if output_interim_path_not_sampled.exists():
-        print("---------------- loading existing interim files (cache) ------------")
-        df = pd.read_csv(output_interim_path_not_sampled, sep=sep, decimal=decimal)
+    if output_intermediary_path_not_sampled.exists():
+        print("---------------- loading existing intermediary files (cache) ------------")
+        df = pd.read_csv(output_intermediary_path_not_sampled, sep=sep, decimal=decimal)
         if "Valeur mesurée le" in df.columns:
             df["Valeur mesurée le"] = pd.to_datetime(
                 df["Valeur mesurée le"],
@@ -457,9 +482,15 @@ def build_tarkett_dataset(
         # contient les timestamps duplicates et les timestamps manquants
         df = load_tarkett_files(input_dir)
         df = df.sort_values("Valeur mesurée le")
-        df.to_csv(output_interim_path_not_sampled, index=False, sep=sep, decimal=decimal)
+        df.to_csv(output_intermediary_path_not_sampled, index=False, sep=sep, decimal=decimal)
 
     print("---------------- loading files completed ------------")
+
+    df = convert_timestamps_to_utc(
+        df,
+        source_timezone=source_timezone,
+        timestamp_col="Valeur mesurée le",
+    )
     
     duplicates = detect_duplicate_timestamps(df)
     duplicate_timestamps_that_can_be_removed = (
@@ -485,9 +516,9 @@ def build_tarkett_dataset(
     df_hourly = aggregate_hourly(df)
     df_hourly = df_hourly[["Valeur mesurée le", "MWh use"]]
 
-    output_interim_path = Path(output_interim_path)
-    output_interim_path.parent.mkdir(parents=True, exist_ok=True)
-    df_hourly.to_csv(output_interim_path, index=False, sep=sep, decimal=decimal)
+    output_intermediary_path = Path(output_intermediary_path)
+    output_intermediary_path.parent.mkdir(parents=True, exist_ok=True)
+    df_hourly.to_csv(output_intermediary_path, index=False, sep=sep, decimal=decimal)
 
     # gap-filling
     df_hourly, non_sunday_off_days, all_back_to_work_days = tag_activity(df_hourly)
