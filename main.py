@@ -2,6 +2,7 @@ from sklearn.model_selection import TimeSeriesSplit, cross_val_predict
 
 #
 from steps.ingest import data_workflow
+from steps.dataset import analyze, detect_elapsed_time_anomalies, resample
 from steps.train import model_choice, create_feature, train_model
 from steps.predict import predict_model, a_priori_knowledge, confidence_interval
 from steps.evaluate import evaluate_model, cv_evaluate
@@ -50,10 +51,13 @@ def fit_pred_fore_priori_plot_workflow(model, X_train, X_test):
 
 ##############################
 if __name__ == "__main__":
-    y = data_workflow("france_champignon")
+    y = data_workflow("inariz")
+    analyze(y)
+    elapsed_anomalies, expected_delta = detect_elapsed_time_anomalies(y, timestamp_col="Horodatage")
     # target
-    y = y["MWh use"]
-    
+    y = y[["Horodatage", "Valeur"]]
+    y_10min = resample(y, desired_timedelta="10min", aggregate_function="mean")
+    plot_timeseries_csv(y_10min.set_index("Horodatage"))
 
     X = create_feature(y)
 

@@ -3,6 +3,13 @@ france_champignon:
     path: data\france_champignon\data_bonduelle.csv
     frequency: "h"
 
+inariz:
+  data: 
+    path: data\inariz\raw\Graphique_20260121150818.csv
+    skiprows: 4
+    usecols: ["Horodatage","Valeur","Unité"]
+
+
 models:
   LinearRegression:
     params:
