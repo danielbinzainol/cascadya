@@ -1,9 +1,26 @@
 from pathlib import Path
+import time
 import pandas as pd
+import xlrd
 
 INPUT_DIR = Path(
-    r"D:\Cascadya\Cascadya - Documents\08. COMPTE CLIENT\Inariz_Lamballe\2. Données sous NDA\planning de production\Planning week 07 V0 LAM (PLANNING).xlsm"
+    r"D:\Cascadya\Cascadya - Documents\08. COMPTE CLIENT\Inariz_Lamballe\2. Données sous NDA\planning de production"
 )
+
+REQUIRED_COLUMNS_POSITIONS = {2: "DATE", 4: "CODE PF10/SF90", 12:"temps de production", 14:"temps nettoyage"}
+
+DEFAULT_INTERMEDIARY_OUTPUT_DIR = Path(r"data\inariz\intermediary")
+
+
+def detect_most_recent_file(input_dir: Path):
+    mtime_path = {
+        path.stat().st_mtime: path #time of last modification of the file, expressed in epoch (seconds from Jan 1st 1970 UTC)
+        for path in input_dir.iterdir()
+        if path.is_file() and path.suffix.lower().startswith(".xls")
+    }
+    most_recent_modification_date = sorted(mtime_path.keys())[-1]
+    most_recent_file_path = mtime_path[most_recent_modification_date]
+    return most_recent_modification_date, most_recent_file_path
 
 def _read_inariz_planning_excel(path: Path) -> pd.DataFrame:
     # print(f"---------------- Start reading {path} ------------")
@@ -18,28 +35,59 @@ def _read_inariz_planning_excel(path: Path) -> pd.DataFrame:
                 "Please close it, then press Enter to retry."
             )
     print(df)
-    # missing = [col for col in REQUIRED_COLUMNS if col not in df.columns]
-    # if missing:
-    #     missing_str = ", ".join(missing)
-    #     raise ValueError(f"Missing columns in {path.name}: {missing_str}")
 
-    # df = df[REQUIRED_COLUMNS].dropna(how="all")
+    df = df.drop(columns=[0, 1], errors="ignore")
 
-    # df["Désignation caractéristique"] = (
-    #     df["Désignation caractéristique"].astype(str).str.strip()
-    # )
-    # df = df[df["Désignation caractéristique"] == "conso gaz chaudiere SV4"]
+    def _is_empty_cell(value) -> bool:
+        if pd.isna(value):
+            return True
+        if isinstance(value, str) and value.strip() == "":
+            return True
+        return False
 
-    # df["Valeur mesurée"] = _coerce_numeric(df["Valeur mesurée"])
-    # df["Valeur mesurée le"] = pd.to_datetime(
-    #     df["Valeur mesurée le"],
-    #     errors="coerce",
-    #     dayfirst=True,
-    # )
-    # df = df.dropna(subset=["Valeur mesurée le"])
+    col_2 = df[2]
+    df = df[~col_2.apply(_is_empty_cell)].reset_index(drop=True)
 
-    return df
+    def _is_split_row(value) -> bool:
+        if not isinstance(value, str):
+            return False
+        cleaned = value.strip()
+        return cleaned not in {"DATE", "Total"} and cleaned != ""
+
+    split_positions = [
+        idx for idx, value in enumerate(df[2]) if _is_split_row(value)
+    ]
+    
+    df_sections = []
+    for i, start in enumerate(split_positions):
+        end = split_positions[i + 1] if i + 1 < len(split_positions) else len(df)
+        df_section = df.iloc[start:end].reset_index(drop=True)
+        keep_mask = df_section[3].notna() & df_section[12].notna()
+        df_section = df_section[keep_mask]
+        df_section = df_section.rename(columns=REQUIRED_COLUMNS_POSITIONS)
+        df_section = df_section[REQUIRED_COLUMNS_POSITIONS.values()]
+        df_sections.append(df_section)
+
+    return df_sections
 
 
 if __name__ == "__main__":
-    df = _read_inariz_planning_excel(INPUT_DIR)
+    # todo ajouter ici une boucle while à un moment
+    last_modified_date = 0
+    most_recent_modification_date, most_recent_file_path = detect_most_recent_file(INPUT_DIR)
+    if most_recent_modification_date < last_modified_date:
+        raise ValueError("dates pas cohérentes")
+    elif most_recent_modification_date == last_modified_date:
+        # print(f"No new modification since {time.localtime(most_recent_modification_date)}")
+        pass
+    elif most_recent_modification_date > last_modified_date:
+        last_modified_date = most_recent_modification_date
+        # print(f"New modification detected on {time.localtime(most_recent_modification_date)}, new file parsed.")
+
+        df_sections = _read_inariz_planning_excel(most_recent_file_path)
+        for i, df_section in enumerate(df_sections):
+            output_path = DEFAULT_INTERMEDIARY_OUTPUT_DIR / f"planning_production_autoclave_{i+1}_inariz.csv"
+
+            DEFAULT_INTERMEDIARY_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+            df_section.to_csv(output_path, index=False, sep=";", decimal=",")
+
