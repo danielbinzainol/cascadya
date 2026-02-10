@@ -17,3 +17,6 @@ wheels/
 
 # Debugging
 .vscode/
+
+# Notebooks cache
+.ipynb_checkpoints
