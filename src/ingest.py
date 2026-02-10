@@ -1,12 +1,12 @@
 from pathlib import Path
 import pandas as pd
 #
-from steps.utils import load_config
+from utils import load_config
 
         
 def input_csv(project: str, **kwargs):
     config = load_config() 
-    path = Path(config[project]["data"]["path"])
+    path = Path(__file__).resolve().parent.parent / Path(config[project]["data"]["path"])
     if not path.exists():
         raise FileNotFoundError(path)
 

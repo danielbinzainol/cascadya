@@ -1,7 +1,6 @@
 from pathlib import Path
 import time
 import pandas as pd
-import xlrd
 
 INPUT_DIR = Path(
     r"D:\Cascadya\Cascadya - Documents\08. COMPTE CLIENT\Inariz_Lamballe\2. Données sous NDA\planning de production"
