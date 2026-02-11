@@ -14,3 +14,9 @@ wheels/
 
 # Plots
 /reports/
+
+# Debugging
+.vscode/
+
+# Notebooks cache
+.ipynb_checkpoints

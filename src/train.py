@@ -4,7 +4,7 @@ from statsmodels.tsa.deterministic import DeterministicProcess, Seasonality
 import holidays
 
 #
-from steps.utils import load_config
+from utils import load_config
 
 
 def model_choice(model_name):

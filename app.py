@@ -1,6 +1,6 @@
 import uvicorn
 from fastapi import FastAPI
-from main import data_workflow
+from src.autres import data_workflow
 
 app = FastAPI()
 

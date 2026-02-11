@@ -1,16 +1,21 @@
 from pathlib import Path
 import pandas as pd
 #
-from steps.utils import load_config
+from utils import load_config
 
         
-def input_csv(project: str):
+def input_csv(project: str, **kwargs):
     config = load_config() 
-    path = Path(config[project]["data"]["path"])
+    path = Path(__file__).resolve().parent.parent / Path(config[project]["data"]["path"])
     if not path.exists():
         raise FileNotFoundError(path)
 
-    df = pd.read_csv(path, sep=";", decimal=",")
+    if "skiprows" in config[project]["data"]:
+        kwargs.setdefault("skiprows", config[project]["data"]["skiprows"])
+    if "usecols" in config[project]["data"]:
+        kwargs.setdefault("usecols", config[project]["data"]["usecols"])
+
+    df = pd.read_csv(path, sep=";", decimal=",", **kwargs)
 
     return df
 
@@ -31,7 +36,7 @@ def parse_date_col(
         raise ValueError("Could not infer date column.")
 
     df = df.sort_values(date_col).set_index(date_col)
-    y = df.select_dtypes(include="number")
+    y = df.select_dtypes(include="number").reset_index()
 
     if y.empty:
         raise ValueError("No numeric columns found to plot.")
@@ -43,7 +48,9 @@ def data_workflow(project: str):
     y = parse_date_col(df)
 
     config = load_config() 
+    
     # give information on the frequency of the index:
-    y = y.asfreq(config[project]["data"]["frequency"])
+    if "frequency" in config[project]["data"]:
+        y = y.asfreq(config[project]["data"]["frequency"])
     
     return y

@@ -5,6 +5,7 @@ import pandas as pd
 from tqdm import tqdm
 import datetime
 
+from dataset import detect_elapsed_time_anomalies
 from plots import plot_timeseries_csv, plot_gap_filled_timeseries
 
 DEFAULT_INPUT_DIR = Path(
@@ -430,31 +431,6 @@ def find_missing_timestamps_full_year(
     return pd.DataFrame({timestamp_col: missing})
 
 
-def detect_elapsed_time_anomalies(
-    df: pd.DataFrame,
-    timestamp_col: str = "Valeur mesurée le",
-) -> tuple[pd.DataFrame, pd.Timedelta]:
-    timestamps = pd.to_datetime(
-        df[timestamp_col],
-        errors="coerce",
-        dayfirst=True,
-    )
-    df = df.assign(**{timestamp_col: timestamps}).dropna(subset=[timestamp_col])
-    df = df.sort_values(timestamp_col)
-
-    elapsed = df[timestamp_col].diff()
-    expected = elapsed.dropna().mode()
-    expected_delta = expected.iloc[0] if not expected.empty else pd.Timedelta(0)
-
-    anomalies_mask = elapsed.notna() & ((elapsed < expected_delta * 0.9) | (elapsed > expected_delta * 1.1))
-    anomalies = df.loc[anomalies_mask, [timestamp_col]].copy()
-    anomalies["Previous timestamp"] = df[timestamp_col].shift(1)
-    anomalies["Elapsed"] = elapsed[anomalies_mask]
-    anomalies["Expected elapsed"] = expected_delta
-
-    return anomalies, expected_delta
-
-
 def build_tarkett_dataset(
     input_dir: Path | str = DEFAULT_INPUT_DIR,
     output_intermediary_path_not_sampled: Path | str = DEFAULT_INTERMEDIARY_OUTPUT_PATH_NOT_SAMPLED,
@@ -498,10 +474,7 @@ def build_tarkett_dataset(
     )
 
     elapsed_anomalies, expected_delta = detect_elapsed_time_anomalies(df)
-    print(
-        "---------------- elapsed anomalies : "
-        f"{len(elapsed_anomalies)} (expected {expected_delta}) ------------"
-    )
+
 
     if duplicate_timestamps_that_can_be_removed:
         removable_mask = (
