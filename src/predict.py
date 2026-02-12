@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from scipy.stats import norm
 
-
+# todo prévision simpliste
 
 
 def predict_model(model, X):

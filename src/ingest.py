@@ -36,16 +36,39 @@ def parse_date_col(
         raise ValueError("Could not infer date column.")
 
     df = df.sort_values(date_col).set_index(date_col)
-    y = df.select_dtypes(include="number").reset_index()
+    y = df.reset_index(names="measured_at")
 
     if y.empty:
         raise ValueError("No numeric columns found to plot.")
-        
+
     return y
+
+def convert_timestamps_to_utc(
+    df: pd.DataFrame,
+    source_timezone: str | None,
+    timestamp_col: str = "measured_at",
+    local_col: str | None = None,
+    tz_col: str = "source_timezone",
+) -> pd.DataFrame:
+    df = df.copy()
+    timestamps = pd.to_datetime(df[timestamp_col], errors="coerce")
+    if timestamps.dt.tz is None:
+        if source_timezone is None:
+            raise ValueError(f"source_timezone is required to localize timestamps. Not found in column '{timestamp_col}' nor provided as argument.")
+        localized = timestamps.dt.tz_localize(source_timezone)
+    else:
+        localized = timestamps
+    if local_col is None:
+        local_col = f"{timestamp_col} (local time)"
+    df[local_col] = localized
+    df[timestamp_col] = localized.dt.tz_convert("UTC")
+    df[tz_col] = str(source_timezone or localized.dt.tz)
+    return df
 
 def data_workflow(project: str):
     df = input_csv(project)
     y = parse_date_col(df)
+    y = convert_timestamps_to_utc(y)
 
     config = load_config() 
     

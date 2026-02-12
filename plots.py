@@ -19,43 +19,36 @@ def plot_timeseries_csv(
 
 def plot_weekday_seasonal_csv(
         y: pd.DataFrame,
+        value_col,
         option_mean= False
 ):
     if option_mean:
         weekday_means = y.groupby(y.index.dayofweek).mean().reindex(range(7))
         ax = weekday_means.plot(figsize=(10, 6))
-        ax.set_xlabel("Weekday")
-        ax.set_ylabel("Mean value")
-        # ax.set_title(f"{path.name} (Weekday seasonal plot)")
-        ax.set_xticks(range(7))
-        ax.set_xticklabels(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])
-        ax.legend(loc="best")
-        plt.tight_layout()
-        plt.show()
     else:
         y["day"] = y.index.dayofweek
         # weekday_means = y.groupby(y.index.dayofweek).mean().reindex(range(7))
-        ax = y.plot.scatter(x="day", y="MWh use", figsize=(10, 6), alpha=0.4)
-        ax.set_xlabel("Weekday")
-        ax.set_ylabel("MWh use")
-        ax.set_xticks(range(7))
-        ax.set_xticklabels(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])
-        ax.legend(loc="best")
-        plt.tight_layout()
-        plt.show()      
+        ax = y.plot.scatter(x="day", y=value_col, figsize=(10, 6), alpha=0.4)
+    ax.set_xlabel("Weekday")
+    ax.set_ylabel(value_col)
+    ax.set_xticks(range(7))
+    ax.set_xticklabels(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])
+    ax.legend(loc="best")
+    plt.tight_layout()
+    plt.show()      
 
 
 ### Simple regression on lag of 1 hour ###
-def simple_lag_plot(X, y, y_pred):
+def simple_lag_plot(X, y, y_pred, value_col):
 
-    # lag plot, show relationship of MWh use at H and H-1
+    # lag plot, show relationship of value_col at H and H-1
     fig, ax = plt.subplots()
     ax.plot(X['Lag_1'], y, '.', color='0.25')
     ax.plot(X['Lag_1'], y_pred)
     ax.set_aspect('equal')
-    ax.set_ylabel('MWh use')
+    ax.set_ylabel(value_col)
     ax.set_xlabel('Lag_1')
-    ax.set_title('Lag Plot of MWH use');    
+    ax.set_title(f'Lag Plot of {value_col}');    
     plt.show()
 
     # show accuracy of forecast cmopared to read data
@@ -120,9 +113,9 @@ def plot_periodogram(ts, detrend=None, ax=None):
     plt.show()
 
 # Autocorrelation
-def autocorrelation_plot(y):
-    _ = plot_acf(y["MWh use"], lags=7*24) 
-    _ = plot_pacf(y["MWh use"], lags=7*24) 
+def autocorrelation_plot(y, value_col):
+    _ = plot_acf(y[value_col], lags=7*24) 
+    _ = plot_pacf(y[value_col], lags=7*24) 
     plt.tight_layout()
     plt.show()
 
@@ -190,8 +183,8 @@ def cool_plot(y, y_fore, pred_int, y_pred):
 
 def plot_gap_filled_timeseries(
     df: pd.DataFrame,
-    timestamp_col: str = "Valeur mesurée le",
-    value_col: str = "MWh use",
+    timestamp_col: str = "timeslot_start_at",
+    value_col: str = "conso_gaz_chaudiere_SV4_(MWh)",
     tag_col: str = "tag",
 ):
     if tag_col not in df.columns:

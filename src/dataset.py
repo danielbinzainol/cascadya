@@ -1,7 +1,7 @@
 import pandas as pd
 
 def analyze(df: pd.DataFrame,
-            timestamp_col: str = "Horodatage",
+            timestamp_col: str = "measured_at",
             timestamp_diff_col: str = "timestamp_diff_col"):
     df = df.copy()
     df = df.reset_index()
@@ -13,7 +13,7 @@ def analyze(df: pd.DataFrame,
 
 def detect_elapsed_time_anomalies(
     df: pd.DataFrame,
-    timestamp_col: str = "Valeur mesurée le",
+    timestamp_col: str = "measured_at",
 ) -> tuple[pd.DataFrame, pd.Timedelta]:
     timestamps = pd.to_datetime(
         df[timestamp_col],
@@ -43,7 +43,7 @@ def detect_elapsed_time_anomalies(
 
 # timestamp_diff_col va jusqu'a 1h29, donc ~80 minutes, la plus grande "bin" de l'histogramme
 def resample(df: pd.DataFrame,
-             timestamp_col: str = "Horodatage",
+             timestamp_col: str = "measured_at",
              desired_timedelta: str = "1h",
              aggregate_function: str = "sum") -> pd.DataFrame:
     df = df.copy()

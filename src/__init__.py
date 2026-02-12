@@ -12,11 +12,11 @@ from plots import plot_timeseries_csv
 def main():
     y = data_workflow("inariz")
     analyze(y)
-    elapsed_anomalies, expected_delta = detect_elapsed_time_anomalies(y, timestamp_col="Horodatage")
+    elapsed_anomalies, expected_delta = detect_elapsed_time_anomalies(y, timestamp_col="measured_at")
     # target
-    y = y[["Horodatage", "Valeur"]]
+    y = y[["measured_at", "steam_consumption_(m3/h)"]]
     y_10min = resample(y, desired_timedelta="10min", aggregate_function="mean") # TODO vérfiier comment se fait ce mean, pas sur que je sois content, mieux vaut peut etre prendre le point le plus proche
-    plot_timeseries_csv(y_10min.set_index("Horodatage"))
+    plot_timeseries_csv(y_10min.set_index("measured_at"))
 
     X = create_feature(y)
 
