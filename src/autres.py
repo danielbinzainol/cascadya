@@ -7,15 +7,15 @@ def plot_workflow(y):
     plot_weekday_seasonal_csv(y)
 
 ### Simple regression on lag of 1 hour ###
-def simple_lag(steam_cons):
+def simple_lag(y, value_col):
     # simple lag
-    steam_cons['Lag_1'] = steam_cons['MWh use'].shift(1)
-    steam_cons.head()    
+    y['Lag_1'] = y[value_col].shift(1)
+    y.head()    
 
 
-    X = steam_cons.loc[:, ['Lag_1']]
+    X = y.loc[:, ['Lag_1']]
     X.dropna(inplace=True)  # drop missing values in the feature set
-    y = steam_cons.loc[:, 'MWh use']  # create the target
+    y = y.loc[:, value_col]  # create the target
     y, X = y.align(X, join='inner')  # drop corresponding values in target
 
     model = model_choice("LinearRegression")

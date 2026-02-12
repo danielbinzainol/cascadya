@@ -5,6 +5,7 @@ import pandas as pd
 from tqdm import tqdm
 import datetime
 
+from ingest import convert_timestamps_to_utc
 from dataset import detect_elapsed_time_anomalies
 from plots import plot_timeseries_csv, plot_gap_filled_timeseries
 
@@ -127,33 +128,9 @@ def load_tarkett_files(input_dir: Path | str = DEFAULT_INPUT_DIR) -> pd.DataFram
         frames.append(_read_tarkett_excel(path))
     return pd.concat(frames, ignore_index=True)
 
-
-def convert_timestamps_to_utc(
-    df: pd.DataFrame,
-    source_timezone: str | None,
-    timestamp_col: str = "Valeur mesurée le",
-    local_col: str | None = None,
-    tz_col: str = "source_timezone",
-) -> pd.DataFrame:
-    df = df.copy()
-    timestamps = pd.to_datetime(df[timestamp_col], errors="coerce")
-    if timestamps.dt.tz is None:
-        if source_timezone is None:
-            raise ValueError(f"source_timezone is required to localize timestamps. Not found in column '{timestamp_col}' nor provided as argument.")
-        localized = timestamps.dt.tz_localize(source_timezone)
-    else:
-        localized = timestamps
-    if local_col is None:
-        local_col = f"{timestamp_col} (heure locale)"
-    df[local_col] = localized
-    df[timestamp_col] = localized.dt.tz_convert("UTC")
-    df[tz_col] = str(source_timezone or localized.dt.tz)
-    return df
-
-
 def detect_duplicate_timestamps(
     df: pd.DataFrame,
-    timestamp_col: str = "Valeur mesurée le",
+    timestamp_col: str = "measured_at",
 ) -> pd.DataFrame:
     duplicates = df[timestamp_col].duplicated(keep=False)
     return df.loc[duplicates].sort_values(timestamp_col)
@@ -161,8 +138,8 @@ def detect_duplicate_timestamps(
 
 def find_duplicate_timestamps_with_same_value(
     duplicates_df: pd.DataFrame,
-    timestamp_col: str = "Valeur mesurée le",
-    value_col: str = "Valeur mesurée",
+    timestamp_col: str = "measured_at",
+    value_col: str = "cumulative_conso_gaz_chaudiere_SV4_(m3)",
 ) -> list[pd.Timestamp]:
     if duplicates_df.empty:
         return []
@@ -176,18 +153,18 @@ def add_mwh_measure(
     df: pd.DataFrame,
     coeff_m3_nm3: float = COEFF_M3_NM3,
     coeff_pcs_kwh_nm3: float = COEFF_PCS_KWH_NM3,
-    value_col: str = "Valeur mesurée",
+    value_col: str = "cumulative_conso_gaz_chaudiere_SV4_(m3)",
 ) -> pd.DataFrame:
     df = df.copy()
-    df["MWh mesure"] = df[value_col] * coeff_m3_nm3 * coeff_pcs_kwh_nm3 / 1000
+    df["cumulative_conso_gaz_chaudiere_SV4_(MWh)"] = df[value_col] * coeff_m3_nm3 * coeff_pcs_kwh_nm3 / 1000
     return df
 
 
 def add_mwh_use(
     df: pd.DataFrame,
-    timestamp_col: str = "Valeur mesurée le",
-    value_col: str = "MWh mesure",
-    diff_col: str = "MWh use",
+    timestamp_col: str = "measured_at",
+    value_col: str = "cumulative_conso_gaz_chaudiere_SV4_(MWh)",
+    diff_col: str = "conso_gaz_chaudiere_SV4_(MWh)",
 ) -> pd.DataFrame:
     df = df.sort_values(timestamp_col).copy()
     df[diff_col] = df[value_col].diff()
@@ -196,8 +173,8 @@ def add_mwh_use(
 
 def aggregate_hourly(
     df: pd.DataFrame,
-    timestamp_col: str = "Valeur mesurée le",
-    value_col: str = "MWh use",
+    timestamp_col: str = "measured_at",
+    value_col: str = "conso_gaz_chaudiere_SV4_(MWh)",
 ) -> pd.DataFrame:
     df = df.sort_values(timestamp_col)
     hourly = (
@@ -206,11 +183,12 @@ def aggregate_hourly(
         .sum(min_count=1)
         .reset_index()
     )
+    df.rename({timestamp_col: "timeslot_start_at"})
     return hourly
 
 def tag_activity(
         df: pd.DataFrame, 
-        timestamp_col: str = "Valeur mesurée le",
+        timestamp_col: str = "timeslot_start_at",
 ) -> pd.DataFrame:
     # utils
     df[timestamp_col] = pd.to_datetime(df[timestamp_col], errors="coerce")
@@ -275,8 +253,8 @@ def gap_fill_hourly_timeseries(
     df_hourly: pd.DataFrame,
     non_sunday_off_days,
     all_back_to_work_days,
-    timestamp_col: str = "Valeur mesurée le",
-    value_col: str = "MWh use",
+    timestamp_col: str = "timeslot_start_at",
+    value_col: str = "conso_gaz_chaudiere_SV4_(MWh)",
 ) -> pd.DataFrame:
     # utils
     df = df_hourly.copy()
@@ -388,10 +366,10 @@ def gap_fill_hourly_timeseries(
                 df.at[target_idx, "tag"] = "considered, not modified"
 
     # Create index for missing dates for Christmas holidays, and fill with zeros all remaining missing values
-    df = df.set_index("Valeur mesurée le")
+    df = df.set_index(timestamp_col)
     date_index2 = pd.date_range(start="2025-01-01 00:00:00", end="2025-12-31 23:00:00", freq="h")
     df = df.reindex(date_index2)
-    df = df.reset_index(names="Valeur mesurée le")
+    df = df.reset_index(names=timestamp_col)
     
     holidays_mask = df["tag"].isna()
     df.loc[holidays_mask, "activity"] = "holidays"
@@ -404,7 +382,7 @@ def gap_fill_hourly_timeseries(
 def find_missing_timestamps_full_year(
     df: pd.DataFrame,
     year: int,
-    timestamp_col: str = "Valeur mesurée le",
+    timestamp_col: str = "measured_at",
     freq: str = "h",
 ) -> pd.DataFrame:
     freq_norm = freq.lower()
@@ -462,10 +440,12 @@ def build_tarkett_dataset(
 
     print("---------------- loading files completed ------------")
 
+    df = df.rename({"Valeur mesurée le": "measured_at", "Valeur mesurée": "cumulative_conso_gaz_chaudiere_SV4_(m3)"})
+
     df = convert_timestamps_to_utc(
         df,
         source_timezone=source_timezone,
-        timestamp_col="Valeur mesurée le",
+        timestamp_col="measured_at",
     )
     
     duplicates = detect_duplicate_timestamps(df)
@@ -478,8 +458,8 @@ def build_tarkett_dataset(
 
     if duplicate_timestamps_that_can_be_removed:
         removable_mask = (
-            df["Valeur mesurée le"].isin(duplicate_timestamps_that_can_be_removed)
-            & df.duplicated(subset=["Valeur mesurée le"], keep="first")
+            df["measured_at"].isin(duplicate_timestamps_that_can_be_removed)
+            & df.duplicated(subset=["measured_at"], keep="first")
         )
         df = df.loc[~removable_mask]
 
@@ -487,7 +467,7 @@ def build_tarkett_dataset(
     df = add_mwh_use(df)
 
     df_hourly = aggregate_hourly(df)
-    df_hourly = df_hourly[["Valeur mesurée le", "MWh use"]]
+    df_hourly = df_hourly[["timeslot_start_at", "conso_gaz_chaudiere_SV4_(MWh)"]]
 
     output_intermediary_path = Path(output_intermediary_path)
     output_intermediary_path.parent.mkdir(parents=True, exist_ok=True)
@@ -501,7 +481,7 @@ def build_tarkett_dataset(
     output_path.parent.mkdir(parents=True, exist_ok=True)    
     df_hourly_gap_filled.to_csv(output_path, index=False, sep=sep, decimal=decimal)
 
-    plot_timeseries_csv(df_hourly.set_index("Valeur mesurée le"))
+    plot_timeseries_csv(df_hourly.set_index("timeslot_start_at"))
     plot_gap_filled_timeseries(df_hourly_gap_filled)
 
     return df_hourly, df_hourly_gap_filled, duplicates, elapsed_anomalies
