@@ -183,7 +183,7 @@ def aggregate_hourly(
         .sum(min_count=1)
         .reset_index()
     )
-    df.rename({timestamp_col: "timeslot_start_at"})
+    df.rename(columns={timestamp_col: "timeslot_start_at"})
     return hourly
 
 def tag_activity(
@@ -440,7 +440,7 @@ def build_tarkett_dataset(
 
     print("---------------- loading files completed ------------")
 
-    df = df.rename({"Valeur mesurée le": "measured_at", "Valeur mesurée": "cumulative_conso_gaz_chaudiere_SV4_(m3)"})
+    df = df.rename(columns={"Valeur mesurée le": "measured_at", "Valeur mesurée": "cumulative_conso_gaz_chaudiere_SV4_(m3)"})
 
     df = convert_timestamps_to_utc(
         df,

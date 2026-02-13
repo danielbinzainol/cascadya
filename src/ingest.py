@@ -68,10 +68,14 @@ def convert_timestamps_to_utc(
 def data_workflow(project: str):
     df = input_csv(project)
     y = parse_date_col(df)
-    y = convert_timestamps_to_utc(y)
 
     config = load_config() 
-    
+
+    source_timezone = None
+    if "timezone" in config[project]["data"]:
+        source_timezone = config[project]["data"]["timezone"]
+    y = convert_timestamps_to_utc(y, source_timezone)
+
     # give information on the frequency of the index:
     if "frequency" in config[project]["data"]:
         y = y.asfreq(config[project]["data"]["frequency"])
