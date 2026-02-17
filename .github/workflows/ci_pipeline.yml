@@ -1,8 +1,4 @@
 name: Python Tests
-# enable caching to go faster
-uses: astral-sh/setup-uv@v7
-with:
-  enable-cache: true
 
 on:
   push:
@@ -22,6 +18,7 @@ jobs:
         with:
           # Install a specific version of uv.
           version: "0.9.27"
+          enable-cache: true
 
       - name: Set up Python
         run: uv python install #uses the pinned version
@@ -40,4 +37,3 @@ jobs:
       # - name: Lint with flake8
       #   run: |
       #     flake8
-
