@@ -4,10 +4,35 @@ import pytest #request comes from here
 
 from pytest_csv_params.decorator import csv_params
 
-from ..predict import copy_median_values
+from ..predict import simple_copy, copy_median_values
 
 # Test data
-def expected_res(use_holidays, use_weekdays, use_time, extension): #the correct values are obtained in the excel file "comprendre_test_median.xlsx"
+def expected_res_simple(end, respect_hours, respect_weekdays):
+    match (end, respect_hours, respect_weekdays):
+        case ("2026-01-07", False, False):
+            to_copy = np.linspace(144, 192, 49) # end is included
+            new_ts = pd.date_range("2026-01-26T00:00:00", "2026-01-26T12:00:00", freq="15min", tz="UTC")
+        case ("2026-01-07", True, False): # will raise a warning, intended
+            to_copy = np.linspace(144, 192, 49)
+            new_ts = pd.date_range("2026-01-26T12:00:00", "2026-01-27T00:00:00", freq="15min", tz="UTC")
+        case ("2026-01-07", True, True): # will raise a warning, intended
+            to_copy = np.linspace(144, 192, 49)
+            new_ts = pd.date_range("2026-01-27T12:00:00", "2026-01-28T00:00:00", freq="15min", tz="UTC")
+        case ("2026-01-11", False, False):
+            to_copy = np.linspace(144, 576, 433)
+            new_ts = pd.date_range("2026-01-26T00:00:00", "2026-01-30T12:00:00", freq="15min", tz="UTC")
+        case ("2026-01-11", True, False): # will raise a warning, intended
+            to_copy = np.linspace(144, 576, 433)
+            new_ts = pd.date_range("2026-01-26T12:00:00", "2026-01-31T00:00:00", freq="15min", tz="UTC")
+        case ("2026-01-11", True, True): # will raise a warning, intended
+            to_copy = np.linspace(144, 576, 433)
+            new_ts = pd.date_range("2026-01-27T12:00:00", "2026-02-01T00:00:00", freq="15min", tz="UTC")
+        case _:
+            raise ValueError(f"Unknown case: ({end}, {respect_hours}, {respect_weekdays})")
+
+    return pd.DataFrame({"timestamp_col":new_ts, "value_col":to_copy})
+         
+def expected_res_median(use_holidays, use_weekdays, use_time, extension): #the correct values are obtained in the excel file "comprendre_test_median.xlsx"
     match (use_holidays, use_weekdays, use_time, extension):
         case (False, False, True, "jour"):
             return pd.Series(np.linspace(960, 1055, 96)) # end is included
@@ -24,10 +49,36 @@ def expected_res(use_holidays, use_weekdays, use_time, extension): #the correct 
 @pytest.fixture(scope="function")
 def y():
     # mock the input dataframe
-    ts = pd.date_range(start="2026-01-05", end="2026-01-26", freq="15min", inclusive="left")
+    ts = pd.date_range(start="2026-01-05", end="2026-01-26", freq="15min", inclusive="left", tz="UTC")
     val = list(range(len(ts))) # from 0 to 21*24*4 - 1 = 2015 included #end is not included
     y = pd.DataFrame({"timestamp_col":ts, "value_col": val})
     return y
+
+# Write several tests in a few lines
+@csv_params(
+    data_file="src/tests/simple_copy_test.csv", #only an empty str defines a False
+    data_casts={
+        "respect_hours": bool, "respect_weekdays": bool, # "end", 
+    },
+)
+def test_simple_copy(y, end, respect_hours, respect_weekdays):
+    # 1. initialise test data   
+    starter = "2026-01-06T12:00:00"
+    expected_result = expected_res_simple(end, respect_hours, respect_weekdays)
+
+    # 2. call function to test
+    y_extended = simple_copy(y, 
+                              "timestamp_col", 
+                              "value_col", 
+                              start=pd.Timestamp(starter), 
+                              end=end, 
+                              source_timezone="Europe/Paris", 
+                              respect_hours=respect_hours,
+                              respect_weekdays=respect_weekdays)
+    result = y_extended.iloc[len(y):]
+
+    # 3. Assert result, not to test index
+    np.array_equal(result.values, expected_result.values)
 
 # Write several tests in a few lines
 @csv_params(
@@ -38,7 +89,7 @@ def y():
 )
 def test_copy_median_values(y, use_holidays, use_weekdays, use_time, extension):
     # 1. initialise test data   
-    expected_result = expected_res(use_holidays, use_weekdays, use_time, extension)
+    expected_result = expected_res_median(use_holidays, use_weekdays, use_time, extension)
 
     # 2. call function to test
     y_extended = copy_median_values(y, 
@@ -52,7 +103,3 @@ def test_copy_median_values(y, use_holidays, use_weekdays, use_time, extension):
 
     # 3. Assert result
     pd.testing.assert_series_equal(result, expected_result, check_index=False, check_names=False)
-
-
-if __name__ == '__main__':
-    test_copy_median_values()
