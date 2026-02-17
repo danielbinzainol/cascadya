@@ -123,7 +123,7 @@ def copy_median_values(
     value_col: str,
     use_holidays: bool,
     use_weekdays: bool,
-    use_hours: bool,
+    use_time: bool,
     extension,
 ) -> pd.DataFrame:
     """
@@ -205,9 +205,11 @@ def copy_median_values(
     if use_weekdays:
         tmp["_weekday"] = out[timestamp_col].dt.weekday
         group_cols.append("_weekday")
-    if use_hours:
+    if use_time:
         tmp["_hour"] = out[timestamp_col].dt.hour
+        tmp["_minute"] = out[timestamp_col].dt.minute
         group_cols.append("_hour")
+        group_cols.append("_minute")
 
     overall_median = tmp[value_col].median()
     if group_cols:
@@ -224,8 +226,9 @@ def copy_median_values(
         new_df["_is_holiday"] = pd.Series(new_ts).dt.date.isin(holiday_dates)
     if use_weekdays:
         new_df["_weekday"] = pd.Series(new_ts).dt.weekday
-    if use_hours:
+    if use_time:
         new_df["_hour"] = pd.Series(new_ts).dt.hour
+        new_df["_minute"] = pd.Series(new_ts).dt.minute
 
     if group_cols:
         new_df = new_df.merge(medians, on=group_cols, how="left")

@@ -1,0 +1,5 @@
+use_holidays,use_weekdays,use_time,extension
+,,True,jour
+,True,True,jour
+,,True,semaine
+,True,True,semaine
