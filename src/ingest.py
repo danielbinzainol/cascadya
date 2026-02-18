@@ -22,24 +22,38 @@ def input_csv(project: str, **kwargs):
 def parse_date_col(
     df: pd.DataFrame,
     date_col: str | None = None,
+    format: str = None,
 ):
+    """
+    Deprecated for now. 
+    Might be useful if we don't know the timestamp_col or its format
+
+    If date_col is not provided:
+    - loops through all columns, converts them to pandas Timseries, 
+    - and if successful, breaks with the detected column.
+    - transforms the detected date column into pandas Timeseries 
+    - transformation is based on a format if provided. Otherwise, Dayfirst is assumed.
+    If date_col is provided: the column is transformed into a pandas Timeseries
+
+    Then, the date col is sorted and given the "measured_at" name.
+    """
     if date_col is None:
         # Heuristic: pick the first column that parses as datetime well
+        # hypothesis: in absence of format, assume dayfirst is True
         for col in df.columns:
-            parsed = pd.to_datetime(df[col], errors="coerce", dayfirst=True)
+            parsed = pd.to_datetime(df[col], errors="coerce", dayfirst=bool(format), format=format)
             if parsed.notna().mean() > 0.8:
                 date_col = col
                 df[col] = parsed
                 break
+    else:
+        df[date_col] = pd.to_datetime(df[date_col], errors="coerce", format=format)
 
     if not date_col:
         raise ValueError("Could not infer date column.")
 
     df = df.sort_values(date_col).set_index(date_col)
     y = df.reset_index(names="measured_at")
-
-    if y.empty:
-        raise ValueError("No numeric columns found to plot.")
 
     return y
 
@@ -67,13 +81,18 @@ def convert_timestamps_to_utc(
 
 def data_workflow(project: str):
     df = input_csv(project)
-    y = parse_date_col(df)
 
     config = load_config() 
 
-    source_timezone = None
-    if "timezone" in config[project]["data"]:
-        source_timezone = config[project]["data"]["timezone"]
+    # parse timestamp_col
+    timestamp_col = config[project]["data"]["timestamp_col"]
+    timestamp_format = config[project]["data"]["timestamp_format"]
+    df[timestamp_col] = pd.to_datetime(df[timestamp_col], errors="coerce", format=timestamp_format)
+    df = df.sort_values(timestamp_col)
+    df = df.rename({timestamp_col: "measured_at"})
+
+    # convert to UTC
+    source_timezone = config[project]["data"]["timezone"]
     y = convert_timestamps_to_utc(y, source_timezone)
 
     # give information on the frequency of the index:

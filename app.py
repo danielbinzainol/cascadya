@@ -4,10 +4,10 @@ from src.autres import data_workflow
 
 app = FastAPI()
 
-# Route to input data and get data to plot
-@app.get("/plots")
-def show_plots():
-    y = data_workflow()
+# Route to input data and get data to plot, with a project given in input
+@app.get("/plots/{project}")
+def show_plots(project:str):
+    y = data_workflow(project)
     return {"y to send to plot_workflow": y}
 
 # Route to test giving an argument: change message basd in input
