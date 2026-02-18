@@ -15,6 +15,7 @@ def detect_elapsed_time_anomalies(
     df: pd.DataFrame,
     timestamp_col: str = "measured_at_utc",
 ) -> tuple[pd.DataFrame, pd.Timedelta]:
+    # todo simplifier, est-ce que ces 3 actions ne reviennent qu'à faire du dropna?
     timestamps = pd.to_datetime(
         df[timestamp_col],
         errors="coerce",

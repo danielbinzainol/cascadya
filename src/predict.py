@@ -1,48 +1,34 @@
 import pandas as pd
 import numpy as np
 from scipy.stats import norm
-import datetime
 import warnings
 
 def simple_copy(
     df: pd.DataFrame,
     timestamp_col: str,
     value_col: str,
-    start, #can be date or datetime
-    end,  #can be date or datetime
+    start: pd.Timestamp, #must be localized in UTC
+    end: pd.Timestamp, #must be localized in UTC
     source_timezone: str = "Europe/Paris",
     respect_time = True,
     respect_weekdays = True,
 ) -> pd.DataFrame:
     """
-    Naive forecast: copy the values between start_date and end_date (both included)
+    Naive forecast: copy the values between start and end (both included)
     and append them at the end of the dataframe.
     """
+    # check localization
+    if start.tzinfo != "UTC":        # todo check that a missing tzinfo does raise the error # todo check that a pd.na falls here
+        raise ValueError(f"Missing or wrong tzinfo for start (expected to be in UTC): {start}")
+    if end.tzinfo != "UTC":
+        raise ValueError(f"Missing or wrong tzinfo for end (expected to be in UTC): {end}")
+
     out = df.copy()
-    # out[timestamp_col] = pd.to_datetime(out[timestamp_col], errors="coerce", dayfirst=True)
 
-    # this normalization to_datetime allows to skip checking the types of start and end. 
-    # and to easily convert timezones
-    start = pd.to_datetime(start, errors="coerce")
-    end = pd.to_datetime(end, errors="coerce")
-
-    # localize
-    start = start.tz_localize(source_timezone)
-    end = end.tz_localize(source_timezone)
-    # convert to UTC
-    start = start.tz_convert("UTC")
-    end = end.tz_convert("UTC")    
-
-    if pd.isna(start) or pd.isna(end):
-        raise ValueError("start_date and end_date must be valid datetime.dates or datetime.datetimes.")
     if end <= start:
-        raise ValueError("end_date must be strictly after start_date.")
-    # if not isinstance(start, df[timestamp_col].dtype):
-    #     raise TypeError(f"start must be of the same type than {timestamp_col}")    
-    # if not isinstance(end, df[timestamp_col].dtype):
-    #     raise TypeError(f"end must be of the same type than {timestamp_col}")
+        raise ValueError("end must be strictly after start.")
     if not df[timestamp_col].eq(start).any(): # correct test for tz-aware data
-    # this other test fails, because ".values" is not tz-aware : start not in y_15min[timestamp_col].values
+    # this other test fails, because ".values" is not tz-aware : if start not in y_15min[timestamp_col].values
         raise ValueError(f"start {start} must be present in {timestamp_col}, spanning {df[timestamp_col].min(), df[timestamp_col].max()}")
     if not df[timestamp_col].eq(end).any():
         raise ValueError(f"end {end} must be present in {timestamp_col}, spanning {df[timestamp_col].min(), df[timestamp_col].max()}")
@@ -85,22 +71,22 @@ def simple_copy(
     if respect_time:
         if start_time >= expected_next_timestamp_time:
             # ok, we can append with start_time and expected_next_timestamp_date
-            start_new = datetime.datetime.combine(expected_next_timestamp_date, start_time)
+            start_new = pd.Timestamp.combine(expected_next_timestamp_date, start_time)
         else:
             # to combine, we need to use start_time and the day after expected_next_timestamp_date
-            start_new = datetime.datetime.combine(expected_next_timestamp_date+datetime.timedelta(days=1), start_time) 
+            start_new = pd.Timestamp.combine(expected_next_timestamp_date+pd.Timedelta(days=1), start_time) 
 
     elif respect_weekdays_and_time:
         start_weekday = start.weekday()
         expected_next_timestamp_weekday = expected_next_timestamp.weekday()
         if start_weekday == expected_next_timestamp_weekday:
             # ok we can append with start_time and expected_next_timestamp_date
-            start_new = datetime.datetime.combine(expected_next_timestamp_date, start_time)
+            start_new = pd.Timestamp.combine(expected_next_timestamp_date, start_time)
         else:
             # to combine, we need to use start_time, and the closest day after expected_next_timestamp_date respecting start_weekday
             days_delta = (start_weekday - expected_next_timestamp_weekday) % 7 # for a week
-            start_day = expected_next_timestamp_date + datetime.timedelta(days=days_delta)
-            start_new = datetime.datetime.combine(start_day, start_time)
+            start_day = expected_next_timestamp_date + pd.timedelta(days=days_delta)
+            start_new = pd.Timestamp.combine(start_day, start_time)
 
     else:
         start_new = last_ts + expected_delta # 7h30
@@ -165,13 +151,9 @@ def copy_median_values(
 
     extension_delta = _parse_extension(extension)
 
-    # ts = pd.to_datetime(out[timestamp_col], errors="coerce", dayfirst=True)
     valid_mask = out[timestamp_col].notna()
     # if not valid_mask.any():
     #     raise ValueError(f"No valid timestamps in '{timestamp_col}'.")
-
-    # ts_valid = ts[valid_mask]
-    # values_valid = out.loc[valid_mask, value_col]
 
     elapsed = out[timestamp_col].diff()
     if elapsed.value_counts().size != 1:

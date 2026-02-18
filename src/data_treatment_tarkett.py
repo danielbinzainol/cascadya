@@ -191,7 +191,6 @@ def tag_activity(
         timestamp_col: str = "timeslot_start_at",
 ) -> pd.DataFrame:
     # utils
-    df[timestamp_col] = pd.to_datetime(df[timestamp_col], errors="coerce")
     df = df.sort_values(timestamp_col).reset_index(drop=True)
 
     df["_date"] = df[timestamp_col].dt.date
@@ -258,7 +257,6 @@ def gap_fill_hourly_timeseries(
 ) -> pd.DataFrame:
     # utils
     df = df_hourly.copy()
-    df[timestamp_col] = pd.to_datetime(df[timestamp_col], errors="coerce")
     df = df.sort_values(timestamp_col).reset_index(drop=True)
 
     df["_hour"] = df[timestamp_col].dt.hour
@@ -399,6 +397,7 @@ def find_missing_timestamps_full_year(
         end = pd.Timestamp(year=year, month=12, day=31)
         align = freq
 
+    # todo simplify this part, I'm sure we can, as df[timestamp_col] is already with pd timestamps
     expected = pd.date_range(start, end, freq=freq)
     actual = (
         pd.to_datetime(df[timestamp_col], errors="coerce", dayfirst=True)
