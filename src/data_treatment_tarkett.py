@@ -130,7 +130,7 @@ def load_tarkett_files(input_dir: Path | str = DEFAULT_INPUT_DIR) -> pd.DataFram
 
 def detect_duplicate_timestamps(
     df: pd.DataFrame,
-    timestamp_col: str = "measured_at",
+    timestamp_col: str = "measured_at_utc",
 ) -> pd.DataFrame:
     duplicates = df[timestamp_col].duplicated(keep=False)
     return df.loc[duplicates].sort_values(timestamp_col)
@@ -138,7 +138,7 @@ def detect_duplicate_timestamps(
 
 def find_duplicate_timestamps_with_same_value(
     duplicates_df: pd.DataFrame,
-    timestamp_col: str = "measured_at",
+    timestamp_col: str = "measured_at_utc",
     value_col: str = "cumulative_conso_gaz_chaudiere_SV4_(m3)",
 ) -> list[pd.Timestamp]:
     if duplicates_df.empty:
@@ -162,7 +162,7 @@ def add_mwh_measure(
 
 def add_mwh_use(
     df: pd.DataFrame,
-    timestamp_col: str = "measured_at",
+    timestamp_col: str = "measured_at_utc",
     value_col: str = "cumulative_conso_gaz_chaudiere_SV4_(MWh)",
     diff_col: str = "conso_gaz_chaudiere_SV4_(MWh)",
 ) -> pd.DataFrame:
@@ -173,7 +173,7 @@ def add_mwh_use(
 
 def aggregate_hourly(
     df: pd.DataFrame,
-    timestamp_col: str = "measured_at",
+    timestamp_col: str = "measured_at_utc",
     value_col: str = "conso_gaz_chaudiere_SV4_(MWh)",
 ) -> pd.DataFrame:
     df = df.sort_values(timestamp_col)
@@ -382,7 +382,7 @@ def gap_fill_hourly_timeseries(
 def find_missing_timestamps_full_year(
     df: pd.DataFrame,
     year: int,
-    timestamp_col: str = "measured_at",
+    timestamp_col: str = "measured_at_utc",
     freq: str = "h",
 ) -> pd.DataFrame:
     freq_norm = freq.lower()
@@ -458,8 +458,8 @@ def build_tarkett_dataset(
 
     if duplicate_timestamps_that_can_be_removed:
         removable_mask = (
-            df["measured_at"].isin(duplicate_timestamps_that_can_be_removed)
-            & df.duplicated(subset=["measured_at"], keep="first")
+            df["measured_at_utc"].isin(duplicate_timestamps_that_can_be_removed)
+            & df.duplicated(subset=["measured_at_utc"], keep="first")
         )
         df = df.loc[~removable_mask]
 

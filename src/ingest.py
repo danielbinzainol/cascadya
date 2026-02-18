@@ -77,6 +77,7 @@ def localize_and_convert_to_utc(
         local_col = f"{timestamp_col} (local time)"
     df[local_col] = localized
     df[timestamp_col] = localized.dt.tz_convert("UTC")
+    df = df.rename(columns={timestamp_col: "measured_at_utc"})
     df[tz_col] = str(source_timezone or localized.dt.tz)
     return df
 
@@ -85,14 +86,14 @@ def data_workflow(project: str):
 
     config = load_config() 
 
-    # parse timestamp_col
+    # parse timestamp_col, and rename
     timestamp_col = config[project]["data"]["timestamp_col"]
     timestamp_format = config[project]["data"]["timestamp_format"]
     df[timestamp_col] = pd.to_datetime(df[timestamp_col], errors="coerce", format=timestamp_format)
     df = df.sort_values(timestamp_col)
-    df = df.rename({timestamp_col: "measured_at"})
+    df = df.rename(columns={timestamp_col: "measured_at"})
 
-    # convert to UTC
+    # convert to UTC, and rename
     source_timezone = config[project]["data"]["timezone"]
     df = localize_and_convert_to_utc(df, source_timezone)
 
