@@ -5,7 +5,7 @@ france_champignon:
     timezone: 'CET' # ou CEST, je ne sais pas, pas 'Europe/Paris'
     timestamp_col: 'date/heure 2024'
     timestamp_format: '%d/%m/%Y %H:%M'
-    hour_change_strategy: 'Not relevant for this timezone'
+    comment_on_hour_change: 'Not relevant for this timezone'
 
 inariz:
   data: 
@@ -15,7 +15,7 @@ inariz:
     timezone: 'Europe/Paris'
     timestamp_col: 'Horodatage'
     timestamp_format: '%Y-%m-%d %H:%M:%S.%f'
-    hour_change_strategy: 'March: visible, one day with 23 hours. October: visible in boiler-box with 25 hours, the last value before the hour change is persisted for an hour.'
+    comment_on_hour_change: 'March: visible, one day with 23 hours. October: visible in boiler-box with 25 hours, the last value before the hour change is persisted for an hour.'
 
 tarkett:
   data:
@@ -23,7 +23,7 @@ tarkett:
     timezone: 'Europe/Paris'
     timestamp_col: 'Valeur mesurée le'
     timestamp_format: '%d/%m/%Y %H:%M:%S'
-    hour_change_strategy: 'Invisible, in data gaps'
+    comment_on_hour_change: 'Invisible, in data gaps'
 
 
 
