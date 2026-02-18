@@ -5,7 +5,7 @@ import pandas as pd
 from tqdm import tqdm
 import datetime
 
-from ingest import convert_timestamps_to_utc
+from ingest import localize_and_convert_to_utc
 from dataset import detect_elapsed_time_anomalies
 from plots import plot_timeseries_csv, plot_gap_filled_timeseries
 
@@ -442,7 +442,7 @@ def build_tarkett_dataset(
 
     df = df.rename(columns={"Valeur mesurée le": "measured_at", "Valeur mesurée": "cumulative_conso_gaz_chaudiere_SV4_(m3)"})
 
-    df = convert_timestamps_to_utc(
+    df = localize_and_convert_to_utc(
         df,
         source_timezone=source_timezone,
         timestamp_col="measured_at",

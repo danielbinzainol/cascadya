@@ -58,7 +58,7 @@ def parse_timestamp_col(
 
     return y
 
-def convert_timestamps_to_utc(
+def localize_and_convert_to_utc(
     df: pd.DataFrame,
     source_timezone: str | None,
     timestamp_col: str = "measured_at",
@@ -94,10 +94,10 @@ def data_workflow(project: str):
 
     # convert to UTC
     source_timezone = config[project]["data"]["timezone"]
-    y = convert_timestamps_to_utc(y, source_timezone)
+    df = localize_and_convert_to_utc(df, source_timezone)
 
     # give information on the frequency of the index:
     if "frequency" in config[project]["data"]:
-        y = y.asfreq(config[project]["data"]["frequency"])
+        df = df.asfreq(config[project]["data"]["frequency"])
     
-    return y
+    return df
