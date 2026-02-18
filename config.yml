@@ -4,7 +4,7 @@ france_champignon:
     frequency: 'h'
     timezone: 'CET' # ou CEST, je ne sais pas, pas 'Europe/Paris'
     timestamp_col: 'date/heure 2024'
-    timestamp_format: 'DD/MM/YYYY HH:mm'
+    timestamp_format: '%d/%m/%Y %H:%M'
     hour_change_strategy: 'Not relevant for this timezone'
 
 inariz:
@@ -14,7 +14,7 @@ inariz:
     usecols: ["Horodatage","Valeur","Unité"]
     timezone: 'Europe/Paris'
     timestamp_col: 'Horodatage'
-    timestamp_format: 'YYYY-MM-DD HH:mm:ss.fff'
+    timestamp_format: '%Y-%m-%d %H:%M:%S.%f'
     hour_change_strategy: 'March: visible, one day with 23 hours. October: visible in boiler-box with 25 hours, the last value before the hour change is persisted for an hour.'
 
 tarkett:
@@ -22,7 +22,7 @@ tarkett:
     path: 'D:\Cascadya\Cascadya - Documents\08. COMPTE CLIENT\Tarkett_Sedan\2. Données sous NDA\Données de Consommation gaz 2025'
     timezone: 'Europe/Paris'
     timestamp_col: 'Valeur mesurée le'
-    timestamp_format: 'DD/MM/YYYY HH:mm:ss'
+    timestamp_format: '%d/%m/%Y %H:%M:%S'
     hour_change_strategy: 'Invisible, in data gaps'
 
 
