@@ -7,8 +7,8 @@ app = FastAPI()
 # Route to input data and get data to plot, with a project given in input
 @app.get("/plots/{project}")
 def show_plots(project:str):
-    y = data_workflow(project)
-    return {"y to send to plot_workflow": y}
+    df = data_workflow(project)
+    return {"df to send to plot_workflow": df}
 
 # Route to test giving an argument: change message basd in input
 @app.get("/message/{msg}")

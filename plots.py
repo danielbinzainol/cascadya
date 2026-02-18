@@ -6,9 +6,9 @@ from statsmodels.graphics.tsaplots import plot_pacf, plot_acf
 
 
 def plot_timeseries_csv(
-    y: pd.DataFrame,
+    df: pd.DataFrame,
 ):
-    ax = y.plot(figsize=(10, 6))
+    ax = df.plot(figsize=(10, 6))
 
     ax.set_ylabel("Value")
     # ax.set_title(path.name)
@@ -18,17 +18,17 @@ def plot_timeseries_csv(
 
 
 def plot_weekday_seasonal_csv(
-        y: pd.DataFrame,
+        df: pd.DataFrame,
         value_col,
         option_mean= False
 ):
     if option_mean:
-        weekday_means = y.groupby(y.index.dayofweek).mean().reindex(range(7))
+        weekday_means = df.groupby(df.index.dayofweek).mean().reindex(range(7))
         ax = weekday_means.plot(figsize=(10, 6))
     else:
-        y["day"] = y.index.dayofweek
-        # weekday_means = y.groupby(y.index.dayofweek).mean().reindex(range(7))
-        ax = y.plot.scatter(x="day", y=value_col, figsize=(10, 6), alpha=0.4)
+        df["day"] = df.index.dayofweek
+        # weekday_means = df.groupby(df.index.dayofweek).mean().reindex(range(7))
+        ax = df.plot.scatter(x="day", df=value_col, figsize=(10, 6), alpha=0.4)
     ax.set_xlabel("Weekday")
     ax.set_ylabel(value_col)
     ax.set_xticks(range(7))
@@ -59,14 +59,14 @@ def simple_lag_plot(X, y, y_pred, value_col):
 
 
 ### Trend ####
-def detect_plot_trend(y, obs_in_window):
-    moving_average = y.rolling(
+def detect_plot_trend(df, obs_in_window):
+    moving_average = df.rolling(
         window=obs_in_window,       # 366-day window
         center=True,      # puts the average at the center of the window
         min_periods=np.floor(obs_in_window/2, casting="unsafe", dtype=int),  # choose about half the window size
     ).mean()              # compute the mean (could also do median, std, min, max, ...)
 
-    ax = y.plot(style=".", color="0.5")
+    ax = df.plot(style=".", color="0.5")
     moving_average.plot(
         ax=ax, linewidth=3, title=f"France champignon Conso - {obs_in_window} obs for Moving Average", legend=False,
     )
@@ -86,7 +86,7 @@ def plot_periodogram(ts, detrend=None, ax=None):
         detrend=detrend,
         window="boxcar",
         scaling='spectrum',
-        axis=0 # because y is a series, not an array
+        axis=0 # because ts is a series, not an array
     )
     if ax is None:
         _, ax = plt.subplots()

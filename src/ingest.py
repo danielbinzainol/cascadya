@@ -54,9 +54,9 @@ def parse_timestamp_col(
         raise ValueError("Could not infer date column.")
 
     df = df.sort_values(timestamp_col).set_index(timestamp_col)
-    y = df.reset_index(names="measured_at")
+    df = df.reset_index(names="measured_at")
 
-    return y
+    return df
 
 def localize_and_convert_to_utc(
     df: pd.DataFrame,
