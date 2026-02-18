@@ -11,7 +11,7 @@ def simple_copy(
     start, #can be date or datetime
     end,  #can be date or datetime
     source_timezone: str = "Europe/Paris",
-    respect_hours = True,
+    respect_time = True,
     respect_weekdays = True,
 ) -> pd.DataFrame:
     """
@@ -75,14 +75,14 @@ def simple_copy(
     start_time = start.time()
     
     if respect_weekdays:
-        if not respect_hours:
-            warnings.warn(f"Option respect_weekdays is True and overrides option respect_hours. Option respect_hours was chosen as False, but changed to True.")
-        respect_hours = False
-        respect_weekdays_and_hours = True
+        if not respect_time:
+            warnings.warn(f"Option respect_weekdays is True and overrides option respect_time. Option respect_time was chosen as False, but changed to True.")
+        respect_time = False
+        respect_weekdays_and_time = True
     else:
-        respect_weekdays_and_hours = False
+        respect_weekdays_and_time = False
 
-    if respect_hours:
+    if respect_time:
         if start_time >= expected_next_timestamp_time:
             # ok, we can append with start_time and expected_next_timestamp_date
             start_new = datetime.datetime.combine(expected_next_timestamp_date, start_time)
@@ -90,7 +90,7 @@ def simple_copy(
             # to combine, we need to use start_time and the day after expected_next_timestamp_date
             start_new = datetime.datetime.combine(expected_next_timestamp_date+datetime.timedelta(days=1), start_time) 
 
-    elif respect_weekdays_and_hours:
+    elif respect_weekdays_and_time:
         start_weekday = start.weekday()
         expected_next_timestamp_weekday = expected_next_timestamp.weekday()
         if start_weekday == expected_next_timestamp_weekday:
@@ -121,14 +121,14 @@ def copy_median_values(
     df: pd.DataFrame,
     timestamp_col: str,
     value_col: str,
-    use_holidays: bool,
-    use_weekdays: bool,
-    use_time: bool,
+    respect_holidays: bool,
+    respect_weekdays: bool,
+    respect_time: bool,
     extension,
 ) -> pd.DataFrame:
     """
     Extend the dataframe by 1 day or 1 week using median values
-    computed on group keys (holiday / weekday / hour).
+    computed on group keys (holiday / weekday / time).
     """
 
     def _parse_extension(value) -> pd.Timedelta:
@@ -151,7 +151,7 @@ def copy_median_values(
             return flags, holiday_dates
         if not holiday_dates:
             raise ValueError(
-                "use_holidays=True but no holiday info found. "
+                "respect_holidays=True but no holiday info found. "
                 "Provide an 'is_holiday' or 'activity' column."
             )
         flags = ts_series.dt.date.isin(holiday_dates)
@@ -198,14 +198,14 @@ def copy_median_values(
     tmp = pd.DataFrame({timestamp_col: out[timestamp_col], value_col: out[value_col]})
 
     holiday_dates = set()
-    if use_holidays:
+    if respect_holidays:
         flags, holiday_dates = _holiday_flags(out[timestamp_col], out, valid_mask)
         tmp["_is_holiday"] = flags
         group_cols.append("_is_holiday")
-    if use_weekdays:
+    if respect_weekdays:
         tmp["_weekday"] = out[timestamp_col].dt.weekday
         group_cols.append("_weekday")
-    if use_time:
+    if respect_time:
         tmp["_hour"] = out[timestamp_col].dt.hour
         tmp["_minute"] = out[timestamp_col].dt.minute
         group_cols.append("_hour")
@@ -220,13 +220,13 @@ def copy_median_values(
         )
 
     new_df = pd.DataFrame({timestamp_col: new_ts})
-    if use_holidays:
+    if respect_holidays:
         if not holiday_dates:
             holiday_dates = set(out[timestamp_col][tmp.get("_is_holiday", False)].dt.date)
         new_df["_is_holiday"] = pd.Series(new_ts).dt.date.isin(holiday_dates)
-    if use_weekdays:
+    if respect_weekdays:
         new_df["_weekday"] = pd.Series(new_ts).dt.weekday
-    if use_time:
+    if respect_time:
         new_df["_hour"] = pd.Series(new_ts).dt.hour
         new_df["_minute"] = pd.Series(new_ts).dt.minute
 
