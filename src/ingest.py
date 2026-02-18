@@ -19,40 +19,41 @@ def input_csv(project: str, **kwargs):
 
     return df
 
-def parse_date_col(
+def parse_timestamp_col(
     df: pd.DataFrame,
-    date_col: str | None = None,
+    timestamp_col: str | None = None,
     format: str = None,
 ):
     """
-    Deprecated for now. 
+    Deactivated for now. 
     Might be useful if we don't know the timestamp_col or its format
 
-    If date_col is not provided:
+    If timestamp_col is not provided:
     - loops through all columns, converts them to pandas Timseries, 
     - and if successful, breaks with the detected column.
     - transforms the detected date column into pandas Timeseries 
     - transformation is based on a format if provided. Otherwise, Dayfirst is assumed.
-    If date_col is provided: the column is transformed into a pandas Timeseries
+    If timestamp_col is provided: the column is transformed into a pandas Timeseries
 
     Then, the date col is sorted and given the "measured_at" name.
     """
-    if date_col is None:
+    raise RuntimeError("This function is deactivated for now.")
+    if timestamp_col is None:
         # Heuristic: pick the first column that parses as datetime well
         # hypothesis: in absence of format, assume dayfirst is True
         for col in df.columns:
             parsed = pd.to_datetime(df[col], errors="coerce", dayfirst=bool(format), format=format)
             if parsed.notna().mean() > 0.8:
-                date_col = col
+                timestamp_col = col
                 df[col] = parsed
                 break
     else:
-        df[date_col] = pd.to_datetime(df[date_col], errors="coerce", format=format)
+        df[timestamp_col] = pd.to_datetime(df[timestamp_col], errors="coerce", format=format)
 
-    if not date_col:
+    if not timestamp_col:
         raise ValueError("Could not infer date column.")
 
-    df = df.sort_values(date_col).set_index(date_col)
+    df = df.sort_values(timestamp_col).set_index(timestamp_col)
     y = df.reset_index(names="measured_at")
 
     return y
