@@ -63,16 +63,14 @@ def y():
 )
 def test_simple_copy(y, end, respect_time, respect_weekdays):
     # 1. initialise test data   
-    starter = "2026-01-06T12:00:00"
     expected_result = expected_res_simple(end, respect_time, respect_weekdays)
 
     # 2. call function to test
     y_extended = simple_copy(y, 
                               "timestamp_col", 
                               "value_col", 
-                              start=pd.Timestamp(starter), 
+                              start=pd.Timestamp(2026,1,6,12,0,0, tz="UTC"),
                               end=end, 
-                              source_timezone="Europe/Paris", 
                               respect_time=respect_time,
                               respect_weekdays=respect_weekdays)
     result = y_extended.iloc[len(y):]

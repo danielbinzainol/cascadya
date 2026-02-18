@@ -3,7 +3,6 @@ import pandas as pd
 def analyze(df: pd.DataFrame,
             timestamp_col: str = "measured_at_utc",
             timestamp_diff_col: str = "timestamp_diff_col"):
-    df = df.copy()
     df = df.reset_index()
     df[timestamp_diff_col] = df[timestamp_col].diff()
     hist = (df[timestamp_diff_col] / pd.Timedelta(minutes = 1)).hist(log=True)

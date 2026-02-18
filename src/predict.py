@@ -9,7 +9,6 @@ def simple_copy(
     value_col: str,
     start: pd.Timestamp, #must be localized in UTC
     end: pd.Timestamp, #must be localized in UTC
-    source_timezone: str = "Europe/Paris",
     respect_time = True,
     respect_weekdays = True,
 ) -> pd.DataFrame:

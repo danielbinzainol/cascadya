@@ -8,15 +8,12 @@ import datetime
 from ingest import localize_and_convert_to_utc
 from dataset import detect_elapsed_time_anomalies
 from plots import plot_timeseries_csv, plot_gap_filled_timeseries
+from utils import load_config
 
-DEFAULT_INPUT_DIR = Path(
-    r"D:\Cascadya\Cascadya - Documents\08. COMPTE CLIENT\Tarkett_Sedan\2. Données sous NDA\Données de Consommation gaz 2025"
-)
 DEFAULT_INTERMEDIARY_OUTPUT_PATH_NOT_SAMPLED = Path(r"data\tarkett\intermediary") / "data_tarkett_not_sampled.csv"
 DEFAULT_INTERMEDIARY_OUTPUT_PATH = Path(r"data\tarkett\intermediary") / "data_tarkett.csv"
 
 DEFAULT_OUTPUT_PATH = Path(r"data\tarkett\processed") / "data_tarkett_gap_filled.csv"
-DEFAULT_SOURCE_TIMEZONE = "Europe/Paris"
 
 REQUIRED_COLUMNS = [
     "Désignation caractéristique",
@@ -108,7 +105,7 @@ def _read_tarkett_excel(path: Path) -> pd.DataFrame:
     return df
 
 
-def load_tarkett_files(input_dir: Path | str = DEFAULT_INPUT_DIR) -> pd.DataFrame:
+def load_tarkett_files(input_dir: Path | str) -> pd.DataFrame:
     input_path = Path(input_dir)
     if not input_path.exists():
         raise FileNotFoundError(input_path)
@@ -166,7 +163,8 @@ def add_mwh_use(
     value_col: str = "cumulative_conso_gaz_chaudiere_SV4_(MWh)",
     diff_col: str = "conso_gaz_chaudiere_SV4_(MWh)",
 ) -> pd.DataFrame:
-    df = df.sort_values(timestamp_col).copy()
+    # start by sorting, to make sure the diff is applied on a clean df
+    df = df.sort_values(timestamp_col)
     df[diff_col] = df[value_col].diff()
     return df
 
@@ -385,16 +383,16 @@ def find_missing_timestamps_full_year(
 ) -> pd.DataFrame:
     freq_norm = freq.lower()
     if freq_norm in {"h", "hour", "hourly"}:
-        start = pd.Timestamp(year=year, month=1, day=1, hour=0)
-        end = pd.Timestamp(year=year, month=12, day=31, hour=23)
+        start = pd.Timestamp(year=year, month=1, day=1, hour=0, tz="UTC")
+        end = pd.Timestamp(year=year, month=12, day=31, hour=23, tz="UTC")
         align = "h"
     elif freq_norm in {"d", "day", "daily"}:
-        start = pd.Timestamp(year=year, month=1, day=1)
-        end = pd.Timestamp(year=year, month=12, day=31)
+        start = pd.Timestamp(year=year, month=1, day=1, tz="UTC")
+        end = pd.Timestamp(year=year, month=12, day=31, tz="UTC")
         align = "d"
     else:
-        start = pd.Timestamp(year=year, month=1, day=1)
-        end = pd.Timestamp(year=year, month=12, day=31)
+        start = pd.Timestamp(year=year, month=1, day=1, tz="UTC")
+        end = pd.Timestamp(year=year, month=12, day=31, tz="UTC")
         align = freq
 
     # todo simplify this part, I'm sure we can, as df[timestamp_col] is already with pd timestamps
@@ -409,11 +407,9 @@ def find_missing_timestamps_full_year(
 
 
 def build_tarkett_dataset(
-    input_dir: Path | str = DEFAULT_INPUT_DIR,
     output_intermediary_path_not_sampled: Path | str = DEFAULT_INTERMEDIARY_OUTPUT_PATH_NOT_SAMPLED,
     output_intermediary_path: Path | str = DEFAULT_INTERMEDIARY_OUTPUT_PATH,
     output_path: Path | str = DEFAULT_OUTPUT_PATH,
-    source_timezone: str | None = DEFAULT_SOURCE_TIMEZONE,
     sep: str = ";",
     decimal: str = ",",
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -432,6 +428,10 @@ def build_tarkett_dataset(
                 format="ISO8601"
             )
     else:
+        # get input_dir
+        config = load_config() 
+        input_dir = Path(config["tarkett"]["data"]["path"])
+
         # contient les timestamps duplicates et les timestamps manquants
         df = load_tarkett_files(input_dir)
         df = df.sort_values("Valeur mesurée le")
@@ -440,6 +440,10 @@ def build_tarkett_dataset(
     print("---------------- loading files completed ------------")
 
     df = df.rename(columns={"Valeur mesurée le": "measured_at", "Valeur mesurée": "cumulative_conso_gaz_chaudiere_SV4_(m3)"})
+
+
+    # get source_timezone
+    source_timezone = config["tarkett"]["data"]["timezone"]
 
     df = localize_and_convert_to_utc(
         df,
