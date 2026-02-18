@@ -20,7 +20,7 @@ def simple_lag(y, value_col):
 
     y_pred = predict_model(model, X)
 
-    simple_lag_plot(X, y, y_pred)
+    simple_lag_plot(X['Lag_1'], y, y_pred, value_col)
 
 
 def fit_pred_fore_priori_plot_workflow(model, y, X_train, X_test):

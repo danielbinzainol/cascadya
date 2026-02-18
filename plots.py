@@ -39,12 +39,12 @@ def plot_weekday_seasonal_csv(
 
 
 ### Simple regression on lag of 1 hour ###
-def simple_lag_plot(X, y, y_pred, value_col):
+def simple_lag_plot(X_lag_1h, y, y_pred, value_col):
 
     # lag plot, show relationship of value_col at H and H-1
     fig, ax = plt.subplots()
-    ax.plot(X['Lag_1'], y, '.', color='0.25')
-    ax.plot(X['Lag_1'], y_pred)
+    ax.plot(X_lag_1h, y, '.', color='0.25')
+    ax.plot(X_lag_1h, y_pred)
     ax.set_aspect('equal')
     ax.set_ylabel(value_col)
     ax.set_xlabel('Lag_1')
