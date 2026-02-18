@@ -1,10 +1,7 @@
 from train import model_choice, train_model
 from predict import predict_model, a_priori_knowledge, confidence_interval
-from plots import plot_timeseries_csv, plot_weekday_seasonal_csv, simple_lag_plot, cool_plot
+from plots import simple_lag_plot, cool_plot
 
-def plot_workflow(y):
-    plot_timeseries_csv(y)
-    plot_weekday_seasonal_csv(y)
 
 ### Simple regression on lag of 1 hour ###
 def simple_lag(y, value_col):
