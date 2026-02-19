@@ -58,7 +58,7 @@ def y():
 @csv_params(
     data_file="src/tests/simple_copy_test.csv", #only an empty str defines a False
     data_casts={
-        "respect_time": bool, "respect_weekdays": bool, # "end", 
+        "end": str, "respect_time": bool, "respect_weekdays": bool, 
     },
 )
 def test_simple_copy(y, end, respect_time, respect_weekdays):
@@ -70,7 +70,7 @@ def test_simple_copy(y, end, respect_time, respect_weekdays):
                               "timestamp_col", 
                               "value_col", 
                               start=pd.Timestamp(2026,1,6,12,0,0, tz="UTC"),
-                              end=end, 
+                              end=pd.Timestamp(end, tz="UTC"), 
                               respect_time=respect_time,
                               respect_weekdays=respect_weekdays)
     result = y_extended.iloc[len(y):]

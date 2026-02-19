@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import datetime
 from scipy.stats import norm
 import warnings
 
@@ -17,9 +18,9 @@ def simple_copy(
     and append them at the end of the dataframe.
     """
     # check localization
-    if start.tzinfo != "UTC":        # todo check that a missing tzinfo does raise the error # todo check that a pd.na falls here
+    if start.tzinfo != datetime.timezone.utc:        # todo check that a missing tzinfo does raise the error # todo check that a pd.na falls here
         raise ValueError(f"Missing or wrong tzinfo for start (expected to be in UTC): {start}")
-    if end.tzinfo != "UTC":
+    if end.tzinfo != datetime.timezone.utc:
         raise ValueError(f"Missing or wrong tzinfo for end (expected to be in UTC): {end}")
 
     out = df.copy()
@@ -84,7 +85,7 @@ def simple_copy(
         else:
             # to combine, we need to use start_time, and the closest day after expected_next_timestamp_date respecting start_weekday
             days_delta = (start_weekday - expected_next_timestamp_weekday) % 7 # for a week
-            start_day = expected_next_timestamp_date + pd.timedelta(days=days_delta)
+            start_day = expected_next_timestamp_date + pd.Timedelta(days=days_delta)
             start_new = pd.Timestamp.combine(start_day, start_time)
 
     else:
