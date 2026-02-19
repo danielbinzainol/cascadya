@@ -68,13 +68,13 @@ def localize_and_convert_to_utc(
     if df[timestamp_col].tzinfo is None:
         if source_timezone is None:
             raise ValueError(f"source_timezone is required to localize timestamps. Not found in column '{timestamp_col}' nor provided as argument.")
-        localized = df[timestamp_col].tz_localize(source_timezone)
+        localized = df[timestamp_col].dt.tz_localize(source_timezone)
     else:
         localized = df[timestamp_col]
     if local_col is None:
         local_col = f"{timestamp_col} (local time)"
     df[local_col] = localized
-    df[timestamp_col] = localized.tz_convert("UTC")
+    df[timestamp_col] = localized.dt.tz_convert("UTC")
     df = df.rename(columns={timestamp_col: "measured_at_utc"})
     df[tz_col] = str(source_timezone or localized.tz.info)
     return df
