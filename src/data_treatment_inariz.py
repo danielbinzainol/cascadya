@@ -53,6 +53,7 @@ def _read_inariz_planning_excel(path: Path) -> pd.DataFrame:
         cleaned = value.strip()
         return cleaned not in {"DATE", "Total"} and cleaned != ""
 
+    # Identify rows for which the date column is empty
     split_positions = [
         idx for idx, value in enumerate(df[2]) if _is_split_row(value)
     ]
@@ -60,9 +61,14 @@ def _read_inariz_planning_excel(path: Path) -> pd.DataFrame:
     df_sections = []
     for i, start in enumerate(split_positions):
         end = split_positions[i + 1] if i + 1 < len(split_positions) else len(df)
+        # Drop the identified rows for which the date column is empty
         df_section = df.iloc[start:end].reset_index(drop=True)
-        keep_mask = df_section[3].notna() & df_section[12].notna()
+        # Drop the first two rows, headers
+        df_section = df_section.iloc[2:]
+        # Drop the last row, if present, with the Total duration
+        keep_mask = df_section[2].notna() & df_section[3].notna()
         df_section = df_section[keep_mask]
+        #
         df_section = df_section.rename(columns=REQUIRED_COLUMNS_POSITIONS)
         df_section = df_section[REQUIRED_COLUMNS_POSITIONS.values()]
         df_sections.append(df_section)
@@ -85,7 +91,8 @@ if __name__ == "__main__":
 
         df_sections = _read_inariz_planning_excel(most_recent_file_path)
         for i, df_section in enumerate(df_sections):
-            output_path = DEFAULT_INTERMEDIARY_OUTPUT_DIR / f"planning_production_autoclave_{i+1}_inariz.csv"
+            output_filename = most_recent_file_path.stem + f"_autoclave_{i+1}_inariz.csv"
+            output_path = DEFAULT_INTERMEDIARY_OUTPUT_DIR / output_filename
 
             DEFAULT_INTERMEDIARY_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
             df_section.to_csv(output_path, index=False, sep=";", decimal=",")
