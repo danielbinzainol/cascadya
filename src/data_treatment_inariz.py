@@ -71,18 +71,23 @@ def _read_inariz_planning_excel(path: Path) -> pd.DataFrame:
         df_section = df_section.rename(columns=REQUIRED_COLUMNS_POSITIONS)
         df_section = df_section[REQUIRED_COLUMNS_POSITIONS.values()]
 
+        # localize
+        df_section["DATE"] = pd.to_datetime(df_section["DATE"]).dt.tz_localize("Europe/Paris")
+        # convert to UTC
+        df_section["timestamp_utc"] = df_section["DATE"].dt.tz_convert("UTC")
+        # rename
+        df_section = df_section.rename(columns={"DATE":"timestamp (local time)"})
+
         # Drop the rows overritten by a lower row, for which the date is later than a lower row with an earlier date
         # Rule : if the date goes in the past, discard the whole data for the inital day. 
         # Because it is possible that 3 rows starting 5am, 11am, 4pm are replaced by one unique row starting 6am.
-
-        # todo convert utc avant ça ??
-        df_section["_date"] = pd.to_datetime(df_section["DATE"]).dt.date
-        df_section["_elapsed"] =  pd.to_datetime(df_section["DATE"]).diff() #periods=-1 would give difference with following row
+        df_section["_date"] = pd.to_datetime(df_section["timestamp_utc"]).dt.date
+        df_section["_elapsed"] =  pd.to_datetime(df_section["timestamp_utc"]).diff() #periods=-1 would give difference with following row
         # detect if one day has a negative elapsed time, thus "erased" rows
+        # initialise the _to_delete column, necessary in case several situations to_delete are present
+        df_section["_to_delete"] = ""
         # if there is a negative elapsed time
         if df_section["_elapsed"].le(pd.Timedelta(0)).any():
-            # initialise the _to_delete column, necessary in case several situations to_delete are present
-            df_section["_to_delete"] = ""
             # then loop through all rows individually to find it
             for idx, value in enumerate(df_section["_elapsed"]):
                 if value < pd.Timedelta(0):
@@ -96,7 +101,7 @@ def _read_inariz_planning_excel(path: Path) -> pd.DataFrame:
             df_section = df_section[~erased_mask]
             
         # keep only the relevant columns
-        df_section = df_section[REQUIRED_COLUMNS_POSITIONS.values()]
+        df_section = df_section.drop(columns=["_date", "_elapsed", "_to_delete"])
 
         #
         df_sections.append(df_section)
@@ -132,13 +137,13 @@ def check_planning_sequence(
     *,
     base_dir: Path = DEFAULT_INTERMEDIARY_OUTPUT_DIR,
     sep: str = ";",
-    date_col: str = "DATE",
+    date_col: str = "timestamp_utc",
     prod_col: str = "temps de production",
     clean_col: str = "temps nettoyage",
 ) -> pd.DataFrame:
     """
     Read a planning CSV and check that:
-    DATE[n] + temps de production[n] + temps nettoyage[n] == DATE[n+1].
+    timestamp_utc[n] + temps de production[n] + temps nettoyage[n] == timestamp_utc[n+1].
 
     Returns a DataFrame listing mismatches (empty if all good).
     """
@@ -164,8 +169,8 @@ def check_planning_sequence(
 
     mismatch_mask = expected_next.notna() & actual_next.notna() & (expected_next != actual_next)
     mismatches = df.loc[mismatch_mask].copy()
-    mismatches["expected_next_DATE"] = expected_next[mismatch_mask]
-    mismatches["actual_next_DATE"] = actual_next[mismatch_mask]
+    mismatches["expected_next_timestamp_utc"] = expected_next[mismatch_mask]
+    mismatches["actual_next_timestamp_utc"] = actual_next[mismatch_mask]
 
     mismatches = mismatches.reset_index(drop=True)
 
@@ -192,6 +197,7 @@ def check_all_planning_sequence(
 
 
 if __name__ == "__main__":
+    ingest_prod_planning_inariz()
     # mismatches = check_planning_sequence("Planning week 07 V9 LAM (PLANNING)_autoclave_1_inariz.csv")
     # print(mismatches)
-    check_all_planning_sequence(r"data\inariz\intermediary")
+    # check_all_planning_sequence(r"data\inariz\intermediary")
