@@ -7,8 +7,8 @@ from pytest_csv_params.decorator import csv_params
 from ..predict import simple_copy, copy_median_values
 
 # Test data
-def expected_res_simple(end, respect_hours, respect_weekdays):
-    match (end, respect_hours, respect_weekdays):
+def expected_res_simple(end, respect_time, respect_weekdays):
+    match (end, respect_time, respect_weekdays):
         case ("2026-01-07", False, False):
             to_copy = np.linspace(144, 192, 49) # end is included
             new_ts = pd.date_range("2026-01-26T00:00:00", "2026-01-26T12:00:00", freq="15min", tz="UTC")
@@ -28,12 +28,12 @@ def expected_res_simple(end, respect_hours, respect_weekdays):
             to_copy = np.linspace(144, 576, 433)
             new_ts = pd.date_range("2026-01-27T12:00:00", "2026-02-01T00:00:00", freq="15min", tz="UTC")
         case _:
-            raise ValueError(f"Unknown case: ({end}, {respect_hours}, {respect_weekdays})")
+            raise ValueError(f"Unknown case: ({end}, {respect_time}, {respect_weekdays})")
 
     return pd.DataFrame({"timestamp_col":new_ts, "value_col":to_copy})
          
-def expected_res_median(use_holidays, use_weekdays, use_time, extension): #the correct values are obtained in the excel file "comprendre_test_median.xlsx"
-    match (use_holidays, use_weekdays, use_time, extension):
+def expected_res_median(respect_holidays, respect_weekdays, respect_time, extension): #the correct values are obtained in the excel file "comprendre_test_median.xlsx"
+    match (respect_holidays, respect_weekdays, respect_time, extension):
         case (False, False, True, "jour"):
             return pd.Series(np.linspace(960, 1055, 96)) # end is included
         case  (False, True, True, "jour"):
@@ -43,7 +43,7 @@ def expected_res_median(use_holidays, use_weekdays, use_time, extension): #the c
         case  (False, True, True, "semaine"):
             return pd.Series(np.linspace(672, 1343, 96*7)) #end is included
         case _:
-            raise ValueError(f"Unknown case: ({use_holidays}, {use_weekdays}, {use_time}, {extension})")
+            raise ValueError(f"Unknown case: ({respect_holidays}, {respect_weekdays}, {respect_time}, {extension})")
 
 # Mock input data - one value per 15min
 @pytest.fixture(scope="function")
@@ -58,22 +58,20 @@ def y():
 @csv_params(
     data_file="src/tests/simple_copy_test.csv", #only an empty str defines a False
     data_casts={
-        "respect_hours": bool, "respect_weekdays": bool, # "end", 
+        "end": str, "respect_time": bool, "respect_weekdays": bool, 
     },
 )
-def test_simple_copy(y, end, respect_hours, respect_weekdays):
+def test_simple_copy(y, end, respect_time, respect_weekdays):
     # 1. initialise test data   
-    starter = "2026-01-06T12:00:00"
-    expected_result = expected_res_simple(end, respect_hours, respect_weekdays)
+    expected_result = expected_res_simple(end, respect_time, respect_weekdays)
 
     # 2. call function to test
     y_extended = simple_copy(y, 
                               "timestamp_col", 
                               "value_col", 
-                              start=pd.Timestamp(starter), 
-                              end=end, 
-                              source_timezone="Europe/Paris", 
-                              respect_hours=respect_hours,
+                              start=pd.Timestamp(2026,1,6,12,0,0, tz="UTC"),
+                              end=pd.Timestamp(end, tz="UTC"), 
+                              respect_time=respect_time,
                               respect_weekdays=respect_weekdays)
     result = y_extended.iloc[len(y):]
 
@@ -84,20 +82,20 @@ def test_simple_copy(y, end, respect_hours, respect_weekdays):
 @csv_params(
     data_file="src/tests/copy_median_value_test.csv", #only an empty str defines a False
     data_casts={
-        "use_holidays": bool, "use_weekdays": bool, "use_time": bool, "extension": str,
+        "respect_holidays": bool, "respect_weekdays": bool, "respect_time": bool, "extension": str,
     },
 )
-def test_copy_median_values(y, use_holidays, use_weekdays, use_time, extension):
+def test_copy_median_values(y, respect_holidays, respect_weekdays, respect_time, extension):
     # 1. initialise test data   
-    expected_result = expected_res_median(use_holidays, use_weekdays, use_time, extension)
+    expected_result = expected_res_median(respect_holidays, respect_weekdays, respect_time, extension)
 
     # 2. call function to test
     y_extended = copy_median_values(y, 
                               "timestamp_col", 
                               "value_col", 
-                              use_holidays=use_holidays, 
-                              use_weekdays=use_weekdays, 
-                              use_time=use_time, 
+                              respect_holidays=respect_holidays, 
+                              respect_weekdays=respect_weekdays, 
+                              respect_time=respect_time, 
                               extension=extension)
     result = y_extended.iloc[len(y):]["value_col"]
 

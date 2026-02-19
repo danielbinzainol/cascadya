@@ -5,18 +5,15 @@ import pandas as pd
 from tqdm import tqdm
 import datetime
 
-from ingest import convert_timestamps_to_utc
+from ingest import localize_and_convert_to_utc
 from dataset import detect_elapsed_time_anomalies
 from plots import plot_timeseries_csv, plot_gap_filled_timeseries
+from utils import load_config
 
-DEFAULT_INPUT_DIR = Path(
-    r"D:\Cascadya\Cascadya - Documents\08. COMPTE CLIENT\Tarkett_Sedan\2. Données sous NDA\Données de Consommation gaz 2025"
-)
 DEFAULT_INTERMEDIARY_OUTPUT_PATH_NOT_SAMPLED = Path(r"data\tarkett\intermediary") / "data_tarkett_not_sampled.csv"
 DEFAULT_INTERMEDIARY_OUTPUT_PATH = Path(r"data\tarkett\intermediary") / "data_tarkett.csv"
 
 DEFAULT_OUTPUT_PATH = Path(r"data\tarkett\processed") / "data_tarkett_gap_filled.csv"
-DEFAULT_SOURCE_TIMEZONE = "Europe/Paris"
 
 REQUIRED_COLUMNS = [
     "Désignation caractéristique",
@@ -108,7 +105,7 @@ def _read_tarkett_excel(path: Path) -> pd.DataFrame:
     return df
 
 
-def load_tarkett_files(input_dir: Path | str = DEFAULT_INPUT_DIR) -> pd.DataFrame:
+def load_tarkett_files(input_dir: Path | str) -> pd.DataFrame:
     input_path = Path(input_dir)
     if not input_path.exists():
         raise FileNotFoundError(input_path)
@@ -130,7 +127,7 @@ def load_tarkett_files(input_dir: Path | str = DEFAULT_INPUT_DIR) -> pd.DataFram
 
 def detect_duplicate_timestamps(
     df: pd.DataFrame,
-    timestamp_col: str = "measured_at",
+    timestamp_col: str = "measured_at_utc",
 ) -> pd.DataFrame:
     duplicates = df[timestamp_col].duplicated(keep=False)
     return df.loc[duplicates].sort_values(timestamp_col)
@@ -138,7 +135,7 @@ def detect_duplicate_timestamps(
 
 def find_duplicate_timestamps_with_same_value(
     duplicates_df: pd.DataFrame,
-    timestamp_col: str = "measured_at",
+    timestamp_col: str = "measured_at_utc",
     value_col: str = "cumulative_conso_gaz_chaudiere_SV4_(m3)",
 ) -> list[pd.Timestamp]:
     if duplicates_df.empty:
@@ -162,18 +159,19 @@ def add_mwh_measure(
 
 def add_mwh_use(
     df: pd.DataFrame,
-    timestamp_col: str = "measured_at",
+    timestamp_col: str = "measured_at_utc",
     value_col: str = "cumulative_conso_gaz_chaudiere_SV4_(MWh)",
     diff_col: str = "conso_gaz_chaudiere_SV4_(MWh)",
 ) -> pd.DataFrame:
-    df = df.sort_values(timestamp_col).copy()
+    # start by sorting, to make sure the diff is applied on a clean df
+    df = df.sort_values(timestamp_col)
     df[diff_col] = df[value_col].diff()
     return df
 
 
 def aggregate_hourly(
     df: pd.DataFrame,
-    timestamp_col: str = "measured_at",
+    timestamp_col: str = "measured_at_utc",
     value_col: str = "conso_gaz_chaudiere_SV4_(MWh)",
 ) -> pd.DataFrame:
     df = df.sort_values(timestamp_col)
@@ -191,7 +189,6 @@ def tag_activity(
         timestamp_col: str = "timeslot_start_at",
 ) -> pd.DataFrame:
     # utils
-    df[timestamp_col] = pd.to_datetime(df[timestamp_col], errors="coerce")
     df = df.sort_values(timestamp_col).reset_index(drop=True)
 
     df["_date"] = df[timestamp_col].dt.date
@@ -258,7 +255,6 @@ def gap_fill_hourly_timeseries(
 ) -> pd.DataFrame:
     # utils
     df = df_hourly.copy()
-    df[timestamp_col] = pd.to_datetime(df[timestamp_col], errors="coerce")
     df = df.sort_values(timestamp_col).reset_index(drop=True)
 
     df["_hour"] = df[timestamp_col].dt.hour
@@ -382,23 +378,24 @@ def gap_fill_hourly_timeseries(
 def find_missing_timestamps_full_year(
     df: pd.DataFrame,
     year: int,
-    timestamp_col: str = "measured_at",
+    timestamp_col: str = "measured_at_utc",
     freq: str = "h",
 ) -> pd.DataFrame:
     freq_norm = freq.lower()
     if freq_norm in {"h", "hour", "hourly"}:
-        start = pd.Timestamp(year=year, month=1, day=1, hour=0)
-        end = pd.Timestamp(year=year, month=12, day=31, hour=23)
+        start = pd.Timestamp(year=year, month=1, day=1, hour=0, tz="UTC")
+        end = pd.Timestamp(year=year, month=12, day=31, hour=23, tz="UTC")
         align = "h"
     elif freq_norm in {"d", "day", "daily"}:
-        start = pd.Timestamp(year=year, month=1, day=1)
-        end = pd.Timestamp(year=year, month=12, day=31)
+        start = pd.Timestamp(year=year, month=1, day=1, tz="UTC")
+        end = pd.Timestamp(year=year, month=12, day=31, tz="UTC")
         align = "d"
     else:
-        start = pd.Timestamp(year=year, month=1, day=1)
-        end = pd.Timestamp(year=year, month=12, day=31)
+        start = pd.Timestamp(year=year, month=1, day=1, tz="UTC")
+        end = pd.Timestamp(year=year, month=12, day=31, tz="UTC")
         align = freq
 
+    # todo simplify this part, I'm sure we can, as df[timestamp_col] is already with pd timestamps
     expected = pd.date_range(start, end, freq=freq)
     actual = (
         pd.to_datetime(df[timestamp_col], errors="coerce", dayfirst=True)
@@ -410,11 +407,9 @@ def find_missing_timestamps_full_year(
 
 
 def build_tarkett_dataset(
-    input_dir: Path | str = DEFAULT_INPUT_DIR,
     output_intermediary_path_not_sampled: Path | str = DEFAULT_INTERMEDIARY_OUTPUT_PATH_NOT_SAMPLED,
     output_intermediary_path: Path | str = DEFAULT_INTERMEDIARY_OUTPUT_PATH,
     output_path: Path | str = DEFAULT_OUTPUT_PATH,
-    source_timezone: str | None = DEFAULT_SOURCE_TIMEZONE,
     sep: str = ";",
     decimal: str = ",",
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -433,6 +428,10 @@ def build_tarkett_dataset(
                 format="ISO8601"
             )
     else:
+        # get input_dir
+        config = load_config() 
+        input_dir = Path(config["tarkett"]["data"]["path"])
+
         # contient les timestamps duplicates et les timestamps manquants
         df = load_tarkett_files(input_dir)
         df = df.sort_values("Valeur mesurée le")
@@ -442,7 +441,11 @@ def build_tarkett_dataset(
 
     df = df.rename(columns={"Valeur mesurée le": "measured_at", "Valeur mesurée": "cumulative_conso_gaz_chaudiere_SV4_(m3)"})
 
-    df = convert_timestamps_to_utc(
+
+    # get source_timezone
+    source_timezone = config["tarkett"]["data"]["timezone"]
+
+    df = localize_and_convert_to_utc(
         df,
         source_timezone=source_timezone,
         timestamp_col="measured_at",
@@ -458,8 +461,8 @@ def build_tarkett_dataset(
 
     if duplicate_timestamps_that_can_be_removed:
         removable_mask = (
-            df["measured_at"].isin(duplicate_timestamps_that_can_be_removed)
-            & df.duplicated(subset=["measured_at"], keep="first")
+            df["measured_at_utc"].isin(duplicate_timestamps_that_can_be_removed)
+            & df.duplicated(subset=["measured_at_utc"], keep="first")
         )
         df = df.loc[~removable_mask]
 
