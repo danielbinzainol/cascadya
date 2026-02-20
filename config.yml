@@ -9,13 +9,16 @@ france_champignon:
 
 inariz:
   data: 
-    path: 'data\inariz\raw\Graphique_20260121150818.csv'
+    path: 'data\inariz\raw\inariz_steam_prod_2026-02-09_to_2026-02-11.csv'
     skiprows: 4
     usecols: ["Horodatage","Valeur","Unité"]
     timezone: 'Europe/Paris'
     timestamp_col: 'Horodatage'
     timestamp_format: '%Y-%m-%d %H:%M:%S.%f'
     comment_on_hour_change: 'March: visible, one day with 23 hours. October: visible in boiler-box with 25 hours, the last value before the hour change is persisted for an hour.'
+  prix_seuil_euro_mwh: [58, 60, 70]
+  puissance_chaudiere_elec_mw: 2
+  capacite_min_gaz_mwhth: 0.25
 
 tarkett:
   data:
