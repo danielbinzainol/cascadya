@@ -8,7 +8,7 @@ import datetime
 from ingest import localize_and_convert_to_utc
 from dataset import detect_elapsed_time_anomalies
 from plots import plot_timeseries_csv, plot_gap_filled_timeseries
-from utils import load_config
+from utils import load_config, convert_m3_to_mwhth
 
 DEFAULT_INTERMEDIARY_OUTPUT_PATH_NOT_SAMPLED = Path(r"data\tarkett\intermediary") / "data_tarkett_not_sampled.csv"
 DEFAULT_INTERMEDIARY_OUTPUT_PATH = Path(r"data\tarkett\intermediary") / "data_tarkett.csv"
@@ -21,9 +21,6 @@ REQUIRED_COLUMNS = [
     "Valeur mesurée",
     "Valeur mesurée le",
 ]
-
-COEFF_M3_NM3 = 1.2
-COEFF_PCS_KWH_NM3 = 11.35
 
 JOURS_OFF_PRESENTS = [datetime.date(2025, 5, 1), # férié
                       datetime.date(2025, 5, 29), # férié
@@ -144,18 +141,6 @@ def find_duplicate_timestamps_with_same_value(
         dropna=False
     )
     return list(nunique_by_timestamp[nunique_by_timestamp == 1].index)
-
-
-def add_mwh_measure(
-    df: pd.DataFrame,
-    coeff_m3_nm3: float = COEFF_M3_NM3,
-    coeff_pcs_kwh_nm3: float = COEFF_PCS_KWH_NM3,
-    value_col: str = "cumulative_conso_gaz_chaudiere_SV4_(m3)",
-) -> pd.DataFrame:
-    df = df.copy()
-    df["cumulative_conso_gaz_chaudiere_SV4_(MWh)"] = df[value_col] * coeff_m3_nm3 * coeff_pcs_kwh_nm3 / 1000
-    return df
-
 
 def add_mwh_use(
     df: pd.DataFrame,
@@ -466,7 +451,7 @@ def build_tarkett_dataset(
         )
         df = df.loc[~removable_mask]
 
-    df = add_mwh_measure(df)
+    df = convert_m3_to_mwhth(df)
     df = add_mwh_use(df)
 
     df_hourly = aggregate_hourly(df)
