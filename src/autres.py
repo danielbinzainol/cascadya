@@ -1,5 +1,5 @@
-from train import model_choice, train_model
-from predict import predict_model, a_priori_knowledge, confidence_interval
+from src.train import model_choice, train_model
+from src.predict import predict_model, a_priori_knowledge, confidence_interval
 from plots import simple_lag_plot, cool_plot
 
 

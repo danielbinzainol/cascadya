@@ -5,10 +5,10 @@ import pandas as pd
 from tqdm import tqdm
 import datetime
 
-from ingest import localize_and_convert_to_utc
-from dataset import detect_elapsed_time_anomalies
+from src.ingest import localize_and_convert_to_utc
+from src.dataset import detect_elapsed_time_anomalies
 from plots import plot_timeseries_csv, plot_gap_filled_timeseries
-from utils import load_config, convert_m3_to_mwhth
+from src.utils import load_config, convert_m3_to_mwhth
 
 DEFAULT_INTERMEDIARY_OUTPUT_PATH_NOT_SAMPLED = Path(r"data\tarkett\intermediary") / "data_tarkett_not_sampled.csv"
 DEFAULT_INTERMEDIARY_OUTPUT_PATH = Path(r"data\tarkett\intermediary") / "data_tarkett.csv"

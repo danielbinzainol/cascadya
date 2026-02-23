@@ -1,11 +1,11 @@
 from sklearn.model_selection import TimeSeriesSplit
 
 #
-from ingest import data_workflow
-from dataset import analyze, detect_elapsed_time_anomalies, resample
-from train import model_choice, create_feature, train_model
-from evaluate import cv_evaluate
-from autres import fit_pred_fore_priori_plot_workflow
+from src.ingest import data_workflow
+from src.dataset import analyze, detect_elapsed_time_anomalies, resample
+from src.train import model_choice, create_feature, train_model
+from src.evaluate import cv_evaluate
+from src.autres import fit_pred_fore_priori_plot_workflow
 from plots import plot_timeseries_csv
 
 

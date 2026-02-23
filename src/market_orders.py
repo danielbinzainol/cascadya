@@ -25,7 +25,7 @@ def build_market_orders(
     *,
     timestamp_col :str = "measured_at_utc",
     value_col: str, # must be in MWhth
-    output_dir: Path | str = Path("C:\Loris Amabile\Documents\c_market\data\market_orders"),
+    output_dir: Path | str = Path(r"data\market_orders"),
     run_at: datetime | pd.Timestamp | None = None,
     sep: str = ";",
 ) -> list[Path]:

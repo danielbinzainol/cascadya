@@ -1,7 +1,7 @@
 from pathlib import Path
 import pandas as pd
 #
-from utils import load_config
+from src.utils import load_config
 
         
 def input_csv(project: str, **kwargs):
