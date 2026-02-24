@@ -7,7 +7,7 @@ import pandas as pd
 
 from src.ingest import data_workflow
 
-from utils import load_config, convert_m3_to_mwhth
+from src.utils import load_config, convert_m3_to_mwhth
 from src.predict import copy_median_values
 from src.dataset import resample
 

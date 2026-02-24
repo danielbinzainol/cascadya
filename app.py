@@ -1,5 +1,6 @@
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from src.ingest import data_workflow
 from src.market_orders import complex_market_orders_data_workflow
 from plots import plot_market_orders
@@ -27,9 +28,16 @@ def call_complex_market_orders_data_workflow(project:str):
     paths = complex_market_orders_data_workflow(project)
     return paths
 
-@app.get("/plot-market-orders/{csv_path}")
-def plot_mo(csv_path: str):
-    plot_market_orders(csv_path)
+@app.get("/plot-market-orders")
+def plot_mo(csv_path: str = Query(..., description="Absolute or relative path to the CSV file")):
+    try:
+        image_buffer = plot_market_orders(csv_path)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=f"CSV file not found: {exc}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return StreamingResponse(image_buffer, media_type="image/png")
 
 
 if __name__ == "__main__":
