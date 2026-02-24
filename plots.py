@@ -188,7 +188,7 @@ def cool_plot(y, y_fore, pred_int, y_pred):
 def plot_gap_filled_timeseries(
     df: pd.DataFrame,
     timestamp_col: str = "timeslot_start_at",
-    value_col: str = "conso_gaz_chaudiere_SV4_(MWh)",
+    value_col: str = "conso_gaz_chaudiere_SV4_kWh",
     tag_col: str = "tag",
 ):
     if tag_col not in df.columns:
@@ -273,7 +273,7 @@ def plot_market_orders(csv_path: Path) -> io.BytesIO:
         df["Delivery_datetime(UTC_start_of_period)"],
         errors="coerce",
         utc=True,
-        format= "%Y-%m-%d %H:%M:"
+        format= "%Y-%m-%d %H:%M:%S"
     )
     df = df.dropna(subset=["Delivery_datetime(UTC_start_of_period)"])
     df = df.set_index("Delivery_datetime(UTC_start_of_period)")
@@ -281,7 +281,6 @@ def plot_market_orders(csv_path: Path) -> io.BytesIO:
     if df.empty:
         raise ValueError("The df is empty, look for failed timestamp parsing")
 
-    print(df)
     # use Agg, a static backend for this plot to be used in the API
     fig = Figure(figsize=(10, 6))
     FigureCanvasAgg(fig)

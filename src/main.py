@@ -14,7 +14,7 @@ def main():
     analyze(df)
     elapsed_anomalies, expected_delta = detect_elapsed_time_anomalies(df, timestamp_col="measured_at_utc")
     # target
-    y = df[["measured_at_utc", "steam_consumption_(m3/h)"]]
+    y = df[["measured_at_utc", "steam_consumption_m3_h"]]
     y_10min = resample(y, desired_timedelta="10min", aggregate_function="mean") # TODO vérfiier comment se fait ce mean, pas sur que je sois content, mieux vaut peut etre prendre le point le plus proche
     plot_timeseries_csv(y_10min.set_index("measured_at_utc"))
 

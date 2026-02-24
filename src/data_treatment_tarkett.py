@@ -8,7 +8,7 @@ import datetime
 from src.ingest import localize_and_convert_to_utc
 from src.dataset import detect_elapsed_time_anomalies
 from plots import plot_timeseries_csv, plot_gap_filled_timeseries
-from src.utils import load_config, convert_m3_to_mwhth
+from src.utils import load_config, convert_gas_units
 
 DEFAULT_INTERMEDIARY_OUTPUT_PATH_NOT_SAMPLED = Path(r"data\tarkett\intermediary") / "data_tarkett_not_sampled.csv"
 DEFAULT_INTERMEDIARY_OUTPUT_PATH = Path(r"data\tarkett\intermediary") / "data_tarkett.csv"
@@ -133,7 +133,7 @@ def detect_duplicate_timestamps(
 def find_duplicate_timestamps_with_same_value(
     duplicates_df: pd.DataFrame,
     timestamp_col: str = "measured_at_utc",
-    value_col: str = "cumulative_conso_gaz_chaudiere_SV4_(m3)",
+    value_col: str = "cumulative_conso_gaz_chaudiere_SV4_m3",
 ) -> list[pd.Timestamp]:
     if duplicates_df.empty:
         return []
@@ -142,22 +142,11 @@ def find_duplicate_timestamps_with_same_value(
     )
     return list(nunique_by_timestamp[nunique_by_timestamp == 1].index)
 
-def add_mwh_use(
-    df: pd.DataFrame,
-    timestamp_col: str = "measured_at_utc",
-    value_col: str = "cumulative_conso_gaz_chaudiere_SV4_(MWh)",
-    diff_col: str = "conso_gaz_chaudiere_SV4_(MWh)",
-) -> pd.DataFrame:
-    # start by sorting, to make sure the diff is applied on a clean df
-    df = df.sort_values(timestamp_col)
-    df[diff_col] = df[value_col].diff()
-    return df
-
 
 def aggregate_hourly(
     df: pd.DataFrame,
     timestamp_col: str = "measured_at_utc",
-    value_col: str = "conso_gaz_chaudiere_SV4_(MWh)",
+    value_col: str = "conso_gaz_chaudiere_SV4_kWh",
 ) -> pd.DataFrame:
     df = df.sort_values(timestamp_col)
     hourly = (
@@ -236,7 +225,7 @@ def gap_fill_hourly_timeseries(
     non_sunday_off_days,
     all_back_to_work_days,
     timestamp_col: str = "timeslot_start_at",
-    value_col: str = "conso_gaz_chaudiere_SV4_(MWh)",
+    value_col: str = "conso_gaz_chaudiere_SV4_kWh",
 ) -> pd.DataFrame:
     # utils
     df = df_hourly.copy()
@@ -424,7 +413,7 @@ def build_tarkett_dataset(
 
     print("---------------- loading files completed ------------")
 
-    df = df.rename(columns={"Valeur mesurée le": "measured_at", "Valeur mesurée": "cumulative_conso_gaz_chaudiere_SV4_(m3)"})
+    df = df.rename(columns={"Valeur mesurée le": "measured_at", "Valeur mesurée": "cumulative_conso_gaz_chaudiere_SV4_m3"})
 
 
     # get source_timezone
@@ -451,11 +440,15 @@ def build_tarkett_dataset(
         )
         df = df.loc[~removable_mask]
 
-    df = convert_m3_to_mwhth(df, "cumulative_conso_gaz_chaudiere_SV4_(m3)", "cumulative_conso_gaz_chaudiere_SV4_(MWh)")
-    df = add_mwh_use(df)
+    df = convert_gas_units(df, "cumulative_conso_gaz_chaudiere_SV4_m3", "cumulative_conso_gaz_chaudiere_SV4_kWh", "m3", "kWh PCI after boiler efficiency")
+    
+    # add kwh use
+    # start by sorting, to make sure the diff is applied on a clean df
+    df = df.sort_values("measured_at_utc")
+    df["conso_gaz_chaudiere_SV4_kWh"] = df["cumulative_conso_gaz_chaudiere_SV4_kWh"].diff()
 
     df_hourly = aggregate_hourly(df)
-    df_hourly = df_hourly[["timeslot_start_at", "conso_gaz_chaudiere_SV4_(MWh)"]]
+    df_hourly = df_hourly[["timeslot_start_at", "conso_gaz_chaudiere_SV4_kWh"]]
 
     output_intermediary_path = Path(output_intermediary_path)
     output_intermediary_path.parent.mkdir(parents=True, exist_ok=True)
