@@ -5,7 +5,11 @@ from pathlib import Path
 
 import pandas as pd
 
-# from utils import load_config
+from src.ingest import data_workflow
+
+from utils import load_config, convert_m3_to_mwhth
+from src.predict import copy_median_values
+from src.dataset import resample
 
 ORDER_HEADER = [
     "asset_id",
@@ -81,3 +85,37 @@ def build_market_orders(
         output_paths.append(output_path)
 
     return output_paths
+
+
+def complex_market_orders_data_workflow(project: str):
+    df = data_workflow(project)
+
+    # include the unit into the main column name
+    df = df.rename(columns={"Valeur": "steam_production_(m3/h)"})
+
+    # for other columns, keep only numerical columns
+    # set the timestamp as a column with a standard name, not as the index
+    df = df.drop(columns=["Unité"])
+
+    df = df[["measured_at_utc", "steam_production_(m3/h)"]] #required, as the data_workflow creates new columns when localizing and converting to utc
+    df_15min = resample(df, desired_timedelta="15min", aggregate_function="mean")
+    df_15min["steam_production_(m3/h)"] = df_15min["steam_production_(m3/h)"].fillna(0)
+    df_median1week = copy_median_values(df_15min, "measured_at_utc", "steam_production_(m3/h)", respect_holidays=False, respect_weekdays=True, respect_time=True, extension="semaine")
+    config = load_config()
+
+    df_median1week = convert_m3_to_mwhth(
+        df_median1week,
+        "steam_production_(m3/h)",
+        converted_value_col = "steam_production_mwhth"
+    )
+
+    paths = build_market_orders(
+        project_name=project,
+        forecast=df_median1week,  # output de simple_copy / copy_median_values
+        prix_seuil_euro_mwh=config[project]["prix_seuil_euro_mwh"][0],
+        puissance_chaudiere_elec_mw=config[project]["puissance_chaudiere_elec_mw"],
+        capacite_min_gaz_mwhth=config[project]["capacite_min_gaz_mwhth"],
+        # timestamp_col="measured_at_utc",  # optionnel si non détectable
+        value_col="steam_production_mwhth",  # optionnel si non détectable
+    )
+    return paths

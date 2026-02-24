@@ -3,6 +3,7 @@ import seaborn as sns
 import pandas as pd
 import numpy as np
 from statsmodels.graphics.tsaplots import plot_pacf, plot_acf
+from pathlib import Path
 
 
 def plot_timeseries_csv(
@@ -249,3 +250,15 @@ def plot_gap_filled_timeseries(
     ax.legend(loc="best")
     plt.tight_layout()
     plt.show()
+
+def plot_market_orders(
+    csv_path: Path):
+    csv_path = Path(csv_path)
+    if not csv_path.exists():
+        raise FileNotFoundError(csv_path)
+    df = pd.read_csv(csv_path, sep=";", decimal=".")
+
+    prix_seuil_euro_mwh = df["Price_max(E_MWh)"].dropna().mode()
+    df = df[["Delivery_datetime(UTC_start_of_period)","Power_in_kW(Sell)"]]
+    df = df.set_index("Delivery_datetime(UTC_start_of_period)")
+    plot_timeseries_csv(df)
