@@ -63,7 +63,7 @@ def build_market_orders(
 
     orders = pd.DataFrame({
         "asset_id": project_name,
-        "Delivery_datetime(UTC_start_of_period)": df[timestamp_col].dt.strftime("%Y-%m-%d %H:%M:"),
+        "Delivery_datetime(UTC_start_of_period)": df[timestamp_col].dt.strftime("%Y-%m-%d %H:%M:%S"),
         "Price_min(E_MWh)": -500.0,
         "Price_max(E_MWh)": float(prix_seuil_euro_mwh),
         "Power_in_kW(Sell)": power_kw_sell,
