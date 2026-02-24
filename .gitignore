@@ -20,3 +20,6 @@ wheels/
 
 # Notebooks cache
 .ipynb_checkpoints
+
+# agents
+.agents
