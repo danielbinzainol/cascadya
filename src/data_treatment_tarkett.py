@@ -451,7 +451,7 @@ def build_tarkett_dataset(
         )
         df = df.loc[~removable_mask]
 
-    df = convert_m3_to_mwhth(df)
+    df = convert_m3_to_mwhth(df, "cumulative_conso_gaz_chaudiere_SV4_(m3)", "cumulative_conso_gaz_chaudiere_SV4_(MWh)")
     df = add_mwh_use(df)
 
     df_hourly = aggregate_hourly(df)
