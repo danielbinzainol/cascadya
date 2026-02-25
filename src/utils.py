@@ -7,9 +7,8 @@ import pandas as pd
 COEFF_M3_TO_NM3 = 1.2 # dépendent de pression et température du gaz, ceux-là sont pour Tarkett.
 COEFF_NM3_TO_KWH_PCS = 11.35
 COEFF_KWH_PCS_TO_KWH_PCI = 0.89 #sauf si c'est une chaudière à condensation
-COEFF_BOILER_EFFICIENCY = 0.95
 
-ACCEPTED_GAS_UNITS = ["m3", "Nm3", "kWh PCS", "kWh PCI" "kWh PCI after boiler efficiency"]
+ACCEPTED_GAS_UNITS = ["m3", "Nm3", "kWh PCS", "kWh PCI"]
 
 # coefficients venant de Inariz
 # en estimant que leur pression moyenne est de 5.5 bar relatifs, ce qui est faux
@@ -37,7 +36,6 @@ def convert_gas_units(
     coeff_m3_to_nm3: float = COEFF_M3_TO_NM3,
     coeff_nm3_to_kwh_pcs: float = COEFF_NM3_TO_KWH_PCS,
     coeff_kwh_pcs_to_kwh_pci: float = COEFF_KWH_PCS_TO_KWH_PCI,
-    coeff_boiler_efficiency: float = COEFF_BOILER_EFFICIENCY,
     ) -> pd.DataFrame:
 
     if initial_unit not in ACCEPTED_GAS_UNITS:
@@ -52,7 +50,6 @@ def convert_gas_units(
         "Nm3": coeff_m3_to_nm3, 
         "kWh PCS": coeff_m3_to_nm3*coeff_nm3_to_kwh_pcs, 
         "kWh PCI": coeff_m3_to_nm3*coeff_nm3_to_kwh_pcs*coeff_kwh_pcs_to_kwh_pci, 
-        "kWh PCI after boiler efficiency": coeff_m3_to_nm3*coeff_nm3_to_kwh_pcs*coeff_kwh_pcs_to_kwh_pci*coeff_boiler_efficiency
         }
         
     df = df.copy()

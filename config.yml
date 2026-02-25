@@ -18,7 +18,8 @@ inariz:
     comment_on_hour_change: 'March: visible, one day with 23 hours. October: visible in boiler-box with 25 hours, the last value before the hour change is persisted for an hour.'
   prix_seuil_euro_mwh: [58, 60, 70]
   puissance_chaudiere_elec_mw: 2
-  capacite_min_gaz_kwhth: 2500
+  capacite_min_gaz_kwhth: 2500 #todo vérifier : dit que son output est toujours de minimum 2.5 kwh thermiques de vapeur, ou bien que son input est toujours de minimum 2.5 kwh de gaz ? Dans les captures d'écran où je trouve ça, je vois bien 0.25 MWh th
+  # serait alors plutôt une production_min_chaudiere_gaz_kwhth !
 
 tarkett:
   data:
