@@ -4,7 +4,7 @@ import pytest #request comes from here
 
 from pytest_csv_params.decorator import csv_params
 
-from ..predict import simple_copy, copy_median_values
+from src.predict import simple_copy, copy_median_values
 
 # Test data
 def expected_res_simple(end, respect_time, respect_weekdays):
@@ -56,7 +56,7 @@ def y():
 
 # Write several tests in a few lines
 @csv_params(
-    data_file="src/tests/simple_copy_test.csv", #only an empty str defines a False
+    data_file="tests/simple_copy_test.csv", #only an empty str defines a False
     data_casts={
         "end": str, "respect_time": bool, "respect_weekdays": bool, 
     },
@@ -80,7 +80,7 @@ def test_simple_copy(y, end, respect_time, respect_weekdays):
 
 # Write several tests in a few lines
 @csv_params(
-    data_file="src/tests/copy_median_value_test.csv", #only an empty str defines a False
+    data_file="tests/copy_median_value_test.csv", #only an empty str defines a False
     data_casts={
         "respect_holidays": bool, "respect_weekdays": bool, "respect_time": bool, "extension": str,
     },
