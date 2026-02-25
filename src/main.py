@@ -1,11 +1,11 @@
 from sklearn.model_selection import TimeSeriesSplit
 
 #
-from ingest import data_workflow
-from dataset import analyze, detect_elapsed_time_anomalies, resample
-from train import model_choice, create_feature, train_model
-from evaluate import cv_evaluate
-from autres import fit_pred_fore_priori_plot_workflow
+from src.ingest import data_workflow
+from src.dataset import analyze, detect_elapsed_time_anomalies, resample
+from src.train import model_choice, create_feature, train_model
+from src.evaluate import cv_evaluate
+from src.autres import fit_pred_fore_priori_plot_workflow
 from plots import plot_timeseries_csv
 
 
@@ -14,7 +14,7 @@ def main():
     analyze(df)
     elapsed_anomalies, expected_delta = detect_elapsed_time_anomalies(df, timestamp_col="measured_at_utc")
     # target
-    y = df[["measured_at_utc", "steam_consumption_(m3/h)"]]
+    y = df[["measured_at_utc", "steam_consumption_m3_h"]]
     y_10min = resample(y, desired_timedelta="10min", aggregate_function="mean") # TODO vérfiier comment se fait ce mean, pas sur que je sois content, mieux vaut peut etre prendre le point le plus proche
     plot_timeseries_csv(y_10min.set_index("measured_at_utc"))
 

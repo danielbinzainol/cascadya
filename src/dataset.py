@@ -41,15 +41,13 @@ def detect_elapsed_time_anomalies(
     return elapsed_anomalies, expected_delta
 
 
-# timestamp_diff_col va jusqu'a 1h29, donc ~80 minutes, la plus grande "bin" de l'histogramme
 def resample(df: pd.DataFrame,
              timestamp_col: str = "measured_at_utc",
-             desired_timedelta: str = "1h",
+             desired_timedelta: str = "15min",
              aggregate_function: str = "sum") -> pd.DataFrame:
     df = df.copy()
     df = df.set_index(timestamp_col)
 
-    # downsample
     df = df.resample(desired_timedelta).apply(aggregate_function).reset_index()
 
     return df

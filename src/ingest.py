@@ -1,7 +1,7 @@
 from pathlib import Path
 import pandas as pd
 #
-from utils import load_config
+from src.utils import load_config
 
         
 def input_csv(project: str, **kwargs):
@@ -65,7 +65,7 @@ def localize_and_convert_to_utc(
     local_col: str | None = None,
     tz_col: str = "source_timezone",
 ) -> pd.DataFrame:
-    if df[timestamp_col].tzinfo is None:
+    if df[timestamp_col].dt.tz is None:
         if source_timezone is None:
             raise ValueError(f"source_timezone is required to localize timestamps. Not found in column '{timestamp_col}' nor provided as argument.")
         localized = df[timestamp_col].dt.tz_localize(source_timezone)
