@@ -94,6 +94,7 @@ def build_market_orders(
     return output_paths
 
 
+# tmp: certaines valeurs codées en dur sont spécifiques à inariz pour l'instant.
 def complex_market_orders_data_workflow(project: str):
     df = data_workflow(project)
 
@@ -110,10 +111,15 @@ def complex_market_orders_data_workflow(project: str):
     df_median1week = copy_median_values(df_15min, "measured_at_utc", "steam_production_m3/h", respect_holidays=False, respect_weekdays=True, respect_time=True, extension="semaine")
     config = load_config()
 
+    # convert m3/h to m3
+    df_median1week["steam_production_m3"] = df_median1week["steam_production_m3_h"] * 15/60 
+
     df_median1week = convert_saturated_steam_units(
         df_median1week,
-        "steam_production_m3/h",
-        converted_value_col = "steam_production_kwhth"
+        "steam_production_m3",
+        "steam_production_kwhth",
+        "m3",
+        "kWh th"
     )
 
     paths = build_market_orders(

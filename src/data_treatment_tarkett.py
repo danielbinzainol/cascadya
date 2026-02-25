@@ -440,7 +440,7 @@ def build_tarkett_dataset(
         )
         df = df.loc[~removable_mask]
 
-    df = convert_gas_units(df, "cumulative_conso_gaz_chaudiere_SV4_m3", "cumulative_conso_gaz_chaudiere_SV4_kWh", "m3", "kWh PCI after boiler efficiency")
+    df = convert_gas_units(df, "cumulative_conso_gaz_chaudiere_SV4_m3", "cumulative_conso_gaz_chaudiere_SV4_kWh", "m3", "kWh PCS")
     
     # add kwh use
     # start by sorting, to make sure the diff is applied on a clean df
