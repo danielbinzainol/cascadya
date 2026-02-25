@@ -23,3 +23,6 @@ wheels/
 
 # agents
 .agents
+
+# tests coverage
+coverage.xml

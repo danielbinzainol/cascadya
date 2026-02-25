@@ -28,4 +28,28 @@ dependencies = [
 [dependency-groups]
 dev = [
     "ipykernel>=7.2.0",
+    "pytest-cov>=6.2.1",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+python_files = ["test_*.py"]
+addopts = [
+    "-q",
+    "--cov=src",
+    "--cov=app",
+    "--cov=plots",
+    "--cov-branch",
+    "--cov-report=term-missing",
+    "--cov-report=xml",
+    "--cov-report=html",
+]
+
+[tool.coverage.run]
+source = ["src", "app", "plots"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
