@@ -99,16 +99,16 @@ def complex_market_orders_data_workflow(project: str):
     df = data_workflow(project)
 
     # include the unit into the main column name
-    df = df.rename(columns={"Valeur": "steam_production_m3/h"})
+    df = df.rename(columns={"Valeur": "steam_production_m3_h"})
 
     # for other columns, keep only numerical columns
     # set the timestamp as a column with a standard name, not as the index
     df = df.drop(columns=["Unité"])
 
-    df = df[["measured_at_utc", "steam_production_m3/h"]] #required, as the data_workflow creates new columns when localizing and converting to utc
+    df = df[["measured_at_utc", "steam_production_m3_h"]] #required, as the data_workflow creates new columns when localizing and converting to utc
     df_15min = resample(df, desired_timedelta="15min", aggregate_function="mean")
-    df_15min["steam_production_m3/h"] = df_15min["steam_production_m3/h"].fillna(0)
-    df_median1week = copy_median_values(df_15min, "measured_at_utc", "steam_production_m3/h", respect_holidays=False, respect_weekdays=True, respect_time=True, extension="semaine")
+    df_15min["steam_production_m3_h"] = df_15min["steam_production_m3_h"].fillna(0)
+    df_median1week = copy_median_values(df_15min, "measured_at_utc", "steam_production_m3_h", respect_holidays=False, respect_weekdays=True, respect_time=True, extension="semaine")
     config = load_config()
 
     # convert m3/h to m3
