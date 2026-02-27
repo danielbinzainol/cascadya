@@ -247,7 +247,7 @@ class AeolusClient:
         start: datetime.datetime,
         end: datetime.datetime,
     ) -> WeatherMeteringPoints:
-        params: dict[str, Any] = {"start": start, "end": end}
+        params: dict[str, datetime.datetime] = {"start": start, "end": end}
         payload = await self._request(
             "GET",
             f"/asset/{asset_id}/weatherMetering",
@@ -292,10 +292,11 @@ class AeolusClient:
         start: datetime.datetime,
         end: datetime.datetime,
     ) -> ImbalancePriceResponse:
+        params: dict[str, datetime.datetime] = {"start": start, "end": end}
         payload = await self._request(
             "GET",
             f"/market/country/{country}/imbalancePrices",
-            params={"start": start, "end": end},
+            params=params,
             required_scopes={READ_MARKET_SCOPE},
         )
         return ImbalancePriceResponse.model_validate(payload)
@@ -336,10 +337,11 @@ class AeolusClient:
         start: datetime.datetime,
         end: datetime.datetime,
     ) -> LegacyTimeSeriesResponse:
+        params: dict[str, datetime.datetime] = {"start": start, "end": end}
         payload = await self._request(
             "GET",
             f"/connection-points/{connection_point_ean_code}/metering",
-            params={"start": start, "end": end},
+            params=params,
             required_scopes={READ_CONNECTION_POINT_SCOPE},
         )
         return LegacyTimeSeriesResponse.model_validate(payload)
@@ -351,10 +353,11 @@ class AeolusClient:
         start: datetime.datetime,
         end: datetime.datetime,
     ) -> LegacyTimeSeriesResponse:
+        params: dict[str, datetime.datetime] = {"start": start, "end": end}
         payload = await self._request(
             "GET",
             f"/connection-points/{connection_point_ean_code}/forecast",
-            params={"start": start, "end": end},
+            params=params,
             required_scopes={READ_CONNECTION_POINT_SCOPE},
         )
         return LegacyTimeSeriesResponse.model_validate(payload)
