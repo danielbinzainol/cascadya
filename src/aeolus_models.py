@@ -4,11 +4,19 @@ import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
 
 class AeolusBaseModel(BaseModel):
     model_config = ConfigDict(extra="allow", validate_by_name=True, validate_by_alias=True)
+
+    @field_validator("*")
+    @classmethod
+    def _ensure_utc_datetime(cls, value: Any) -> Any:
+        if isinstance(value, datetime.datetime) and value.utcoffset() != datetime.timedelta(0):
+            raise ValueError("Datetime values must be UTC (offset +00:00).")
+        return value
+
 
 class ForecastVersion(str, Enum):
     LATEST = "latest"
@@ -53,22 +61,22 @@ class AssetModel(AeolusBaseModel):
 
 
 class AssetTimeSeriesPoint(AeolusBaseModel):
-    datetime: datetime.datetime
+    datetime: AwareDatetime
     power_kw: int | float = Field(alias="powerkW")
     time_step_minutes: int = Field(alias="timeStepMinutes")
 
 
 class ForecastAssetTimeSeriesPoint(AssetTimeSeriesPoint):
-    date_creation: datetime.datetime = Field(alias="dateCreation")
+    date_creation: AwareDatetime = Field(alias="dateCreation")
 
 
 class AssetPointsWithCreatedDate(AeolusBaseModel):
     asset_id: int = Field(alias="assetId")
-    start: datetime.datetime
-    end: datetime.datetime
+    start: AwareDatetime
+    end: AwareDatetime
     points: list[AssetTimeSeriesPoint]
-    created_after: datetime.datetime | None = Field(alias="createdAfter")
-    created_before:datetime.datetime | None = Field(alias="createdBefore")
+    created_after: AwareDatetime | None = Field(alias="createdAfter")
+    created_before: AwareDatetime | None = Field(alias="createdBefore")
 
 
 class AssetTimeSeriesPayload(AeolusBaseModel):
@@ -76,22 +84,22 @@ class AssetTimeSeriesPayload(AeolusBaseModel):
 
 
 class AssetTimeSeriesResponse(AeolusBaseModel):
-    start: datetime.datetime
-    end: datetime.datetime
+    start: AwareDatetime
+    end: AwareDatetime
     points: list[AssetTimeSeriesPoint]
 
 
 class ForecastAssetPoints(AeolusBaseModel):
     asset_id: int = Field(alias="assetId")
-    start: datetime.datetime
-    end: datetime.datetime
+    start: AwareDatetime
+    end: AwareDatetime
     points: list[ForecastAssetTimeSeriesPoint]
 
 
 class Maintenance(AeolusBaseModel):
     id: int
-    start_date: datetime.datetime = Field(alias="startDate")
-    end_date: datetime.datetime = Field(alias="endDate")
+    start_date: AwareDatetime = Field(alias="startDate")
+    end_date: AwareDatetime = Field(alias="endDate")
     maintenance_nature_id: int = Field(alias="maintenanceNatureId")
     producing_unit_id: int = Field(alias="producingUnitId")
     prod_max_in_p: int | None = Field(default=None, alias="prodMaxInP")
@@ -102,8 +110,8 @@ class Maintenance(AeolusBaseModel):
 
 
 class MaintenancePayload(AeolusBaseModel):
-    start_date: datetime.datetime = Field(alias="startDate")
-    end_date: datetime.datetime = Field(alias="endDate")
+    start_date: AwareDatetime = Field(alias="startDate")
+    end_date: AwareDatetime = Field(alias="endDate")
     maintenance_nature_id: int = Field(alias="maintenanceNatureId")
     producing_unit_ids: list[int] = Field(alias="producingUnitIds")
     prod_max_in_p: int | None = Field(default=None, alias="prodMaxInP")
@@ -113,8 +121,8 @@ class MaintenancePayload(AeolusBaseModel):
 
 
 class MaintenanceResponse(AeolusBaseModel):
-    start_date: datetime.datetime = Field(alias="startDate")
-    end_date: datetime.datetime = Field(alias="endDate")
+    start_date: AwareDatetime = Field(alias="startDate")
+    end_date: AwareDatetime = Field(alias="endDate")
     maintenance_nature_id: int = Field(alias="maintenanceNatureId")
     producing_unit_ids: list[int] = Field(alias="producingUnitIds")
     prod_max_in_p: int | None = Field(default=None, alias="prodMaxInP")
@@ -125,7 +133,7 @@ class MaintenanceResponse(AeolusBaseModel):
 
 
 class WeatherMeteringPoint(AeolusBaseModel):
-    datetime: datetime.datetime
+    datetime: AwareDatetime
     time_step_minutes: int = Field(alias="timeStepMinutes")
     irradiance_wm2: float | None = Field(default=None, alias="irradianceWm2")
     temperature_c: float | None = Field(default=None, alias="temperatureC")
@@ -135,8 +143,8 @@ class WeatherMeteringPoint(AeolusBaseModel):
 
 class WeatherMeteringPoints(AeolusBaseModel):
     asset_id: int = Field(alias="assetId")
-    start: datetime.datetime
-    end: datetime.datetime
+    start: AwareDatetime
+    end: AwareDatetime
     points: list[WeatherMeteringPoint]
 
 
@@ -150,7 +158,7 @@ class PortfoliosPayload(AeolusBaseModel):
 
 
 class SpotPrice(AeolusBaseModel):
-    datetime: datetime.datetime
+    datetime: AwareDatetime
     price: str
     time_step_minutes: int = Field(alias="timeStepMinutes")
     unit: str | None = None
@@ -158,13 +166,13 @@ class SpotPrice(AeolusBaseModel):
 
 class SpotPriceResponse(AeolusBaseModel):
     country: str
-    start: datetime.datetime
-    end: datetime.datetime
+    start: AwareDatetime
+    end: AwareDatetime
     points: list[SpotPrice]
 
 
 class ImbalancePrice(AeolusBaseModel):
-    datetime: datetime.datetime
+    datetime: AwareDatetime
     time_step_minutes: int = Field(alias="timeStepMinutes")
     price_up: str | None = Field(default=None, alias="priceUp")
     price_down: str | None = Field(default=None, alias="priceDown")
@@ -172,14 +180,14 @@ class ImbalancePrice(AeolusBaseModel):
 
 class ImbalancePriceResponse(AeolusBaseModel):
     country: str
-    start: datetime.datetime
-    end: datetime.datetime
+    start: AwareDatetime
+    end: AwareDatetime
     points: list[ImbalancePrice]
 
 
 class Transaction(AeolusBaseModel):
-    start: datetime.datetime
-    end: datetime.datetime
+    start: AwareDatetime
+    end: AwareDatetime
     quantity: str
     unit: str
     transaction_type: str = Field(alias="transactionType")
@@ -188,14 +196,14 @@ class Transaction(AeolusBaseModel):
 
 
 class PortfolioTransactionsResponse(AeolusBaseModel):
-    start: datetime.datetime
-    end: datetime.datetime
+    start: AwareDatetime
+    end: AwareDatetime
     points: list[Transaction]
     portfolio_id: int = Field(alias="portfolioId")
 
 
 class LegacyTimeSeriesPoint(AeolusBaseModel):
-    datetime: datetime.datetime
+    datetime: AwareDatetime
     value: int | float | str
     time_step_minutes: int = Field(alias="timeStepMinutes")
 
@@ -206,14 +214,14 @@ class LegacyTimeSeriesPayload(AeolusBaseModel):
 
 class LegacyTimeSeriesResponse(AeolusBaseModel):
     connection_point_ean_code: str | None = Field(default=None, alias="connectionPointEanCode")
-    start: datetime.datetime
-    end: datetime.datetime
+    start: AwareDatetime
+    end: AwareDatetime
     points: list[LegacyTimeSeriesPoint]
 
 
 class TransactionCreate(AeolusBaseModel):
     farm_id: int = Field(alias="farmId")
-    date_application_start: datetime.datetime = Field(alias="dateApplicationStart")
+    date_application_start: AwareDatetime = Field(alias="dateApplicationStart")
     market_product_time_step: ProductTimeStepApi = Field(alias="marketProductTimeStep")
     quantity_in_kw: int = Field(alias="quantityInkW")
     price_in_euro_by_mwh: float | str = Field(alias="priceInEuroByMwh")
@@ -237,8 +245,8 @@ class FarmClearedVolumeItem(AeolusBaseModel):
     market: str
     transaction_type: str = Field(alias="transactionType")
     product_time_step: str = Field(alias="productTimeStep")
-    date_application_start: datetime.datetime = Field(alias="dateApplicationStart")
-    date_application_end: datetime.datetime = Field(alias="dateApplicationEnd")
+    date_application_start: AwareDatetime = Field(alias="dateApplicationStart")
+    date_application_end: AwareDatetime = Field(alias="dateApplicationEnd")
     quantity_in_kw: str = Field(alias="quantityInkW")
     price_in_euro_by_mwh: float | str = Field(alias="priceInEuroByMwh")
     notional: float | str | None = None
@@ -250,7 +258,7 @@ class FarmClearedVolumesRetrieveResponse(AeolusBaseModel):
 
 class MeteringRecordCreate(AeolusBaseModel):
     producing_unit_id: int = Field(alias="producingUnitId")
-    date_application: datetime.datetime = Field(alias="dateApplication")
+    date_application: AwareDatetime = Field(alias="dateApplication")
     metered_power_kw: float | str | None = Field(alias="meteredPowerkW")
 
 
@@ -269,7 +277,7 @@ class MeteringRecordsCreateResponse(AeolusBaseModel):
 
 class WeatherMeasurementCreate(AeolusBaseModel):
     producing_unit_id: int = Field(alias="producingUnitId")
-    date_application: datetime.datetime = Field(alias="dateApplication")
+    date_application: AwareDatetime = Field(alias="dateApplication")
     wind_speed_in_m_per_s: float | None = Field(alias="windSpeedInMPerS")
     wind_direction_in_degrees: float | None = Field(alias="windDirectionInDegrees")
     temperature_in_celsius: float | None = Field(alias="temperatureInCelsius")

@@ -139,8 +139,8 @@ class AeolusClient:
         version: ForecastVersion | None = None,
     ) -> ForecastAssetPoints:
         params: dict[str, Any] = {
-            "start": start.isoformat(),
-            "end": end.isoformat(),
+            "start": start,
+            "end": end,
             "version": version.value if version else None,
         }
         payload = await self._request(
@@ -169,8 +169,8 @@ class AeolusClient:
         end: datetime.datetime | None = None,
     ) -> list[Maintenance]:
         params: dict[str, Any] = {
-            "start": start.isoformat() if start else None,
-            "end": end.isoformat() if end else None,
+            "start": start,
+            "end": end,
         }
         payload = await self._request(
             "GET",
@@ -217,10 +217,10 @@ class AeolusClient:
         created_before: datetime.datetime | None = None,
     ) -> AssetPointsWithCreatedDate:
         params: dict[str, Any] = {
-            "start": start.isoformat() if start else None,
-            "end": end.isoformat() if end else None,
-            "created_after": created_after.isoformat() if created_after else None,
-            "created_before": created_before.isoformat() if created_before else None,
+            "start": start,
+            "end": end,
+            "created_after": created_after,
+            "created_before": created_before,
         }
         payload = await self._request(
             "GET",
@@ -247,7 +247,7 @@ class AeolusClient:
         start: datetime.datetime,
         end: datetime.datetime,
     ) -> WeatherMeteringPoints:
-        params: dict[str, str] = {"start": start.isoformat(), "end": end.isoformat()}
+        params: dict[str, Any] = {"start": start, "end": end}
         payload = await self._request(
             "GET",
             f"/asset/{asset_id}/weatherMetering",
@@ -273,8 +273,8 @@ class AeolusClient:
         product_time_step_in: list[ProductTimeStep] | None = None,
     ) -> SpotPriceResponse:
         params: dict[str, Any] = {
-            "start": start.isoformat(),
-            "end": end.isoformat(),
+            "start": start,
+            "end": end,
             "product_time_step_in": [step.value for step in product_time_step_in] if product_time_step_in else None,
         }
         payload = await self._request(
@@ -295,7 +295,7 @@ class AeolusClient:
         payload = await self._request(
             "GET",
             f"/market/country/{country}/imbalancePrices",
-            params={"start": start.isoformat(), "end": end.isoformat()},
+            params={"start": start, "end": end},
             required_scopes={READ_MARKET_SCOPE},
         )
         return ImbalancePriceResponse.model_validate(payload)
@@ -309,8 +309,8 @@ class AeolusClient:
         transaction_type: TransactionType | None = None,
     ) -> PortfolioTransactionsResponse:
         params: dict[str, Any] = {
-            "start": start.isoformat(),
-            "end": end.isoformat(),
+            "start": start,
+            "end": end,
             "transaction_type": transaction_type.value if transaction_type else None,
         }
         payload = await self._request(
@@ -339,7 +339,7 @@ class AeolusClient:
         payload = await self._request(
             "GET",
             f"/connection-points/{connection_point_ean_code}/metering",
-            params={"start": start.isoformat(), "end": end.isoformat()},
+            params={"start": start, "end": end},
             required_scopes={READ_CONNECTION_POINT_SCOPE},
         )
         return LegacyTimeSeriesResponse.model_validate(payload)
@@ -354,7 +354,7 @@ class AeolusClient:
         payload = await self._request(
             "GET",
             f"/connection-points/{connection_point_ean_code}/forecast",
-            params={"start": start.isoformat(), "end": end.isoformat()},
+            params={"start": start, "end": end},
             required_scopes={READ_CONNECTION_POINT_SCOPE},
         )
         return LegacyTimeSeriesResponse.model_validate(payload)
@@ -398,8 +398,8 @@ class AeolusClient:
         market_types_in: list[AllowedMarket] | None = None,
     ) -> FarmClearedVolumesRetrieveResponse:
         params: dict[str, Any] = {
-            "dateApplicationStartGte": date_application_start_gte.isoformat(),
-            "dateApplicationEndLte": date_application_end_lte.isoformat(),
+            "dateApplicationStartGte": date_application_start_gte,
+            "dateApplicationEndLte": date_application_end_lte,
             "farmIdsIn": farm_ids_in,
             "marketProductTimeStepIn": [item.value for item in market_product_time_step_in]
             if market_product_time_step_in
@@ -460,19 +460,38 @@ class AeolusClient:
     ) -> Any:
         expected_status = expected_status or {200}
         token = await self._resolve_access_token(required_scopes=required_scopes or set())
-        sanitized_params = {key: value for key, value in (params or {}).items() if value is not None}
+        sanitized_params = {
+            key: self._normalize_datetime_values(value)
+            for key, value in (params or {}).items()
+            if value is not None
+        }
+        sanitized_json = self._normalize_datetime_values(json) if json is not None else None
         response = await self._http.request(
             method=method,
             url=f"{self._base_url}{path}",
             headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
             params=sanitized_params,
-            json=json,
+            json=sanitized_json,
         )
         if response.status_code not in expected_status:
             self._raise_for_status(response)
         if response.status_code == 204:
             return None
         return response.json()
+
+    def _normalize_datetime_values(self, value: Any) -> Any:
+        if isinstance(value, datetime.datetime):
+            return self._datetime_to_utc_iso(value)
+        if isinstance(value, list):
+            return [self._normalize_datetime_values(item) for item in value]
+        if isinstance(value, dict):
+            return {key: self._normalize_datetime_values(item) for key, item in value.items()}
+        return value
+
+    def _datetime_to_utc_iso(self, value: datetime.datetime) -> str:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("Datetime values sent to Aeolus must include timezone information.")
+        return value.astimezone(datetime.UTC).isoformat()
 
     async def _resolve_access_token(self, *, required_scopes: set[str]) -> str:
         if self._cached_token and not self._cached_token.is_expired():
@@ -561,4 +580,3 @@ class AeolusClient:
         if status_code in {422}:
             raise AeolusValidationError(message, status_code=status_code, payload=payload)
         raise AeolusApiError(message, status_code=status_code, payload=payload)
-
