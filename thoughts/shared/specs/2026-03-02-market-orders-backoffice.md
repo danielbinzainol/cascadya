@@ -14,8 +14,7 @@ The current module computes market orders, but there is no dedicated review and 
 - System retains 3 years of historical data for comparison and analysis.
 
 ## User Personas
-- Operations team member (validator or viewer): Reviews charts, validates/rejects day-ahead order sets, monitors results.
-- Data team member (validator or viewer): Checks coherence against planning, past orders, and consumption data.
+- Internal user (validator or viewer): Reviews charts, checks coherence against planning/past orders/consumption data, and monitors results. The one with the "validator" right validates or rejects day-ahead order sets.
 - Admin: Manages users, roles, plant-level default behavior, and global configuration.
 
 ## User Journey
@@ -24,12 +23,13 @@ The current module computes market orders, but there is no dedicated review and 
 2. User selects mode: `Review Market Orders` or `Review Market Results`.
 3. Dashboard highlights pending reviews/validations by plant, date, and horizon.
 4. User selects plant/date/horizon.
-5. Orders review view shows superimposed chart: production planning + market orders, with past/future shading (default visible window: 1 week).
-6. Validator either:
+5. Orders review view shows superimposed chart: production planning + market orders, with past/future shading (default visible window: 1 week in the past + 1 day in the future).
+6. User can quickly switch to a preset view showing 1 month in the past and can also set custom date limits.
+7. Validator either:
 - Validates order set, or
 - Rejects order set and must provide reason.
-7. System stores decision with plant, date, horizon, username, UTC timestamp, decision, optional rejection reason, and order-set identifier/hash.
-8. If no manual decision before noon Europe/Paris, plant-level default decision is applied and alerts are sent (unless muted at plant config level).
+8. System stores decision with plant, date, horizon, username, UTC timestamp, decision, optional rejection reason, and order-set identifier/hash.
+9. If no manual decision before noon Europe/Paris, plant-level default decision is applied and alerts are sent (unless muted at plant config level).
 
 ### Day-Ahead Results Comparison
 1. Around 13:00 Europe/Paris, day-ahead market results are pulled from API.
@@ -60,6 +60,8 @@ The current module computes market orders, but there is no dedicated review and 
 - Pending status indicators.
 - Superimposed chart of planning and market orders.
 - Past vs future visual shading.
+- Default chart window: 1 week in the past + 1 day in the future.
+- Quick switch to 1-month-past preset and custom date limits.
 - Decision workflow:
 - Validate or reject (reject requires reason).
 - Store only the current effective decision if changed later.
@@ -89,13 +91,13 @@ Acceptance criteria (P0)
 - Given rejection action, system blocks submission without a non-empty reason.
 - Given no decision by 12:00 Europe/Paris, configured plant default is applied automatically.
 - Given results available, chart highlights every non-zero order-result difference.
+- Given day-ahead review view, chart defaults to 1 week past + 1 day future, and user can switch to 1-month-past or custom date limits.
 - Given a decision update, only latest decision is shown as effective current state.
 
 ### Should Have (P1)
 - Dashboard summary cards by plant: pending, validated, rejected, auto-defaulted, and recent gap counts.
 - Advanced filtering (date range, horizon, decision status, user).
 - Quick links from alert notifications directly to relevant plant/date/horizon view.
-- Configurable default chart window (1 day / 3 days / 1 week).
 
 Acceptance criteria (P1)
 - User can filter backlog to find all rejected sets in a date range.
