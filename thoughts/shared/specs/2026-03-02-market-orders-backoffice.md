@@ -10,7 +10,7 @@ The current module computes market orders, but there is no dedicated review and 
 - Every day-ahead order set has a clear status before the noon Europe/Paris deadline: validated, rejected (with reason), or auto-default applied.
 - Every non-zero order-vs-result delta is visually identifiable for day-ahead and intraday views.
 - Every rejection is justified, attributable to a user, and handled within operational workflow.
-- Responsible validators receive one reminder notification one hour before deadline according to configured channel preferences.
+- Manual-validation plants follow reminder and escalation notifications before deadline; automatic-validation plants send one informational notification to the responsible validator.
 - System retains 3 years of historical data for comparison and analysis.
 
 ## User Personas
@@ -25,11 +25,15 @@ The current module computes market orders, but there is no dedicated review and 
 4. User selects plant/date/horizon.
 5. Orders review view shows superimposed chart: production planning + market orders, with past/future shading (default visible window: 1 week in the past + 1 day in the future).
 6. User can quickly switch to a preset view showing 1 month in the past and can also set custom date limits.
-7. Validator either:
+7. Each plant has a validation mode parameter: `manual` or `automatic`.
+8. If plant mode is `manual`, validator either:
 - Validates order set, or
 - Rejects order set and must provide reason.
-8. System stores decision with plant, date, horizon, username, UTC timestamp, decision, optional rejection reason, and order-set identifier/hash.
-9. If no manual decision before noon Europe/Paris, plant-level default decision is applied and alerts are sent (unless muted at plant config level).
+9. In `manual` mode, first reminder notification is sent to responsible validator one hour before deadline.
+10. If no validation exists close to deadline in `manual` mode, escalation notification is sent to all users.
+11. If still no validation by noon Europe/Paris in `manual` mode, plant-level default decision is applied automatically.
+12. If plant mode is `automatic`, produced order is auto-validated and one informational notification is sent to the responsible validator.
+13. System stores decision with plant, date, horizon, username/system actor, UTC timestamp, decision, optional rejection reason, and order-set identifier/hash.
 
 ### Day-Ahead Results Comparison
 1. Around 13:00 Europe/Paris, day-ahead market results are pulled from API.
@@ -66,13 +70,16 @@ The current module computes market orders, but there is no dedicated review and 
 - Validate or reject (reject requires reason).
 - Store only the current effective decision if changed later.
 - Persist decision metadata including order-set identifier/hash.
+- Per-plant validation mode:
+- `manual`: order requires validation by a validator before noon Europe/Paris.
+- `automatic`: produced order is auto-validated by system.
 - Deadline automation:
 - Hard deadline at 12:00 Europe/Paris.
 - Per-plant default fallback action when pending:
 - Copy yesterday's orders, or
 - Buy nothing, or
 - Copy last week's orders.
-- Auto-default triggers alert unless muted for plant.
+- In `manual` mode, if still pending at deadline, auto-default is applied.
 - If a broker-side order error arrives after send, validator has 30-minute correction window.
 - Results ingestion:
 - Day-ahead results pull once daily around 13:00 Europe/Paris.
@@ -82,14 +89,17 @@ The current module computes market orders, but there is no dedicated review and 
 - Data retention:
 - Keep 3 years history for orders, results, planning, consumption, and decisions.
 - Notifications:
-- Send reminder 1 hour before deadline to responsible validator.
+- In `manual` mode, send first reminder 1 hour before deadline to responsible validator.
+- In `manual` mode, if still unvalidated close to deadline, send escalation notification to all users.
+- In `automatic` mode, send one informational notification to responsible validator when produced order is auto-validated.
 - Exactly one preferred channel per user (`email`, `Teams`, or `in-app`) or muted.
-- If deadline missed and validation expected, send alert to all users.
 
 Acceptance criteria (P0)
-- Given a pending day-ahead set at 11:00 Europe/Paris, responsible validator receives one reminder on selected channel unless muted.
+- Given a pending day-ahead set at 11:00 Europe/Paris in `manual` mode, responsible validator receives one reminder on selected channel unless muted.
 - Given rejection action, system blocks submission without a non-empty reason.
-- Given no decision by 12:00 Europe/Paris, configured plant default is applied automatically.
+- Given `manual` mode and no validation by 12:00 Europe/Paris, configured plant default is applied automatically.
+- Given `manual` mode and no validation close to deadline, escalation notification is sent to all users.
+- Given `automatic` mode, produced order is auto-validated and one informational notification is sent to responsible validator.
 - Given results available, chart highlights every non-zero order-result difference.
 - Given day-ahead review view, chart defaults to 1 week past + 1 day future, and user can switch to 1-month-past or custom date limits.
 - Given a decision update, only latest decision is shown as effective current state.
@@ -202,7 +212,6 @@ Core entities:
 - Clarify broker-side idempotency semantics for repeated `POST /transactions/farm-cleared-volumes` submissions (same payload resubmitted after timeout/error).
 - Define retry contract for submission failures (timeouts, 5xx, potential throttling/429) including backoff, max attempts, and final operator-facing state.
 - Clarify acknowledgement semantics for submission lifecycle: synchronous acceptance only (`transactionIds`) vs any delayed/partial processing outcomes and how they are surfaced.
-- Exact semantics for "validation expected" flag per plant when deciding all-user escalation alerts.
 - Whether to keep a separate immutable audit log even when only latest effective decision is retained in business tables.
 - Frontend chart library final pick in Vue stack (ECharts vs Plotly).
 
