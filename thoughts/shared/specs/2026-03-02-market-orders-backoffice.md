@@ -157,6 +157,9 @@ Core entities:
 
 ### Integrations
 - Market broker API for order submission and day-ahead result retrieval.
+- Broker order submission contract (confirmed): `POST /transactions/farm-cleared-volumes` with `MarketFarmTransactionsCreate` payload and `TransactionsCreateResponse` (`transactionIds`) on HTTP 200.
+- Broker retrieval contract (confirmed): `GET /transactions/farm-cleared-volumes` with date/farm/product/market filters for reconciliation views.
+- Broker auth contract (confirmed): OAuth2 bearer token with `write:transactions` (submit) and `read:transactions` (retrieve) scopes.
 - Broker WebSocket for intraday result stream.
 - Email service for reset links and email notifications.
 - Teams webhook/integration for Teams notifications.
@@ -168,6 +171,9 @@ Core entities:
 - Session management with expiration.
 - Login attempt rate limiting and lockout policy.
 - Sensitive secrets (API tokens, SMTP credentials) managed through environment/secret manager.
+- Broker credentials strategy for integration:
+- Support direct bearer token and client-credentials token retrieval via OAuth2 token endpoint.
+- Enforce scope checks before API calls (`write:transactions`, `read:transactions`).
 
 ## Non-Functional Requirements
 - Performance:
@@ -192,8 +198,10 @@ Core entities:
 - Advanced forecasting model changes (backoffice consumes model output, does not redesign model logic).
 
 ## Open Questions for Implementation
-- Final broker auth mechanism for production (token vs username/password) and renewal strategy.
-- Precise broker API contract for order submission acknowledgements, retries, and idempotency semantics.
+- Confirm production-approved OAuth2 flow for this tenant (`client_credentials` in integration code vs `authorizationCode` in published OpenAPI security flow) and finalize token renewal/rotation policy.
+- Clarify broker-side idempotency semantics for repeated `POST /transactions/farm-cleared-volumes` submissions (same payload resubmitted after timeout/error).
+- Define retry contract for submission failures (timeouts, 5xx, potential throttling/429) including backoff, max attempts, and final operator-facing state.
+- Clarify acknowledgement semantics for submission lifecycle: synchronous acceptance only (`transactionIds`) vs any delayed/partial processing outcomes and how they are surfaced.
 - Exact semantics for "validation expected" flag per plant when deciding all-user escalation alerts.
 - Whether to keep a separate immutable audit log even when only latest effective decision is retained in business tables.
 - Frontend chart library final pick in Vue stack (ECharts vs Plotly).
@@ -203,3 +211,8 @@ A brief architecture tradeoff pass was executed (no deep external research loop)
 - Vue is appropriate for onboarding speed while keeping equivalent v1 capability.
 - FastAPI + TimescaleDB is the lowest-friction path given existing Python codebase and time-series needs.
 - Separate day-ahead batch flow from intraday streaming flow to reduce operational coupling.
+
+Broker integration findings added on March 3, 2026 (from PR #40 and Aeolus OpenAPI v3.8.1):
+- Contract and endpoint mapping exist for farm cleared volume submission/retrieval.
+- OAuth2 token endpoint and transaction scopes are explicit and align with integration code direction.
+- Remaining gaps are operational semantics (idempotency, retry policy, and acknowledgement lifecycle behavior).
