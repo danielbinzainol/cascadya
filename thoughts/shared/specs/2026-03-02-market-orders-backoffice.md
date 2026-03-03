@@ -124,6 +124,7 @@ Acceptance criteria (P2)
 ## Technical Architecture
 ### Technology Choices
 - Frontend: Vue 3 + TypeScript.
+- Charting: Apache ECharts (Vue integration).
 - Backend API: FastAPI (Python).
 - Time-series storage: PostgreSQL + TimescaleDB.
 - Async/scheduled jobs: background worker for polling, deadlines, notifications.
@@ -213,7 +214,6 @@ Core entities:
 - Define retry contract for submission failures (timeouts, 5xx, potential throttling/429) including backoff, max attempts, and final operator-facing state.
 - Clarify acknowledgement semantics for submission lifecycle: synchronous acceptance only (`transactionIds`) vs any delayed/partial processing outcomes and how they are surfaced.
 - Whether to keep a separate immutable audit log even when only latest effective decision is retained in business tables.
-- Frontend chart library final pick in Vue stack (ECharts vs Plotly).
 
 ## Appendix: Research Findings
 A brief architecture tradeoff pass was executed (no deep external research loop), resulting in these recommendations:
