@@ -1,0 +1,227 @@
+# Market Orders Backoffice Specification
+
+## Executive Summary
+Build a new backoffice for operations and data teams to explore, review, and validate market orders, then compare orders against market results. The product supports both day-ahead and intraday workflows, with explicit validation for day-ahead and visualization-only for intraday in v1. The solution targets fast onboarding (Vue frontend), strong operational reliability, and clear decision accountability.
+
+## Problem Statement
+The current module computes market orders, but there is no dedicated review and validation interface before execution, and no unified view to compare proposed orders, planning, past behavior, and resulting market allocations. This creates risk of low visibility on coherence, weak traceability of accept/reject decisions, and slower reaction when order-result gaps appear.
+
+## Success Criteria
+- Every day-ahead order set has a clear status before the noon Europe/Paris deadline: validated, rejected (with reason), or auto-default applied.
+- Every non-zero order-vs-result delta is visually identifiable for day-ahead and intraday views.
+- Every rejection is justified, attributable to a user, and handled within operational workflow.
+- Manual-validation plants follow reminder and escalation notifications before deadline; automatic-validation plants send one informational notification to the responsible validator.
+- System retains 3 years of historical data for comparison and analysis.
+
+## User Personas
+- Internal user (validator or viewer): Reviews charts, checks coherence against planning/past orders/consumption data, and monitors results. The one with the "validator" right validates or rejects day-ahead order sets.
+- Admin: Manages users, roles, plant-level default behavior, and global configuration.
+
+## User Journey
+### Day-Ahead Review and Decision
+1. User logs into backoffice.
+2. User selects mode: `Review Market Orders` or `Review Market Results`.
+3. Dashboard highlights pending reviews/validations by plant, date, and horizon.
+4. User selects plant/date/horizon.
+5. Orders review view shows superimposed chart: production planning + market orders, with past/future shading (default visible window: 1 week in the past + 1 day in the future).
+6. User can quickly switch to a preset view showing 1 month in the past and can also set custom date limits.
+7. Each plant has a validation mode parameter: `manual` or `automatic`.
+8. If plant mode is `manual`, validator either:
+- Validates order set, or
+- Rejects order set and must provide reason.
+9. In `manual` mode, first reminder notification is sent to responsible validator one hour before deadline.
+10. If no validation exists close to deadline in `manual` mode, escalation notification is sent to all users.
+11. If still no validation by noon Europe/Paris in `manual` mode, plant-level default decision is applied automatically.
+12. If plant mode is `automatic`, produced order is auto-validated and one informational notification is sent to the responsible validator.
+13. System stores decision with plant, date, horizon, username/system actor, UTC timestamp, decision, optional rejection reason, and order-set identifier/hash.
+
+### Day-Ahead Results Comparison
+1. Around 13:00 Europe/Paris, day-ahead market results are pulled from API.
+2. User opens `Review Market Results` for plant/date/horizon.
+3. Chart displays planning + orders + results.
+4. Any non-zero delta between orders and results is highlighted with filled difference areas.
+5. No additional validation action is required at this stage.
+
+### Intraday Monitoring (v1)
+1. Intraday orders are sent to broker API per 15-minute timeslots (96 points/day).
+2. Intraday results are streamed by broker WebSocket (potential high-frequency updates).
+3. Backoffice provides visualization/comparison only for intraday in v1.
+4. No per-order intraday validation workflow in v1.
+
+## Functional Requirements
+### Must Have (P0)
+- Role-based access control with local users:
+- Roles: `admin`, `validator`, `viewer`.
+- Admin can assign per-plant responsible validator.
+- User authentication and password reset via email verification link (no admin direct reset).
+- Security defaults:
+- Minimum 12-character password.
+- Password hashing with bcrypt.
+- Session timeout after 8 hours.
+- Account lock after 5 failed login attempts.
+- Day-ahead review workspace:
+- Plant/date/horizon selection.
+- Pending status indicators.
+- Superimposed chart of planning and market orders.
+- Past vs future visual shading.
+- Default chart window: 1 week in the past + 1 day in the future.
+- Quick switch to 1-month-past preset and custom date limits.
+- Decision workflow:
+- Validate or reject (reject requires reason).
+- Store only the current effective decision if changed later.
+- Persist decision metadata including order-set identifier/hash.
+- Per-plant validation mode:
+- `manual`: order requires validation by a validator before noon Europe/Paris.
+- `automatic`: produced order is auto-validated by system.
+- Deadline automation:
+- Hard deadline at 12:00 Europe/Paris.
+- Per-plant default fallback action when pending:
+- Copy yesterday's orders, or
+- Buy nothing, or
+- Copy last week's orders.
+- In `manual` mode, if still pending at deadline, auto-default is applied.
+- If a broker-side order error arrives after send, validator has 30-minute correction window.
+- Results ingestion:
+- Day-ahead results pull once daily around 13:00 Europe/Paris.
+- Intraday results ingest via WebSocket stream.
+- Comparison visualization:
+- Display orders vs results with highlight for every non-zero delta.
+- Data retention:
+- Keep 3 years history for orders, results, planning, consumption, and decisions.
+- Notifications:
+- In `manual` mode, send first reminder 1 hour before deadline to responsible validator.
+- In `manual` mode, if still unvalidated close to deadline, send escalation notification to all users.
+- In `automatic` mode, send one informational notification to responsible validator when produced order is auto-validated.
+- Exactly one preferred channel per user (`email`, `Teams`, or `in-app`) or muted.
+
+Acceptance criteria (P0)
+- Given a pending day-ahead set at 11:00 Europe/Paris in `manual` mode, responsible validator receives one reminder on selected channel unless muted.
+- Given rejection action, system blocks submission without a non-empty reason.
+- Given `manual` mode and no validation by 12:00 Europe/Paris, configured plant default is applied automatically.
+- Given `manual` mode and no validation close to deadline, escalation notification is sent to all users.
+- Given `automatic` mode, produced order is auto-validated and one informational notification is sent to responsible validator.
+- Given results available, chart highlights every non-zero order-result difference.
+- Given day-ahead review view, chart defaults to 1 week past + 1 day future, and user can switch to 1-month-past or custom date limits.
+- Given a decision update, only latest decision is shown as effective current state.
+
+### Should Have (P1)
+- Dashboard summary cards by plant: pending, validated, rejected, auto-defaulted, and recent gap counts.
+- Advanced filtering (date range, horizon, decision status, user).
+- Quick links from alert notifications directly to relevant plant/date/horizon view.
+
+Acceptance criteria (P1)
+- User can filter backlog to find all rejected sets in a date range.
+- User can open a notification link and land on exact review context.
+
+### Nice to Have (P2)
+- Delta severity bands (small/medium/large) configurable per plant.
+- Bulk export (CSV) of charted comparison windows.
+- Lightweight anomaly annotations for intraday deltas.
+
+Acceptance criteria (P2)
+- Admin can export comparison data for external analysis.
+
+## Technical Architecture
+### Technology Choices
+- Frontend: Vue 3 + TypeScript.
+- Charting: Apache ECharts (Vue integration).
+- Backend API: FastAPI (Python).
+- Time-series storage: PostgreSQL + TimescaleDB.
+- Async/scheduled jobs: background worker for polling, deadlines, notifications.
+- Hosting target: Scaleway cloud.
+
+Rationale
+- Vue selected for faster onboarding with equivalent v1 output.
+- FastAPI aligns with existing Python project and API integration needs.
+- TimescaleDB supports long retention and efficient time-window analytics.
+
+### Data Model
+Core entities:
+- `plants`: plant metadata, fallback decision, alert mute settings, responsible validator.
+- `users`: identity, role, auth fields, notification preferences.
+- `day_ahead_order_sets`: plant/date/horizon, generated_at, source, hash/version, payload reference.
+- `day_ahead_decisions`: current effective decision for plant/date/horizon/order_set_hash.
+- `day_ahead_results`: timeseries points from market API.
+- `intraday_orders`: timeseries points sent to broker API.
+- `intraday_results`: timeseries points from broker WebSocket.
+- `planning_timeseries`: production planning points.
+- `consumption_timeseries`: past and predicted consumption points.
+- `notifications`: reminder/alert events and delivery status.
+
+### System Components
+- Ingestion component for CSV imports (planning, past consumption, historical orders as needed).
+- Broker integration component:
+- Send intraday orders to broker API.
+- Receive intraday results via WebSocket.
+- Pull day-ahead results daily.
+- Decision engine:
+- Enforces noon Europe/Paris deadline.
+- Applies per-plant default when pending.
+- Opens 30-minute correction window when broker error event indicates invalid orders.
+- Backoffice API:
+- Serves chart and decision data.
+- Applies RBAC checks.
+- Handles validation/rejection actions.
+- Notification service:
+- Reminder and escalation rules.
+- Channel-specific delivery (email/Teams/in-app).
+
+### Integrations
+- Market broker API for order submission and day-ahead result retrieval.
+- Broker order submission contract (confirmed): `POST /transactions/farm-cleared-volumes` with `MarketFarmTransactionsCreate` payload and `TransactionsCreateResponse` (`transactionIds`) on HTTP 200.
+- Broker retrieval contract (confirmed): `GET /transactions/farm-cleared-volumes` with date/farm/product/market filters for reconciliation views.
+- Broker auth contract (confirmed): OAuth2 bearer token with `write:transactions` (submit) and `read:transactions` (retrieve) scopes.
+- Broker WebSocket for intraday result stream.
+- Email service for reset links and email notifications.
+- Teams webhook/integration for Teams notifications.
+
+### Security Model
+- Local user auth for v1.
+- Password reset through email verification workflow.
+- RBAC: admin/validator/viewer permissions enforced server-side.
+- Session management with expiration.
+- Login attempt rate limiting and lockout policy.
+- Sensitive secrets (API tokens, SMTP credentials) managed through environment/secret manager.
+- Broker credentials strategy for integration:
+- Support direct bearer token and client-credentials token retrieval via OAuth2 token endpoint.
+- Enforce scope checks before API calls (`write:transactions`, `read:transactions`).
+
+## Non-Functional Requirements
+- Performance:
+- Day-ahead chart queries return in <2 seconds for default 1-week view.
+- Intraday stream ingestion tolerates bursty updates and persists with ordered timestamps.
+- Scalability:
+- Start at 1 plant and scale to 10 plants by 18 months without architecture rewrite.
+- Reliability:
+- 99.5% uptime target.
+- Idempotent ingestion for repeated broker/day-ahead pulls where possible.
+- Security:
+- Defaults as specified for auth and sessions.
+- Observability:
+- Structured logs and metrics for ingestion, deadline jobs, notifications, and API errors.
+- Data retention:
+- 3 years of time-series and decision-related records.
+
+## Out of Scope (v1)
+- Intraday per-order manual validation workflow.
+- Compliance program implementation (no explicit GDPR/SOC2 requirement in v1).
+- Multi-tenant architecture across separate organizations.
+- Advanced forecasting model changes (backoffice consumes model output, does not redesign model logic).
+
+## Open Questions for Implementation
+- Confirm production-approved OAuth2 flow for this tenant (`client_credentials` in integration code vs `authorizationCode` in published OpenAPI security flow) and finalize token renewal/rotation policy.
+- Clarify broker-side idempotency semantics for repeated `POST /transactions/farm-cleared-volumes` submissions (same payload resubmitted after timeout/error).
+- Define retry contract for submission failures (timeouts, 5xx, potential throttling/429) including backoff, max attempts, and final operator-facing state.
+- Clarify acknowledgement semantics for submission lifecycle: synchronous acceptance only (`transactionIds`) vs any delayed/partial processing outcomes and how they are surfaced.
+- Whether to keep a separate immutable audit log even when only latest effective decision is retained in business tables.
+
+## Appendix: Research Findings
+A brief architecture tradeoff pass was executed (no deep external research loop), resulting in these recommendations:
+- Vue is appropriate for onboarding speed while keeping equivalent v1 capability.
+- FastAPI + TimescaleDB is the lowest-friction path given existing Python codebase and time-series needs.
+- Separate day-ahead batch flow from intraday streaming flow to reduce operational coupling.
+
+Broker integration findings added on March 3, 2026 (from PR #40 and Aeolus OpenAPI v3.8.1):
+- Contract and endpoint mapping exist for farm cleared volume submission/retrieval.
+- OAuth2 token endpoint and transaction scopes are explicit and align with integration code direction.
+- Remaining gaps are operational semantics (idempotency, retry policy, and acknowledgement lifecycle behavior).
