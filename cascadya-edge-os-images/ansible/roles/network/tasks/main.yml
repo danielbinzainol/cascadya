@@ -1,0 +1,38 @@
+---
+- name: Install WireGuard
+  apt:
+    name:
+      - wireguard
+      - resolvconf
+    state: present
+
+- name: Enable IP Forwarding (Required for VPN)
+  sysctl:
+    name: net.ipv4.ip_forward
+    value: '1'
+    sysctl_set: yes
+    state: present
+    reload: yes
+
+# CRITICAL: This expects you to have created 'wg0.conf' in roles/network/files/
+- name: Deploy WireGuard Config
+  copy:
+    src: wg0.conf
+    dest: /etc/wireguard/wg0.conf
+    mode: '0600'
+    owner: root
+    group: root
+  notify: Restart WireGuard
+
+- name: Enable WireGuard Service
+  systemd:
+    name: wg-quick@wg0
+    enabled: yes
+    state: started
+
+# Handlers usually go in a separate handlers/main.yml, but we can keep it simple here
+  handlers:
+    - name: Restart WireGuard
+      service:
+        name: wg-quick@wg0
+        state: restarted

@@ -1,0 +1,49 @@
+---
+# playbooks/regen_broker_server.yml
+- name: Force regenerate broker leaf certs and deploy to Mosquitto
+  hosts: broker
+  become: true
+  gather_facts: true
+
+  vars:
+    vault_addr: "{{ lookup('env','VAULT_ADDR') | default('http://51.15.36.65:8200', true) }}"
+    vault_token: "{{ lookup('env','VAULT_TOKEN') }}"
+    vault_pki_mount: "pki_int"
+    vault_role: "broker"
+
+    local_root_ca: "{{ lookup('file', playbook_dir ~ '/../files/cascadya-root.crt') }}"
+
+    leaf_common_name: "vm-broker.cascadya.local"
+    leaf_ttl: "720h"
+    leaf_cert_dir: "/opt/mosquitto/ssl" # Attention : vérifie que ça match bien ton path docker
+    leaf_cert_name: "broker"
+    leaf_ca_name: "ca-chain"
+
+    leaf_fix_owner: true
+    leaf_owner: "root"
+    leaf_key_group: "root"
+    leaf_cert_mode: "0600"
+    leaf_key_mode: "0600"
+    renew_before_days: 10
+    archive_retention_days: 90
+
+  pre_tasks:
+    - name: Assert Vault token present
+      assert:
+        that:
+          - vault_token is defined
+          - vault_token | length > 0
+
+  tasks:
+    - name: Renew/deploy broker leaf via role pki
+      import_role:
+        name: pki
+        tasks_from: broker.yml
+      vars:
+        pki_root_ca_content: "{{ local_root_ca }}"
+
+    - name: Restart mosquitto container to apply new certificates
+      shell: docker restart mosquitto_broker
+      args:
+        executable: /bin/bash
+      changed_when: true

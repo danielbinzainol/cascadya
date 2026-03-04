@@ -1,0 +1,65 @@
+---
+- name: Install Base Packages
+  apt:
+    name:
+      - curl
+      - wget
+      - parted
+      - network-manager
+      - net-tools
+      - openssh-server
+      - sudo
+      - gnupg
+      - ca-certificates
+      - console-setup
+      - keyboard-configuration
+      - locales
+      - python3-pip
+      - python3-venv
+      - python3-full
+      # TPM / Security Tools
+      - tpm2-tools
+      - clevis
+      - clevis-tpm2
+      - clevis-luks
+      - cryptsetup
+    state: present
+    update_cache: yes
+    cache_valid_time: 3600
+
+# --- LOCALE & KEYBOARD (Recovered Task) ---
+- name: Configure Locale (FR)
+  locale_gen:
+    name: fr_FR.UTF-8
+    state: present
+
+- name: Configure Keyboard Layout (FR)
+  debconf:
+    name: keyboard-configuration
+    question: keyboard-configuration/layoutcode
+    value: 'fr'
+    vtype: string
+
+# --- DOCKER ---
+- name: Install Docker
+  shell: curl -fsSL https://get.docker.com | sh
+  args:
+    creates: /usr/bin/docker
+
+- name: Add user to Docker group
+  user:
+    name: "{{ target_user }}"
+    groups: docker
+    append: yes
+
+# --- HARDWARE WATCHDOG (Recovered Task) ---
+- name: Configure Watchdog Timeout
+  lineinfile:
+    path: /etc/systemd/system.conf
+    regexp: '^#?RuntimeWatchdogSec='
+    line: 'RuntimeWatchdogSec=60'
+
+- name: Enable Intel TCO Module
+  lineinfile:
+    path: /etc/modules
+    line: 'iTCO_wdt'

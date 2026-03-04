@@ -1,0 +1,10 @@
+---
+- name: Provision VM-Broker
+  hosts: broker
+  become: true
+
+  vars_files:
+    - ../group_vars/broker.yml
+
+  roles:
+    - role: ../roles/mosquitto

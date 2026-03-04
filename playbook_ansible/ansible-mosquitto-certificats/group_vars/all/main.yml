@@ -1,0 +1,13 @@
+vault_addr: "https://secrets.cascadya.com"
+vault_token: "{{ lookup('env','VAULT_TOKEN') }}"
+
+vault_pki_mount: "pki_int"
+vault_role_broker: "broker"
+
+broker_common_name: "vm-broker.cascadya.local"
+broker_ip_sans:
+  - "51.15.64.139"
+
+cert_dir: "/opt/mosquitto/ssl"
+renew_before_days: 10
+archive_retention_days: 90

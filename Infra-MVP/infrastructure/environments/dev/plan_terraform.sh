@@ -1,0 +1,79 @@
+#!/bin/bash
+# ==========================================================
+# Script : plan_terraform.sh
+# Objective: Safely plan infrastructure changes and save to tfplan
+# ==========================================================
+
+set -e
+
+# === Configuration ===
+export VAULT_ADDR="https://secrets.cascadya.com"
+export VAULT_SKIP_VERIFY=true
+
+# === Credentials Logic ===
+if [ -n "$SCW_ACCESS_KEY" ] && [ -n "$SCW_SECRET_KEY" ]; then
+    echo "🚀 Manual mode: Using environment keys."
+    ACCESS_KEY="$SCW_ACCESS_KEY"
+    SECRET_KEY="$SCW_SECRET_KEY"
+    ROLE_ID="manual_override"
+    SECRET_ID="manual_override"
+else
+    echo "🔑 Connecting to Vault..."
+    if [ ! -f "./secure/role_id.txt" ] || [ ! -f "./secure/secret_id.txt" ]; then
+        echo "❌ Error: role_id.txt or secret_id.txt not found in ./secure/"
+        exit 1
+    fi
+    ROLE_ID=$(tr -d '\r\n' < ./secure/role_id.txt)
+    SECRET_ID=$(tr -d '\r\n' < ./secure/secret_id.txt)
+
+    LOGIN_RESPONSE=$(curl -s --request POST --data "{\"role_id\": \"$ROLE_ID\", \"secret_id\": \"$SECRET_ID\"}" $VAULT_ADDR/v1/auth/approle/login)
+    VAULT_TOKEN=$(echo $LOGIN_RESPONSE | jq -r '.auth.client_token')
+
+    if [ "$VAULT_TOKEN" == "null" ] || [ -z "$VAULT_TOKEN" ]; then
+      echo "❌ Error: Failed to get Vault token."
+      exit 1
+    fi
+
+    RESPONSE=$(curl -s -H "X-Vault-Token: $VAULT_TOKEN" $VAULT_ADDR/v1/secret/data/scaleway)
+    ACCESS_KEY=$(echo $RESPONSE | jq -r '.data.data.access_key')
+    SECRET_KEY=$(echo $RESPONSE | jq -r '.data.data.secret_key')
+    echo "✅ Vault connection successful."
+fi
+
+# === Dynamic Backend Generation ===
+echo "⚙️ Generating backend config..."
+cat > backend.auto.tfbackend <<BACKEND_CONFIG
+bucket                      = "terraform-state-cascadya"
+key                         = "terraform/terraform.tfstate"
+region                      = "nl-ams"
+endpoints                   = { s3 = "https://s3.nl-ams.scw.cloud" }
+use_path_style              = true
+skip_credentials_validation = true
+skip_region_validation      = true
+skip_metadata_api_check     = true
+skip_requesting_account_id  = true
+access_key                  = "$ACCESS_KEY"
+secret_key                  = "$SECRET_KEY"
+BACKEND_CONFIG
+
+export AWS_ACCESS_KEY_ID="$ACCESS_KEY"
+export AWS_SECRET_ACCESS_KEY="$SECRET_KEY"
+export AWS_DEFAULT_REGION="nl-ams"
+export AWS_S3_FORCE_PATH_STYLE=true
+export AWS_ENDPOINT_URL_S3="https://s3.nl-ams.scw.cloud"
+
+# === Init and Plan ===
+echo "🔄 Initializing Terraform..."
+terraform init -reconfigure
+
+echo "📋 Executing Plan..."
+# Notice we are saving the output to 'tfplan'
+terraform plan -out=tfplan -var="vault_role_id=$ROLE_ID" -var="vault_secret_id=$SECRET_ID"
+
+# === Cleanup ===
+unset ROLE_ID SECRET_ID VAULT_TOKEN ACCESS_KEY SECRET_KEY SCW_ACCESS_KEY SCW_SECRET_KEY
+rm -f backend.auto.tfbackend
+
+echo ""
+echo "✅ Plan generated successfully. Please review the output above."
+echo "If the changes look safe (no unwanted red -/+ symbols), run ./apply_terraform.sh"

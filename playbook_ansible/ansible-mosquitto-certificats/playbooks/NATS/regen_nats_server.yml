@@ -1,0 +1,20 @@
+---
+- name: Génération et déploiement des certificats mTLS pour NATS
+  hosts: broker
+  become: yes
+  vars:
+    # Tu peux définir ici des variables spécifiques si ton rôle le permet,
+    # par exemple le dossier de destination des certificats pour NATS.
+    # pki_dest_dir: "/opt/nats/certs" 
+  
+  roles:
+    - role: pki
+      tasks_from: deps
+    - role: pki
+      tasks_from: broker
+
+  post_tasks:
+    - name: Assurer que les permissions sont bonnes pour le conteneur NATS
+      file:
+        path: "/home/ubuntu/server.key" # À adapter selon où ton rôle crache la clé
+        mode: '0644'

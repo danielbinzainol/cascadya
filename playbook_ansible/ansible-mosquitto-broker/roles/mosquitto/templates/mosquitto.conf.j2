@@ -1,0 +1,40 @@
+# Persistence
+persistence true
+persistence_location /mosquitto/data/
+
+# Logging
+log_dest file /mosquitto/log/mosquitto.log
+log_dest stdout
+log_type all  # NOUVEAU : Affiche CHAQUE message et abonnement
+
+# --- Secure Listener (Port 8883) ---
+listener 8883
+cafile /mosquitto/certs/ca.crt
+certfile /mosquitto/certs/server.crt
+keyfile /mosquitto/certs/server.key
+
+# Security: Enforce mTLS for incoming clients
+require_certificate true
+use_identity_as_username true
+
+# =================================================================
+# Bridge to ThingsBoard (Private Network)
+# =================================================================
+connection bridge-to-tb
+address {{ thingsboard_private_ip }}:1883
+bridge_protocol_version mqttv311
+
+# --- LA CLÉ DU SUCCÈS ---
+remote_username {{ thingsboard_device_token }}
+remote_clientid {{ thingsboard_device_token }}  # On matche le Token ici aussi
+# ------------------------
+
+notifications false
+try_private false
+start_type automatic
+cleansession true
+
+topic v1/devices/me/telemetry out 1
+topic v1/devices/me/attributes out 1
+topic v1/devices/me/rpc/request/+ in 1
+topic v1/devices/me/rpc/response/+ out 1

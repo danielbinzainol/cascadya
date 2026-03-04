@@ -1,0 +1,169 @@
+---
+# playbooks/force_regen_mtls.yml
+# CORRIGÉ : Injection du Root CA local pour une chaîne complète
+
+- name: Force regenerate broker leaf certs and deploy to Mosquitto
+  hosts: broker
+  become: true
+  gather_facts: true
+
+  vars:
+    vault_addr: "{{ lookup('env','VAULT_ADDR') }}"
+    vault_token: "{{ lookup('env','VAULT_TOKEN') }}"
+    vault_pki_mount: "pki_int"
+    vault_role: "broker"
+
+    # Lecture du Root CA depuis le contrôleur (WSL)
+    # Assurez-vous que le fichier est bien dans <racine_ansible>/files/cascadya-root.crt
+    local_root_ca: "{{ lookup('file', playbook_dir ~ '/../files/cascadya-root.crt') }}"
+
+    leaf_common_name: "vm-broker.cascadya.local"
+    leaf_ttl: "720h"
+    leaf_cert_dir: "/opt/mosquitto/ssl"
+    leaf_cert_name: "broker"
+    leaf_ca_name: "ca-chain"
+
+    leaf_fix_owner: true
+    leaf_owner: "root"
+    leaf_key_group: "root"
+    leaf_cert_mode: "0600"
+    leaf_key_mode: "0600"
+
+    renew_before_days: 10
+    archive_retention_days: 90
+
+    # Healthcheck settings
+    hc_enabled: true
+    hc_vault_role: "devices-role"
+    hc_common_name: "healthcheck.vm-broker.cascadya.local"
+    hc_ttl: "720h"
+    hc_dir: "/opt/mosquitto/clients"
+    hc_cert: "client.crt"
+    hc_key: "client.key"
+    hc_ca: "ca-chain.crt"
+
+  pre_tasks:
+    - name: Assert Vault token present
+      assert:
+        that:
+          - vault_token is defined
+          - vault_token | length > 0
+
+  tasks:
+    - name: Renew/deploy broker leaf via role pki
+      import_role:
+        name: pki
+        tasks_from: broker.yml
+      vars:
+        # On passe le contenu du Root CA au rôle
+        pki_root_ca_content: "{{ local_root_ca }}"
+
+    # --- Healthcheck (Client local pour test mTLS) ---
+    
+    - name: Ensure healthcheck client directory exists
+      file:
+        path: "{{ hc_dir }}"
+        state: directory
+        mode: "0755"
+      when: hc_enabled
+
+    - name: Issue healthcheck client cert from Vault
+      uri:
+        url: "{{ vault_addr }}/v1/{{ vault_pki_mount }}/issue/{{ hc_vault_role }}"
+        method: POST
+        headers:
+          X-Vault-Token: "{{ vault_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          common_name: "{{ hc_common_name }}"
+          ttl: "{{ hc_ttl }}"
+        return_content: true
+      register: hc_issue
+      when: hc_enabled
+
+    - name: Write healthcheck client cert/key/chain
+      copy:
+        dest: "{{ item.dest }}"
+        content: "{{ item.content }}"
+        owner: "root"
+        group: "root"
+        mode: "{{ item.mode }}"
+      loop:
+        - { dest: "{{ hc_dir }}/{{ hc_cert }}", content: "{{ hc_issue.json.data.certificate }}", mode: "0644" }
+        - { dest: "{{ hc_dir }}/{{ hc_key }}",  content: "{{ hc_issue.json.data.private_key }}", mode: "0600" }
+        # CORRECTION : On construit la chaîne complète (Intermediate + Root)
+        - { dest: "{{ hc_dir }}/{{ hc_ca }}",   content: "{{ (hc_issue.json.data.ca_chain | join('\n')) }}\n{{ local_root_ca }}", mode: "0644" }
+      when: hc_enabled
+
+    - name: Restart mosquitto container
+      shell: docker restart mosquitto_broker
+      args:
+        executable: /bin/bash
+      changed_when: true
+      # On redémarre systématiquement pour être sûr que le broker a pris les nouveaux certs
+
+    - name: Verify mTLS handshake (Robust)
+      shell: |
+        set -euo pipefail
+        # On utilise le Root CA complet pour vérifier le serveur
+        out="$(openssl s_client -connect localhost:8883 \
+          -CAfile "{{ hc_dir }}/{{ hc_ca }}" \
+          -cert  "{{ hc_dir }}/{{ hc_cert }}" \
+          -key   "{{ hc_dir }}/{{ hc_key }}" \
+          -verify_return_error -showcerts </dev/null 2>&1 || true)"
+        
+        if echo "$out" | grep -q "Verify return code: 0 (ok)"; then
+          exit 0
+        else
+          echo "mTLS FAILED. Output:"
+          echo "$out"
+          exit 1
+        fi
+      args:
+        executable: /bin/bash
+      changed_when: false
+      when: hc_enabled
+
+
+- name: Force regenerate client leaf certs and deploy to edge
+  hosts: edge
+  become: true
+  gather_facts: true
+
+  vars:
+    vault_addr: "{{ lookup('env','VAULT_ADDR') | default('https://secrets.cascadya.com', true) }}"
+    vault_token: "{{ lookup('env','VAULT_TOKEN') }}"
+    vault_pki_mount: "pki_int"
+    vault_role: "devices-role"
+    
+    # Lecture du Root CA localement aussi pour le edge
+    local_root_ca: "{{ lookup('file', playbook_dir ~ '/../files/cascadya-root.crt') }}"
+
+    leaf_common_name: "{{ inventory_hostname }}.cascadya.local"
+    leaf_ttl: "720h"
+    leaf_cert_dir: "/opt/mosquitto/clients"
+    leaf_cert_name: "client"
+    leaf_ca_name: "ca-chain"
+    leaf_fix_owner: true
+    leaf_owner: "root"
+    leaf_key_group: "root"
+    leaf_cert_mode: "0644"
+    leaf_key_mode: "0600"
+    renew_before_days: 10
+    archive_retention_days: 90
+
+  pre_tasks:
+    - name: Assert Vault token present
+      assert:
+        that:
+          - vault_token is defined
+
+  tasks:
+    - name: Renew/deploy device leaf via role pki
+      import_role:
+        name: pki
+        tasks_from: edge.yml
+      vars:
+        # On passe le contenu du Root CA au rôle (via edge.yml -> broker.yml)
+        pki_root_ca_content: "{{ local_root_ca }}"

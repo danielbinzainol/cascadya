@@ -1,0 +1,29 @@
+# --- Packer & Build Artifacts ---
+# Cache des ISOs téléchargés
+packer_cache/
+
+# Dossiers de sortie (Les images générées)
+output-debian-base/
+output-final/
+output-*/
+
+# Fichiers binaires et temporaires
+*.iso
+*.img
+*.lock
+*.exe
+*.log
+*.fd
+
+# Clés SSH temporaires (Sécurité !)
+*.pem
+*.pub
+key
+authorized_keys
+
+# Système
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+*.log

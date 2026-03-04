@@ -1,0 +1,30 @@
+# group_vars/broker.yml
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') }}"
+vault_token: "{{ lookup('env', 'VAULT_TOKEN') }}"
+
+# Vault Paths
+vault_pki_mount: "pki_int"
+vault_pki_role: "broker"
+
+# Keep the FQDN as an identifier, or change it. 
+# It matters less if we have the IP SAN.
+broker_fqdn: "vm-broker.cascadya.local"
+broker_alt_names: "mosquitto.cascadya.internal,10.42.1.6,51.15.64.139"
+broker_ip_san: "51.15.64.139" 
+
+
+# --- ThingsBoard Bridge Configuration ---
+thingsboard_private_ip: "10.42.1.2"
+thingsboard_device_token: "PuW9IQkIZ18U1m3nLlIm"
+thingsboard_mqtt_port: 1883
+
+# Mosquitto User/Group
+mosquitto_uid: 1883
+mosquitto_gid: 1883
+
+# Paths
+mosquitto_root: "/opt/mosquitto"
+mosquitto_certs_dir: "{{ mosquitto_root }}/certs"
+mosquitto_data_dir: "{{ mosquitto_root }}/data"
+mosquitto_config_dir: "{{ mosquitto_root }}/config"
+traefik_root: "/opt/traefik-gateway"

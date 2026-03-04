@@ -1,0 +1,28 @@
+# === Terraform fichiers à ignorer ===
+.terraform/
+.terraform.*
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+.terraform.lock.hcl
+terraform.tfvars
+*.auto.tfvars
+.env
+.envrc
+*.bak
+*.tmp
+*.swp
+*.backup
+.DS_Store
+Thumbs.db
+
+# === Sensitive project files ===
+secure/*.txt         # Vault AppRole credentials
+var.*                # old Scaleway secrets (now handled by Vault)
+backend.auto.tfbackend  # backend configuration generated dynamically
+
+# === Logs and temp files ===
+*.log
+*.old
+*.tfplan

@@ -1,0 +1,20 @@
+# etcsystemdsystemdispatch_private.service
+[Unit]
+Description=Private MQTT Smart Dispatcher
+After=network.target docker.service
+
+[Service]
+User=ubuntu
+WorkingDirectory=homeubuntupython_scripts
+ExecStart=usrbinpython3 -u homeubuntupython_scriptsdispatch_private.py
+
+# Auto-restart logic
+Restart=always
+RestartSec=5
+
+# Logging Systemd will handle this cleanly
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

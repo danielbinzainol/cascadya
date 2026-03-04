@@ -1,0 +1,59 @@
+---
+- name: Create Agent Directory
+  file:
+    path: /opt/cascadya-agent
+    state: directory
+    mode: '0755'
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"
+
+- name: Create Certs Directory
+  file:
+    path: /etc/cascadya/certs
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+
+# --- CERTIFICATES ---
+- name: Deploy Certificates
+  copy:
+    src: "certs/{{ item.src }}"
+    dest: "/etc/cascadya/certs/{{ item.dest }}"
+    mode: "{{ item.mode }}"
+    owner: root
+    group: root
+  loop:
+    - { src: 'device.crt', dest: 'device.crt', mode: '0644' }
+    - { src: 'device.key', dest: 'device.key', mode: '0600' }
+    - { src: 'ca.crt',     dest: 'ca.crt',     mode: '0644' }
+    # Optional: If you use the chain file separately
+    #- { src: 'chain.crt',  dest: 'chain.crt',  mode: '0644' }
+
+# --- APPLICATION CODE ---
+- name: Deploy Agent Source Code
+  copy:
+    src: src/
+    dest: /opt/cascadya-agent/
+    owner: "{{ target_user }}"
+    group: "{{ target_user }}"
+    # This copies the *contents* of src/ (agent/, main.py, etc.) into /opt/cascadya-agent/
+
+- name: Install Python Requirements
+  pip:
+    requirements: /opt/cascadya-agent/requirements.txt
+    virtualenv: /opt/cascadya-agent/venv
+    virtualenv_command: python3 -m venv
+
+- name: Deploy Systemd Service
+  copy:
+    src: src/cascadya-agent.service
+    dest: /etc/systemd/system/cascadya-agent.service
+    mode: '0644'
+
+- name: Enable and Start Agent
+  systemd:
+    name: cascadya-agent
+    enabled: yes
+    state: restarted
+    daemon_reload: yes

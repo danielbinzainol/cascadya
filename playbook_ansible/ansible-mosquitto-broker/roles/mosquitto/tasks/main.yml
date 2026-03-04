@@ -1,0 +1,100 @@
+# roles/mosquitto/tasks/main.yml
+---
+# --- Phase 1: System Prep ---
+- name: Install docker and system utilities
+  apt:
+    name:
+      - docker.io
+      - docker-compose  # Install the binary directly (bypasses Python build issues)
+      - python3-pip
+    update_cache: yes
+    state: present
+
+- name: Install docker sdk for Python
+  pip:
+    name: 
+      - "docker<7.0"    # Keeps 'http+docker' compatibility
+      - "requests"
+      - "urllib3<2.0"
+    state: present
+    # Removed 'docker-compose' from here to avoid PyYAML build errors
+
+- name: Start docker service
+  systemd:
+    name: docker
+    state: started
+    enabled: true
+
+# --- Phase 2: Storage & Dirs ---
+- name: Create project directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+    owner: "{{ mosquitto_uid }}"
+    group: "{{ mosquitto_gid }}"
+  loop:
+    - "{{ mosquitto_config_dir }}"
+    - "{{ mosquitto_data_dir }}"
+    - "{{ mosquitto_root }}/log"
+
+- name: Create Traefik directory
+  file:
+    path: "{{ traefik_root }}"
+    state: directory
+    mode: '0755'
+
+# --- Phase 3: Certificates ---
+- import_tasks: vault.yml
+
+
+# ... Phases 1, 2, 3 remain unchanged ...
+
+# --- Phase 4: Configuration & Stack ---
+
+- name: Generate Mosquitto Config from Template
+  template:
+    src: mosquitto.conf.j2
+    dest: "{{ mosquitto_config_dir }}/mosquitto.conf"
+    owner: "{{ mosquitto_uid }}"
+    group: "{{ mosquitto_gid }}"
+    mode: "0644"
+  notify: Restart Mosquitto Broker  # Trigger handler on change
+
+- name: Create docker-compose.yml
+  template:  # Changed from copy to template for consistency
+    src: docker-compose.yml.j2
+    dest: "{{ traefik_root }}/docker-compose.yml"
+    mode: "0644"
+
+# ... Phases 5 & 6 remain unchanged ...
+# --- Phase 5: Launch ---
+- name: Tear down old VerneMQ
+  shell: "docker rm -f vernemq || true"
+  changed_when: false
+  ignore_errors: true
+
+- name: Deploy Secure Gateway Stack (Shell)
+  shell: "docker-compose up -d --remove-orphans"
+  args:
+    chdir: "{{ traefik_root }}"
+  register: compose_output
+  changed_when: "'Creating' in compose_output.stderr or 'Recreating' in compose_output.stderr"
+
+# --- Phase 6: Verification ---
+- name: Wait for Mosquitto to start listening on 8883
+  wait_for:
+    port: 8883
+    delay: 5
+    timeout: 30
+
+- name: Verify mTLS Handshake (Local Check)
+  shell: |
+    openssl s_client -connect localhost:8883 \
+      -CAfile {{ mosquitto_certs_dir }}/ca.crt \
+      -cert {{ mosquitto_certs_dir }}/server.crt \
+      -key {{ mosquitto_certs_dir }}/server.key \
+      -verify_return_error </dev/null
+  register: mtls_check
+  changed_when: false
+  ignore_errors: true

@@ -1,0 +1,47 @@
+---
+# playbooks/regen_edge_clients.yml
+- name: Force regenerate client leaf certs and deploy to edge
+  hosts: edge
+  become: true
+  gather_facts: true
+
+  vars:
+    # URL Vault (Fallback si la variable d'environnement n'est pas chargée)
+    vault_addr: "{{ lookup('env','VAULT_ADDR') | default('http://51.15.36.65:8200', true) }}"
+    vault_token: "{{ lookup('env','VAULT_TOKEN') }}"
+    vault_pki_mount: "pki_int"
+    vault_role: "devices-role"
+    
+    # Lecture du Root CA depuis ton poste de contrôle (WSL)
+    local_root_ca: "{{ lookup('file', playbook_dir ~ '/../files/cascadya-root.crt') }}"
+
+    # Configuration du certificat Client
+    leaf_common_name: "{{ inventory_hostname }}.cascadya.local"
+    leaf_ttl: "720h"
+    leaf_cert_dir: "/opt/mosquitto/clients"
+    leaf_cert_name: "client"
+    leaf_ca_name: "ca-chain"
+    leaf_fix_owner: true
+    leaf_owner: "root"
+    leaf_key_group: "root"
+    leaf_cert_mode: "0644"
+    leaf_key_mode: "0600"
+    renew_before_days: 10
+    archive_retention_days: 90
+
+  pre_tasks:
+    - name: Assert Vault token present
+      assert:
+        that:
+          - vault_token is defined
+          - vault_token | length > 0
+        fail_msg: "ERREUR: Le VAULT_TOKEN n'est pas defini dans ton environnement."
+
+  tasks:
+    - name: Renew/deploy device leaf via role pki
+      import_role:
+        name: pki
+        tasks_from: edge.yml
+      vars:
+        # On passe le contenu du Root CA au rôle pour construire la chaîne
+        pki_root_ca_content: "{{ local_root_ca }}"

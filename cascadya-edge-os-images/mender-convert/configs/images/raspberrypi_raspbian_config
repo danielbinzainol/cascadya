@@ -1,0 +1,32 @@
+# Real life SD cards typically have less than they advertise. First off, they
+# often use a base of 1000 instead of 1024, and even then they are often smaller
+# than advertised. The number below is based on a conservative target of 7.9GB
+# (that's mathematical GB, base 1000), converted to MiB, rounding down.
+MENDER_STORAGE_TOTAL_SIZE_MB=7534
+
+# Use all there is, which gets us almost, but not quite, to 500MiB free space
+# (about 480MiB at the time of writing).
+IMAGE_ROOTFS_SIZE=-1
+IMAGE_ROOTFS_EXTRA_SPACE=0
+IMAGE_OVERHEAD_FACTOR=1.0
+
+# Best compression there is!
+MENDER_COMPRESS_DISK_IMAGE=lzma
+
+# MEN-4256: Do not install the mender-client by default in our images
+MENDER_CLIENT_INSTALL="n"
+
+#
+# Allow APT Suite change in the release info
+#
+# Upstream repository http://raspbian.raspberrypi.org/raspbian has changed buster
+# release suite from "stable" to "oldstable". The following configuration option
+# allows APT to update without user interaction.
+# This is the default un newer versions of apt, see:
+#   https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=931566
+#
+function apt_allow_release_change_suite() {
+    run_and_log_cmd "echo 'Acquire::AllowReleaseInfoChange::Suite \"true\";' \
+                     | sudo tee work/rootfs/etc/apt/apt.conf.d/99release-change-suite"
+}
+PLATFORM_MODIFY_HOOKS+=(apt_allow_release_change_suite)

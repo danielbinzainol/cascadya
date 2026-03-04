@@ -1,0 +1,56 @@
+# roles/mosquitto/tasks/vault.yml
+---
+- name: Read Local Root CA
+  set_fact:
+    local_root_ca: "{{ lookup('file', playbook_dir ~ '/../files/cascadya-root.crt') }}"
+  delegate_to: localhost
+
+- name: Issue cert from Vault (Delegated to Localhost)
+  uri:
+    url: "{{ vault_addr }}/v1/{{ vault_pki_mount }}/issue/{{ vault_pki_role }}"
+    method: POST
+    headers:
+      X-Vault-Token: "{{ vault_token }}"
+    body_format: json
+    body:
+      common_name: "{{ broker_fqdn }}"
+      alt_names: "{{ broker_alt_names }}"
+      ttl: "720h"
+    return_content: yes
+  register: vault_cert
+  delegate_to: localhost
+
+- name: Ensure Mosquitto certs directory exists
+  file:
+    path: "{{ mosquitto_certs_dir }}"
+    state: directory
+    owner: "{{ mosquitto_uid }}"
+    group: "{{ mosquitto_gid }}"
+    mode: "0755"
+
+- name: Write Server Certificate (server.crt)
+  copy:
+    content: "{{ vault_cert.json.data.certificate }}"
+    dest: "{{ mosquitto_certs_dir }}/server.crt"
+    owner: "{{ mosquitto_uid }}"
+    group: "{{ mosquitto_gid }}"
+    mode: "0644"
+
+- name: Write Private Key (server.key)
+  copy:
+    content: "{{ vault_cert.json.data.private_key }}"
+    dest: "{{ mosquitto_certs_dir }}/server.key"
+    owner: "{{ mosquitto_uid }}"
+    group: "{{ mosquitto_gid }}"
+    mode: "0600"
+
+- name: Write Full CA Chain (ca.crt)
+  copy:
+    # Concatenate: Issuing CA (Intermediate) + Local Root CA
+    content: |
+      {{ vault_cert.json.data.issuing_ca }}
+      {{ local_root_ca }}
+    dest: "{{ mosquitto_certs_dir }}/ca.crt"
+    owner: "{{ mosquitto_uid }}"
+    group: "{{ mosquitto_gid }}"
+    mode: "0644"

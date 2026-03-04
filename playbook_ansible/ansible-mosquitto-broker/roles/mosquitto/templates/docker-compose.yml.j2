@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  traefik:
+    image: traefik:v2.10
+    container_name: traefik_gateway
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.mqtt.address=:8883"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8883:8883"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    # Note: Traefik does NOT need certs here because of tls.passthrough=true
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: mosquitto_broker
+    restart: unless-stopped
+    user: "{{ mosquitto_uid }}:{{ mosquitto_gid }}"
+    volumes:
+      # Config
+      - "{{ mosquitto_config_dir }}/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro"
+      # Data & Logs
+      - "{{ mosquitto_data_dir }}:/mosquitto/data"
+      - "{{ mosquitto_root }}/log:/mosquitto/log"
+      # Certs (From Vault)
+      - "{{ mosquitto_certs_dir }}:/mosquitto/certs:ro"
+    labels:
+      - "traefik.enable=true"
+      # TCP Router (HostSNI `*` is required for non-HTTP TCP routing)
+      - "traefik.tcp.routers.mqtt.rule=HostSNI(`*`)"
+      - "traefik.tcp.routers.mqtt.entrypoints=mqtt"
+      - "traefik.tcp.routers.mqtt.service=mqtt"
+      # PASSTHROUGH: Traffic stays encrypted until it hits Mosquitto
+      - "traefik.tcp.routers.mqtt.tls.passthrough=true"
+      # Forward to the internal Mosquitto secure port
+      - "traefik.tcp.services.mqtt.loadbalancer.server.port=8883"

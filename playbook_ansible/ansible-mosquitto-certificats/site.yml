@@ -1,0 +1,4 @@
+- hosts: broker
+  become: true
+  roles:
+    - pki

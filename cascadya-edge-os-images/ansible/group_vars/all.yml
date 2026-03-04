@@ -1,0 +1,16 @@
+---
+# User Configuration
+target_user: "cascadya"
+
+# SSH Hardening
+ssh_permit_root_login: "no"
+ssh_allow_groups: "sudo"
+ssh_use_pam: "yes"
+
+# OS Hardening
+os_security_users_allow: ['root', 'cascadya']
+sysctl_overwrite:
+  kernel.sysrq: 1
+
+# Network
+wireguard_port: 51820

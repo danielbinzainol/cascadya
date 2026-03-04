@@ -1,0 +1,50 @@
+# Use UEFI -> GRUB boot-loader integration
+#
+# On ARM, U-boot is used as UEFI (EFI) provider
+#
+# Only disable this if you know what you are doing
+MENDER_GRUB_EFI_INTEGRATION=y
+
+# Integrate with /etc/grub.d boot scripts.
+#
+# This has no effect unless MENDER_GRUB_EFI_INTEGRATION is enabled. Default is
+# auto, in which case it will be detected. This is only supported for x86_64
+# platforms at the moment.
+MENDER_GRUB_D_INTEGRATION=auto
+
+# Version of GRUB to use. Note that there needs to be a precompiled version
+# available at the MENDER_STORAGE_URL download source.
+GRUB_VERSION=2.12
+
+# Specific Linux kernel boot arguments
+#
+# Typically you would read the content of /proc/cmdline on a "golden image"
+# add the appropriate arguments here.
+#
+# This will override the defaults set by by grub-mender-grubenv, if not an
+# empty string
+MENDER_GRUB_KERNEL_BOOT_ARGS=""
+
+# grub-mender-grubenv is the Mender integration for the GRUB bootloader
+MENDER_GRUBENV_VERSION="e4cdd9db213de15e79576b40fd3f07736ac85709"
+MENDER_GRUBENV_URL="${MENDER_GITHUB_ORG}/grub-mender-grubenv/archive/${MENDER_GRUBENV_VERSION}.tar.gz"
+
+# Type of kernel (bzImage or zImage)
+#
+# mender-convert will try to determine this value on its own, only set this
+# if was not possible to auto-detect
+MENDER_GRUB_KERNEL_IMAGETYPE=""
+
+# Type of initrd image
+#
+# mender-convert will try to determine this value on its own, only set this
+# if was not possible to auto-detect
+MENDER_GRUB_INITRD_IMAGETYPE=""
+
+MENDER_GRUB_BINARY_STORAGE_URL="${MENDER_STORAGE_URL}/grub-mender-grubenv/grub-efi/${GRUB_VERSION}-grub-mender-grubenv-${MENDER_GRUBENV_VERSION}"
+
+# Ignore broken UEFI support in certain U-Boot versions (see MEN-2404)
+MENDER_IGNORE_UBOOT_BROKEN_UEFI="0"
+
+# Ignore missing EFI stub on ARM (see MEN-2404)
+MENDER_IGNORE_MISSING_EFI_STUB="0"

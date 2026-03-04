@@ -1,0 +1,19 @@
+# Ignorer les certificats générés
+*.crt
+*.key
+*.pem
+*.csr
+
+# Ignorer les dossiers de certificats locaux
+**/files/*.crt
+**/files/*.key
+
+# Ansible & Python
+*.retry
+__pycache__/
+venv/
+.venv/
+.ansible_cache/
+
+# Divers
+.DS_Store
