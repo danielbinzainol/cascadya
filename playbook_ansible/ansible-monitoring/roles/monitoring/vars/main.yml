@@ -1,0 +1,8 @@
+docker_compose_version: "2.29.2"
+
+prometheus_image: "prom/prometheus:latest"
+grafana_image: "grafana/grafana:latest"
+loki_image: "grafana/loki:2.9.3"
+promtail_image: "grafana/promtail:2.9.3"
+
+monitoring_dir: "/opt/monitoring"

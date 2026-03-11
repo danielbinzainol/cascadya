@@ -1,0 +1,6 @@
+---
+- name: Install Docker
+  include_tasks: install_docker.yml
+
+- name: Deploy monitoring stack
+  include_tasks: deploy_stack.yml

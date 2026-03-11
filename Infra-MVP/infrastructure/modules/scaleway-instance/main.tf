@@ -44,9 +44,12 @@ resource "scaleway_instance_server" "server" {
   
 additional_volume_ids = [scaleway_block_volume.data_volume.id]
 security_group_id = var.security_group_id
-private_network {
-  pn_id = var.private_network_id
-}
+dynamic "private_network" {
+    for_each = var.private_network_id != null ? [var.private_network_id] : []
+    content {
+      pn_id = private_network.value
+    }
+  }
 
   tags = ["terraform", var.instance_type]
 }

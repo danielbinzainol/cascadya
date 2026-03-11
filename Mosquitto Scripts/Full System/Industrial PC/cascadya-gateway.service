@@ -1,0 +1,15 @@
+[Unit]
+Description=Cascadya SteamSwitch - Edge Gateway (Commandes)
+After=network.target
+
+[Service]
+Type=simple
+User=cascadya
+WorkingDirectory=/home/cascadya/python_scripts
+# Assure-toi que le chemin pointe vers l'environnement virtuel si tu en utilises un
+ExecStart=/home/cascadya/python_scripts/venv/bin/python3 gateway_modbus_sbc.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

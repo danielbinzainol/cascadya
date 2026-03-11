@@ -277,7 +277,7 @@ module "monitoring" {
   zone                = local.scw_zone
 
   security_group_id   = module.network.security_group_id
-  private_network_id  = module.network.private_network_ids["app"]
+  private_network_id  = module.network.private_network_ids["data"]
 
   data_volume_size_gb = 10   # si tu veux stocker Loki localement
   user_data           = local.user_data_common
@@ -300,6 +300,19 @@ module "broker" {
 
 }
 
+# -------------------------------------------------------------
+# Module Telemetry Database (Timescale / PostgreSQL)
+# -------------------------------------------------------------
+module "telemetry_db" {
+  source             = "../../modules/telemetry-db"
+  region             = local.scw_region
+  private_network_id = module.network.private_network_ids["data"]
+
+  db_user     = "cascadya"
+  db_password = "C4sc4dy4_Louvre!!2025" # Change ceci par un mot de passe fort
+  db_name     = "cascadya_telemetry"
+  node_type   = "DB-DEV-S"
+}
 
 # -------------------------------------------------------------
 # Sorties
@@ -339,4 +352,20 @@ output "wireguard_ipv4" {
 output "monitoring_ipv4" {
   description = "Adresse IPv4 publique de la VM Monitoring"
   value       = module.monitoring.ip_address
+}
+
+# -------------------------------------------------------------
+# Sorties de la base de données Telemetry
+# -------------------------------------------------------------
+output "telemetry_db_host" {
+  value       = module.telemetry_db.db_host
+  description = "Adresse IP interne de la base PostgreSQL Telemetry"
+}
+
+output "telemetry_db_port" {
+  value       = module.telemetry_db.db_port
+}
+
+output "telemetry_db_name" {
+  value       = module.telemetry_db.db_name
 }

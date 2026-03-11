@@ -1,0 +1,19 @@
+[Unit]
+Description=Serveur Modbus TCP Simulateur (Modular Architecture)
+# S'assure que le réseau est prêt avant de démarrer [cite: 180, 335]
+After=network.target
+
+[Service]
+Type=simple
+# Requis pour binder le port 502 (Modbus standard) [cite: 333]
+User=root
+# Chemin vers votre nouveau dossier modulaire
+WorkingDirectory=/home/cascadya/simulator_sbc
+# Point d'entrée vers le moteur physique et logique
+ExecStart=/usr/bin/python3 /home/cascadya/simulator_sbc/main_sim.py
+# Relance automatique en cas de crash (utile pour les tests de stress)
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

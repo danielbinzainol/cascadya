@@ -1,0 +1,17 @@
+apiVersion: 1
+
+datasources:
+  - name: "Cascadya Telemetry VPC"
+    type: postgres
+    access: proxy
+    url: "10.42.2.2:5432"
+    user: "cascadya"
+    database: "cascadya_telemetry"
+    jsonData:
+      sslmode: "disable"
+      postgresVersion: 15
+      timescaledb: true
+    secureJsonData:
+      password: "C4sc4dy4_Louvre!!2025"
+    isDefault: true
+    editable: false

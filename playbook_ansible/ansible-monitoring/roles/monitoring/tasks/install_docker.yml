@@ -1,0 +1,58 @@
+---
+- name: Install dependencies
+  apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - software-properties-common
+    update_cache: yes
+    state: present
+
+- name: Add Docker GPG key
+  apt_key:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    state: present
+
+- name: Add Docker repo
+  apt_repository:
+    repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu jammy stable"
+
+- name: Install Docker
+  apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+    update_cache: yes
+    state: present
+
+- name: Install Docker Compose
+  get_url:
+    url: "https://github.com/docker/compose/releases/download/v{{ docker_compose_version }}/docker-compose-linux-x86_64"
+    dest: /usr/local/bin/docker-compose
+    mode: "0755"
+- name: Créer le dossier /etc/docker s'il n'existe pas
+  file:
+    path: /etc/docker
+    state: directory
+    mode: '0755'
+
+- name: Configurer la rotation des logs Docker (Prévention saturation disque)
+  copy:
+    dest: /etc/docker/daemon.json
+    content: |
+      {
+        "log-driver": "json-file",
+        "log-opts": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      }
+  register: docker_config
+
+- name: Redémarrer Docker si la configuration a changé
+  service:
+    name: docker
+    state: restarted
+  when: docker_config.changed

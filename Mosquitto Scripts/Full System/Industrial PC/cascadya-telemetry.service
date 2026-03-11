@@ -1,0 +1,14 @@
+[Unit]
+Description=Cascadya SteamSwitch - Edge Telemetry (Lecture 1Hz)
+After=network.target cascadya-gateway.service
+
+[Service]
+Type=simple
+User=cascadya
+WorkingDirectory=/home/cascadya/python_scripts
+ExecStart=/home/cascadya/python_scripts/venv/bin/python3 telemetry_publisher.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

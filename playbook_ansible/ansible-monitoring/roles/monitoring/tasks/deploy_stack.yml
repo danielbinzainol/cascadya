@@ -1,0 +1,51 @@
+---
+- name: Create monitoring directory
+  file:
+    path: "{{ monitoring_dir }}"
+    state: directory
+
+- name: Créer les dossiers de provisioning pour Grafana
+  file:
+    path: "/opt/monitoring/grafana/{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - provisioning/datasources
+    - provisioning/dashboards
+    - dashboards
+
+- name: Deploy Grafana Datasource
+  template:
+    src: datasource.yml.j2
+    dest: /opt/monitoring/grafana/provisioning/datasources/datasource.yml
+
+- name: Deploy Grafana Dashboard Provider
+  template:
+    src: dashboards.yml.j2
+    dest: /opt/monitoring/grafana/provisioning/dashboards/dashboards.yml
+
+- name: Deploy Grafana Dashboard JSON
+  copy:
+    src: sbc_master.json
+    dest: /opt/monitoring/grafana/dashboards/sbc_master.json
+    mode: '0644'
+
+- name: Deploy docker-compose.yml
+  template:
+    src: docker-compose.yml.j2
+    dest: "{{ monitoring_dir }}/docker-compose.yml"
+
+- name: Deploy Prometheus config
+  template:
+    src: prometheus.yml.j2
+    dest: "{{ monitoring_dir }}/prometheus.yml"
+
+- name: Deploy Promtail config
+  template:
+    src: promtail-config.yml.j2
+    dest: "{{ monitoring_dir }}/promtail-config.yml"
+
+- name: Start monitoring stack
+  shell: docker-compose up -d --force-recreate --remove-orphans
+  args:
+    chdir: "{{ monitoring_dir }}"
