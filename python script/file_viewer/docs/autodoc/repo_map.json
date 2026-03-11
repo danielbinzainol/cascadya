@@ -1,0 +1,353 @@
+{
+  "project": {
+    "name": "file_viewer",
+    "analyzed_on": "2026-02-26",
+    "analysis_basis": "local repository static inspection"
+  },
+  "runtime_modes": [
+    {
+      "mode": "desktop_gui",
+      "entrypoint": "main.py",
+      "run_command": "python main.py",
+      "where_in_code": [
+        "main.py:4-10"
+      ]
+    }
+  ],
+  "entrypoints": [
+    {
+      "type": "script",
+      "path": "main.py",
+      "call_chain": [
+        "main()",
+        "tk.Tk()",
+        "FileQuickViewApp(root)",
+        "root.mainloop()"
+      ],
+      "inputs": [
+        "GUI events",
+        "filesystem paths chosen via dialog"
+      ],
+      "outputs": [
+        "GUI window state",
+        "filesystem changes via save/create operations"
+      ],
+      "side_effects": [
+        "local file read/write/create",
+        "directory creation"
+      ],
+      "where_in_code": [
+        "main.py:4-10",
+        "gui/app_window.py:65-218",
+        "core/file_handler.py:5-31"
+      ]
+    }
+  ],
+  "dependencies": {
+    "internal": [
+      {
+        "from": "main.py",
+        "to": "gui.app_window.FileQuickViewApp",
+        "where_in_code": [
+          "main.py:2"
+        ]
+      },
+      {
+        "from": "gui.app_window",
+        "to": "core.file_handler.FileHandler",
+        "where_in_code": [
+          "gui/app_window.py:4"
+        ]
+      },
+      {
+        "from": "gui.app_window",
+        "to": "gui.line_text.EditorWithLineNumbers",
+        "where_in_code": [
+          "gui/app_window.py:5"
+        ]
+      },
+      {
+        "from": "gui.line_text",
+        "to": "gui.syntax.PythonHighlighter",
+        "where_in_code": [
+          "gui/line_text.py:2"
+        ]
+      }
+    ],
+    "third_party": [],
+    "stdlib": [
+      "tkinter",
+      "os",
+      "re",
+      "keyword"
+    ]
+  },
+  "configuration": {
+    "env_vars": [],
+    "config_files": [],
+    "secrets_handling": "none_observed",
+    "defaults": [
+      {
+        "name": "window_title",
+        "value": "Python Quick-Look Explorer",
+        "where_in_code": [
+          "gui/app_window.py:10"
+        ]
+      },
+      {
+        "name": "window_geometry",
+        "value": "1200x800",
+        "where_in_code": [
+          "gui/app_window.py:11"
+        ]
+      },
+      {
+        "name": "highlight_debounce_ms",
+        "value": 300,
+        "where_in_code": [
+          "gui/syntax.py:31-32"
+        ]
+      },
+      {
+        "name": "highlight_max_chars",
+        "value": 100000,
+        "where_in_code": [
+          "gui/syntax.py:37-38"
+        ]
+      }
+    ]
+  },
+  "operational": {
+    "network_calls": [],
+    "database_operations": [],
+    "subprocesses": [],
+    "async_background": [
+      {
+        "type": "tkinter_after_callback",
+        "description": "debounced syntax highlighting",
+        "where_in_code": [
+          "gui/syntax.py:28-33"
+        ]
+      }
+    ],
+    "filesystem_side_effects": [
+      {
+        "operation": "read_file",
+        "where_in_code": [
+          "core/file_handler.py:5-8"
+        ]
+      },
+      {
+        "operation": "save_file",
+        "where_in_code": [
+          "core/file_handler.py:11-14"
+        ]
+      },
+      {
+        "operation": "create_file",
+        "where_in_code": [
+          "core/file_handler.py:17-23"
+        ]
+      },
+      {
+        "operation": "create_folder",
+        "where_in_code": [
+          "core/file_handler.py:26-30"
+        ]
+      }
+    ]
+  },
+  "quality_and_delivery": {
+    "tests": {
+      "present": false,
+      "evidence": "No test files/directories in repo inventory"
+    },
+    "ci": {
+      "present": false,
+      "evidence": "No CI workflow files found"
+    },
+    "linting": {
+      "present": false,
+      "evidence": "No linter config found"
+    },
+    "type_checking": {
+      "present": false,
+      "evidence": "No mypy/pyright config found"
+    },
+    "packaging": {
+      "present": false,
+      "evidence": "No pyproject.toml/setup.py/requirements*.txt found"
+    },
+    "release_artifacts": {
+      "present": false,
+      "evidence": "No release/deployment descriptors found"
+    }
+  },
+  "responsibilities": [
+    {
+      "path": "main.py",
+      "kind": "file",
+      "responsibility": "Application bootstrap and Tk event-loop startup.",
+      "public_objects": [
+        "main"
+      ],
+      "internal_dependencies": [
+        "gui.app_window.FileQuickViewApp"
+      ],
+      "external_dependencies": [
+        "tkinter"
+      ],
+      "risks": [
+        "No startup options/flags"
+      ],
+      "where_in_code": [
+        "main.py:1-10"
+      ]
+    },
+    {
+      "path": "core/__init__.py",
+      "kind": "file",
+      "responsibility": "Package marker for core.",
+      "public_objects": [],
+      "internal_dependencies": [],
+      "external_dependencies": [],
+      "risks": [],
+      "where_in_code": [
+        "core/__init__.py"
+      ]
+    },
+    {
+      "path": "core/file_handler.py",
+      "kind": "file",
+      "responsibility": "Filesystem IO helper methods for read/save/create operations.",
+      "public_objects": [
+        "FileHandler.read_file",
+        "FileHandler.save_file",
+        "FileHandler.create_file",
+        "FileHandler.create_folder"
+      ],
+      "internal_dependencies": [],
+      "external_dependencies": [
+        "os"
+      ],
+      "risks": [
+        "Lossy decode on non-UTF8 input due to errors='replace'",
+        "Direct overwrite saves without backup"
+      ],
+      "where_in_code": [
+        "core/file_handler.py:1-31"
+      ]
+    },
+    {
+      "path": "gui/__init__.py",
+      "kind": "file",
+      "responsibility": "Package marker for gui.",
+      "public_objects": [],
+      "internal_dependencies": [],
+      "external_dependencies": [],
+      "risks": [],
+      "where_in_code": [
+        "gui/__init__.py"
+      ]
+    },
+    {
+      "path": "gui/app_window.py",
+      "kind": "file",
+      "responsibility": "Main GUI controller handling layout, events, state, and action dispatch.",
+      "public_objects": [
+        "FileQuickViewApp",
+        "FileQuickViewApp.load_directory",
+        "FileQuickViewApp.sync_tree",
+        "FileQuickViewApp.fill_tree",
+        "FileQuickViewApp.on_file_select",
+        "FileQuickViewApp.save_file",
+        "FileQuickViewApp.action_new_file",
+        "FileQuickViewApp.action_new_folder"
+      ],
+      "internal_dependencies": [
+        "core.file_handler.FileHandler",
+        "gui.line_text.EditorWithLineNumbers"
+      ],
+      "external_dependencies": [
+        "tkinter",
+        "os"
+      ],
+      "risks": [
+        "Silent auto-save when switching files",
+        "PermissionError suppressed silently in tree traversal",
+        "UI text literals contain mojibake"
+      ],
+      "where_in_code": [
+        "gui/app_window.py:1-218"
+      ]
+    },
+    {
+      "path": "gui/line_text.py",
+      "kind": "file",
+      "responsibility": "Composite editor widget with line-number gutter and proxied change events.",
+      "public_objects": [
+        "LineNumberCanvas",
+        "CustomText",
+        "EditorWithLineNumbers"
+      ],
+      "internal_dependencies": [
+        "gui.syntax.PythonHighlighter"
+      ],
+      "external_dependencies": [
+        "tkinter"
+      ],
+      "risks": [
+        "Tk command proxy approach can be brittle in edge cases"
+      ],
+      "where_in_code": [
+        "gui/line_text.py:1-75"
+      ]
+    },
+    {
+      "path": "gui/syntax.py",
+      "kind": "file",
+      "responsibility": "Regex-based Python syntax highlighting with debounce and tag layering.",
+      "public_objects": [
+        "PythonHighlighter",
+        "PythonHighlighter.schedule_highlight",
+        "PythonHighlighter.highlight"
+      ],
+      "internal_dependencies": [],
+      "external_dependencies": [
+        "re",
+        "keyword"
+      ],
+      "risks": [
+        "Regex highlighting may be inaccurate on complex syntax",
+        "Full-buffer scan cost for large files"
+      ],
+      "where_in_code": [
+        "gui/syntax.py:1-60"
+      ]
+    }
+  ],
+  "unknowns": [
+    {
+      "item": "Target user personas and supported platform matrix",
+      "why_unknown": "No product or deployment documentation in repository",
+      "inspected": [
+        "full file inventory"
+      ]
+    },
+    {
+      "item": "Intended policy for autosave-on-switch behavior",
+      "why_unknown": "Implementation exists but no external requirement source",
+      "inspected": [
+        "gui/app_window.py:172-175"
+      ]
+    },
+    {
+      "item": "Expected behavior for binary and very large files",
+      "why_unknown": "Only partial safeguards are implemented",
+      "inspected": [
+        "core/file_handler.py:7",
+        "gui/syntax.py:37-38"
+      ]
+    }
+  ]
+}

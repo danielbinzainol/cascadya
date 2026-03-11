@@ -1,0 +1,216 @@
+﻿{
+    "type": "group",
+    "name": "Root",
+    "children": [
+        {
+            "type": "group",
+            "name": "Main",
+            "children": [
+                {
+                    "type": "group",
+                    "name": "Ansible",
+                    "children": [
+                        {
+                            "type": "element",
+                            "name": "Playbook Template",
+                            "command": "# Check Difference (like Terraform plan)\nansible-playbook -i inventory/hosts.ini playbooks/monitoring.yml --check --diff\n\n# Run the real thing\nansible-playbook -i inventory/hosts.ini playbooks/monitoring.yml",
+                            "description": "Add a description..."
+                        },
+                        {
+                            "type": "group",
+                            "name": "Mosquitto Certificat",
+                            "children": [
+                                {
+                                    "type": "element",
+                                    "name": "regen_broker_server",
+                                    "command": "cd ~/git/cascadya-project/playbook_ansible/ansible-mosquitto-certificats\nexport VAULT_ADDR=\"https://secrets.cascadya.com\"\nexport VAULT_TOKEN=\"${CASCADYA_VAULT_TOKEN:?CASCADYA_VAULT_TOKEN is not set}\"\nexport ANSIBLE_ROLES_PATH=./roles\n\nansible-playbook -i inventory/hosts.ini playbooks/regen_broker_server.yml",
+                                    "description": "- Get to directory\n- Set up Vault info\n- execute ansible playbook"
+                                },
+                                {
+                                    "type": "element",
+                                    "name": "regen_edge_clients",
+                                    "command": "cd ~/git/cascadya-project/playbook_ansible/ansible-mosquitto-certificats\n\nsudo rm /opt/mosquitto/clients/client.crt\n\nexport VAULT_ADDR=\"https://secrets.cascadya.com\"\nexport VAULT_TOKEN=\"${CASCADYA_VAULT_TOKEN:?CASCADYA_VAULT_TOKEN is not set}\"\nexport ANSIBLE_ROLES_PATH=./roles\n\nansible-playbook -i inventory/hosts.ini playbooks/regen_edge_clients.yml --limit edge-local",
+                                    "description": "- Get to directory\n- Set up Vault info\n- execute ansible playbook"
+                                },
+                                {
+                                    "type": "element",
+                                    "name": "regen_app_cert_client",
+                                    "command": "cd ~/git/cascadya-project/playbook_ansible/ansible-mosquitto-certificats\n\n\nexport VAULT_ADDR=\"https://secrets.cascadya.com\"\nexport VAULT_TOKEN=\"${CASCADYA_VAULT_TOKEN:?CASCADYA_VAULT_TOKEN is not set}\"\nexport ANSIBLE_ROLES_PATH=./roles\n\nansible-playbook -i inventory/hosts.ini playbooks/regen_app_cert_client.yml",
+                                    "description": "Add a description..."
+                                }
+                            ]
+                        },
+                        {
+                            "type": "group",
+                            "name": "Mosquitto Broker",
+                            "children": [
+                                {
+                                    "type": "element",
+                                    "name": "vm-broker",
+                                    "command": "cd ~/git/cascadya-project/playbook_ansible/ansible-mosquitto-broker\nexport VAULT_ADDR=\"https://secrets.cascadya.com\"\nexport VAULT_TOKEN=\"${CASCADYA_VAULT_TOKEN:?CASCADYA_VAULT_TOKEN is not set}\"\nansible-playbook -i inventory/prod.ini playbooks/vm-broker.yml",
+                                    "description": "Add a description..."
+                                }
+                            ]
+                        },
+                        {
+                            "type": "group",
+                            "name": "Monitoring",
+                            "children": [
+                                {
+                                    "type": "element",
+                                    "name": "monitoring",
+                                    "command": "# go to repo\ncd ~/git/cascadya-project/playbook_ansible/ansible-monitoring\nchmod 755 .\n# Run monitoring playbook\nansible-playbook -i inventory/hosts.ini playbooks/monitoring.yml\n\n#Access database\npsql -h 10.42.2.2 -U cascadya -d cascadya_telemetry\n\n# View tables\n\\dt",
+                                    "description": "Add a description..."
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "group",
+                    "name": "VM",
+                    "children": [
+                        {
+                            "type": "group",
+                            "name": "Mosquitto Broker",
+                            "children": [
+                                {
+                                    "type": "element",
+                                    "name": "General",
+                                    "command": "# Test Wireguard connection with broker (Sender)\nmosquitto_sub -h mosquitto.cascadya.internal -p 8883 \\\n  --cafile ca.crt \\\n  --cert client.crt \\\n  --key client.key \\\n  -t \"cascadya/site-001/command/#\" -v\n\n# Test Wireguard connection with broker (Receiver)\nmosquitto_pub -h mosquitto.cascadya.internal -p 8883 \\\n  --cafile ca.crt \\\n  --cert client.crt \\\n  --key client.key \\\n  -t \"cascadya/site-001/command/setpoint\" \\\n  -m '{\"power_kw\": 500, \"timestamp\": \"2026-02-27T10:00:00Z\"}'\n\n\n# Sync VM scripts\nrsync -avz -e \"ssh -i ~/.ssh/id_ed25519\" ~/git/cascadya-project/Mosquitto\\ Scripts/Full\\ System/VM\\ Broker/ ubuntu@51.15.64.139:~/nats_bridge/",
+                                    "description": "data_lake_bucket_name = \"data-lake-thingsboard-dev\"\nmonitoring_ipv4 = \"51.15.83.22\"\ntelemetry_db_host = \"10.42.2.2\"\ntelemetry_db_name = \"cascadya_telemetry\"\ntelemetry_db_port = 5432\nthingsboard_db_host = \"10.42.2.3\"\nthingsboard_db_name = \"thingsboard\"\nthingsboard_db_port = 5432\nthingsboard_db_user = \"thingsboard\"\nvault_ipv4 = \"51.15.36.65\"\nwireguard_ipv4 = \"51.15.84.140\""
+                                },
+                                {
+                                    "type": "element",
+                                    "name": "Documentation",
+                                    "command": "# List all the containers (Name, Image, Status)\ndocker ps -a --format \"table {{.Names}}\\t{{.Image}}\\t{{.Status}}\\t{{.Ports}}\"\n\n# Identify the volumes\ndocker volume ls\n\n# Inspect the bind mounts\ndocker inspect $(docker ps -q) | grep -i \"mounts\" -A 10\n\n# Inspect tree structure of VM\ntree /home/ubuntu/ /etc/mosquitto/ -L 2\n\n# Check Permission of scripts\nls -la /home/ubuntu/python_scripts/\n\n# Listen to Mosquitto Port\nss -tunlp | grep 8883",
+                                    "description": "# Containers\nNAMES              IMAGE                 STATUS      PORTS\ntraefik_gateway    traefik:v2.10         Up 4 days   0.0.0.0:80->80/tcp, [::]:80->80/tcp, 0.0.0.0:443->443/tcp, [::]:443->443/tcp, 0.0.0.0:8883->8883/tcp, [::]:8883->8883/tcp\nmosquitto_broker   eclipse-mosquitto:2   Up 2 days   1883/tcp\n\n* Conteneur traefik_gateway. \u00c9coute sur les ports 80, 443, et 8883 (MQTT TLS)\n* Conteneur mosquitto_broker. Re\u00e7oit le trafic de Traefik sur le port interne 1883\n* Fichier de configuration situ\u00e9 sur la VM dans /opt/mosquitto/config/mosquitto.conf\n* G\u00e9n\u00e9r\u00e9s par Ansible, stock\u00e9s dans /home/ubuntu/ (ca.crt, server.crt, server.key)\n* Situ\u00e9s dans /home/ubuntu/python_scripts/ (dispatch_private.py, dispatch_public.py)\n* Utilisation de traefik-gateway_mosquitto_data et traefik-gateway_mosquitto_log\n\n\n# Volumes\nDRIVER    VOLUME NAME\nlocal     VOL_DATA\nlocal     VOL_LOG\nlocal     traefik-gateway_mosquitto_data\nlocal     traefik-gateway_mosquitto_log\nlocal     vernemq-data\nlocal     vernemq_data\nlocal     vernemq_etc\nlocal     vernemq_log\n\n# Bind Mounts\n        \"Mounts\": [\n            {\n                \"Type\": \"bind\",\n                \"Source\": \"/var/run/docker.sock\",\n                \"Destination\": \"/var/run/docker.sock\",\n                \"Mode\": \"ro\",\n                \"RW\": false,\n                \"Propagation\": \"rprivate\"\n            }\n        ],\n        \"Config\": {\n--\n        \"Mounts\": [\n            {\n                \"Type\": \"bind\",\n                \"Source\": \"/opt/mosquitto/config/mosquitto.conf\",\n                \"Destination\": \"/mosquitto/config/mosquitto.conf\",\n                \"Mode\": \"ro\",\n                \"RW\": false,\n                \"Propagation\": \"rprivate\"\n            },\n            {\n                \"Type\": \"bind\",\n\n# Directory\n/home/ubuntu/\n\u251c\u2500\u2500 archive\n\u2502\u00a0\u00a0 \u251c\u2500\u2500 ansible-vernemq-pki.hcl\n\u2502\u00a0\u00a0 \u251c\u2500\u2500 backup.sql\n\u2502\u00a0\u00a0 \u2514\u2500\u2500 bridge\n\u251c\u2500\u2500 ca.crt\n\u251c\u2500\u2500 files\n\u251c\u2500\u2500 python_scripts\n\u2502\u00a0\u00a0 \u251c\u2500\u2500 dispatch_private.py\n\u2502\u00a0\u00a0 \u2514\u2500\u2500 dispatch_public.py\n\u251c\u2500\u2500 server.crt\n\u2514\u2500\u2500 server.key\n/etc/mosquitto/\n\u251c\u2500\u2500 aclfile.example\n\u251c\u2500\u2500 ca_certificates\n\u2502\u00a0\u00a0 \u2514\u2500\u2500 README\n\u251c\u2500\u2500 certs\n\u2502\u00a0\u00a0 \u2514\u2500\u2500 README\n\u251c\u2500\u2500 conf.d\n\u2502\u00a0\u00a0 \u2514\u2500\u2500 README\n\u251c\u2500\u2500 mosquitto.conf\n\u251c\u2500\u2500 pskfile.example\n\u2514\u2500\u2500 pwfile.example\n\n# Permission of Scripts\ntotal 16\ndrwxrwxr-x  2 ubuntu ubuntu 4096 Feb 27 14:44 .\ndrwxr-x--- 10 ubuntu ubuntu 4096 Feb 27 16:24 ..\n-rw-rw-r--  1 ubuntu ubuntu 1459 Feb 27 14:44 dispatch_private.py\n-rw-rw-r--  1 ubuntu ubuntu 2484 Feb 25 14:56 dispatch_public.py\n\n# Mosquitto Port Verification\ntcp   LISTEN 0      4096                     0.0.0.0:8883       0.0.0.0:*\ntcp   LISTEN 0      4096                        [::]:8883          [::]:*"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "element",
+                            "name": "SSH",
+                            "command": "# ssh pour se connecter aux VMs\nssh -i $env:USERPROFILE\\.ssh\\id_ed25519 ubuntu@51.15.36.65 - Vault\nssh -i $env:USERPROFILE\\.ssh\\id_ed25519 ubuntu@51.15.115.203 - Thingsboard\nssh -i $env:USERPROFILE\\.ssh\\id_ed25519 ubuntu@51.15.64.139 - Vm-Broker\nssh -i $env:USERPROFILE\\.ssh\\id_ed25519 ubuntu@51.15.84.140 - Wireguard\nssh -i $env:USERPROFILE\\.ssh\\id_ed25519 ubuntu@51.15.83.22 - Monitoring\n# Regarder les cl\u00e9s dans le repo .ssh\nls -l ~/.ssh/\n\n# Connect to the DB\npsql -h 10.42.2.2 -U cascadya -d cascadya_telemetry -W",
+                            "description": "secrets.cascadya.com - vault\ninfluxdb.cascadya.com - influxdb\nmetering.cascadya.com - grafana\ndocumentation.cascadya.com - docmost\nthingsboard-dev.cascadya.com - ThingsBoard\ninventory.cascadya.com - Snipe IT\nhttp://51.15.115.203:8080/ - thingsboard"
+                        },
+                        {
+                            "type": "group",
+                            "name": "Wireguard",
+                            "children": [
+                                {
+                                    "type": "element",
+                                    "name": "General",
+                                    "command": "# Your command here\n",
+                                    "description": "Add a description..."
+                                },
+                                {
+                                    "type": "element",
+                                    "name": "Documentation",
+                                    "command": "# Show allowed wireguard certificates\nsudo wg show",
+                                    "description": "interface: wg0\n  public key: OMbdc2j857EBec4nbtGKM6dhWe9wBNFxXJwrQ+skvWo=\n  private key: (hidden)\n  listening port: 51820\n\npeer: CfIJb+JE+XhHPv56yoO8vOY5N6vdfvtVkncWLjh2SFs=\n  endpoint: 195.68.106.70:49126\n  allowed ips: 10.8.0.2/32\n  latest handshake: 28 seconds ago\n  transfer: 23.16 KiB received, 6.47 KiB sent\n\npeer: hWUK1fbb1hhxbQuxG3ADRdMufLNNIid6ZHQ7E6C4XVo=\n  endpoint: 37.174.52.162:12576\n  allowed ips: 10.8.0.3/32\n  latest handshake: 43 seconds ago\n  transfer: 152.96 KiB received, 47.26 KiB sent\n\npeer: +y8MTJ6zkfhc6t3GT7xOF8lNmevOVrhnHEE8Pd9tcHw=\n  endpoint: 46.193.17.2:64774\n  allowed ips: 10.8.0.4/32\n  latest handshake: 2 days, 7 hours, 37 minutes, 23 seconds ago\n  transfer: 212 B received, 92 B sent"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "element",
+                            "name": "General",
+                            "command": "# Synchronize files with VM Broker\nrsync -avz -e \"ssh -i /mnt/c/Users/daniel_bin_zainol/.ssh/id_ed25519\" \\\n~/git/cascadya-project/Mosquitto\\ Scripts/Full\\ System/VM\\ Broker/nats_to_timescale.py \\\nubuntu@51.15.64.139:~/nats_bridge/",
+                            "description": "Add a description..."
+                        },
+                        {
+                            "type": "group",
+                            "name": "Monitoring",
+                            "children": [
+                                {
+                                    "type": "element",
+                                    "name": "General",
+                                    "command": "# Attach the Grafana to the port 3000\nssh -i $env:USERPROFILE\\.ssh\\id_ed25519 -L 3000:localhost:3000 ubuntu@51.15.83.22\n\n# Work here\nhttp://localhost:3000\n\n# Check space\nsudo docker system df\n\n#Check Grafana\ncurl -s -o /dev/null -w \"%{http_code}\\n\" http://localhost:3000/api/health\n\n#Check Prometheus\ncurl -s -o /dev/null -w \"%{http_code}\\n\" http://localhost:9090/-/healthy\n\nhave to return 200",
+                                    "description": "Add a description..."
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "group",
+                    "name": "Data",
+                    "children": [
+                        {
+                            "type": "element",
+                            "name": "IP VM",
+                            "command": "51.15.36.65 - Vault\n51.15.115.203 - Thingsboard\n51.15.64.139 - Vm-Broker\n51.15.84.140 - Wireguard",
+                            "description": "VM IP addresses (public and private)"
+                        }
+                    ]
+                },
+                {
+                    "type": "group",
+                    "name": "WSL",
+                    "children": [
+                        {
+                            "type": "element",
+                            "name": "General",
+                            "command": "# start wsl\nwsl -d ubuntu\n\n# edit the systemd configuration for automated script\nsudo nano /etc/systemd/system/dispatch_private.service\n\n# pause the script\nsudo systemctl stop dispatch_private.service\n\n# hard killswitch\nsudo systemctl disable --now dispatch_private.service\n\n# turn back on\nsudo systemctl enable --now dispatch_private.service\n\n# Quick view without editing\nsystemctl cat dispatch_private.service",
+                            "description": ""
+                        },
+                        {
+                            "type": "element",
+                            "name": "Launch Python Scripts",
+                            "command": "# send_telemetry to Thingsboard (WSL -> Traefik -> Mosquitto -> Thingsboard)\ncd ~/git/cascadya-project/\"Mosquitto Scripts\"/\"Test WSL-Edge\"\nsource ../venv/bin/activate\nsudo chmod 644 /opt/mosquitto/clients/client.key\nsudo chmod 644 /opt/mosquitto/clients/client.crt\n\n# WSL -> Traefik -> Mosquitto -> Thingsboard\npython3 send_telemetry_from_WSL_to_Thingsboard.py\n\n# Thingsboard RPC -> Mosquitto -> WSL\npython3 receive_telemetry_from_Thingsboard_to_WSL.py\n\n\n\n# WSL 1-> Broker -> WSL 2\ncd ~/git/cascadya-project/cascadya-edge-os-images/ansible/roles/edge-agent/files/src/test/cloud\ncd ~/git/cascadya-project/cascadya-edge-os-images/ansible/roles/edge-agent/files/src/test/client\nsource ../venv/bin/activate\npython3 mqtt_send_test.py\npython3 mqtt_receive_ack.py\n\n# WSL(sender) -> Traefik -> Mosquitto(dispatcher) -> Client A + Client B (Public IP)\ncd ~/git/cascadya-project/\"Mosquitto Scripts\"/\"Test Topic Concept Public Network\"\nsource ../venv/bin/activate\npython3 client_A.py\npython3 client_B.py\npython3 dispatcher.py\npython3 sender.py\n\n\n\n# WSL(sender) -> Traefik -> Mosquitto(dispatcher) -> Client A + Client B (Wireguard)\ncd ~/git/cascadya-project/\"Mosquitto Scripts\"/\"Test Topics Concept VPN\"\nsource ../venv/bin/activate\npython3 universal_client.py\npython3 dispatcher.py\npython3 sender.py",
+                            "description": "Achieved\n\n1. WSL -> Traefik -> Mosquitto -> Thingsboard\n2. WSL(sender) -> Traefik -> Mosquitto(dispatcher) -> Client A + Client B (2 topics differentes sur 2 sites differentes)\n3. Thingsboard RPC -> Mosquitto -> WSL"
+                        }
+                    ]
+                },
+                {
+                    "type": "group",
+                    "name": "Terraform",
+                    "children": [
+                        {
+                            "type": "element",
+                            "name": "General",
+                            "command": "#Give execution abilities to sh files\nchmod +x plan_terraform.sh apply_terraform.sh\n\n#Terraform Plan or Terraform Apply\ncd ~/git/cascadya-project/Infra-MVP/infrastructure/environments/dev/\n./plan_terraform.sh\n./apply_terraform.sh",
+                            "description": ""
+                        }
+                    ]
+                },
+                {
+                    "type": "group",
+                    "name": "GIT",
+                    "children": [
+                        {
+                            "type": "element",
+                            "name": "General",
+                            "command": "# Your command here\n",
+                            "description": "Add a description..."
+                        }
+                    ]
+                },
+                {
+                    "type": "group",
+                    "name": "PC Industrial",
+                    "children": [
+                        {
+                            "type": "element",
+                            "name": "General",
+                            "command": "#Connect to Industrial PC\nssh cascadya@192.168.10.109\n\n#Connect to Simulator Modbus after Industrial PC\nssh cascadya@192.168.50.2\n\n#Connect with Jump\nssh -J cascadya@192.168.10.109 cascadya@192.168.50.2\n\n#sync files through SSH to Simulator Modbus\nrsync -avz -e \"ssh -J cascadya@192.168.10.109\" ~/git/cascadya-project/Mosquitto\\ Scripts/Full\\ System/Modbus\\ Simulator/ cascadya@192.168.50.2:~/simulator_sbc/\n\n#sync files through SSH to Indusrial PC\nrsync -avz ~/git/cascadya-project/Mosquitto\\ Scripts/Full\\ System/Industrial\\ PC/ cascadya@192.168.10.109:~/python_scripts/\n\n#Edit service file\nsudo nano /etc/systemd/system/cascadya-gateway.service\n\n# Reload systemctl daemon\nsudo systemctl daemon-reload\n\n# Check service status\nsudo systemctl status cascadya-gateway.service\n\nsudo systemctl stop cascadya-telemetry.service\nsudo systemctl start cascadya-telemetry.service\nsudo systemctl status cascadya-telemetry.service",
+                            "description": "username : cascadya\npassword : admin"
+                        }
+                    ]
+                },
+                {
+                    "type": "group",
+                    "name": "Modbus Simulator",
+                    "children": [
+                        {
+                            "type": "element",
+                            "name": "General",
+                            "command": "# Restart the service that generates the physiques and the simulator\nsudo systemctl stop modbus-serveur.service\nsudo systemctl start modbus-serveur.service\nsudo systemctl status modbus-serveur.service\n\n# Check logs\nsudo journalctl -fu modbus-serveur.service\n\n#Connect with Jump\nssh -J cascadya@192.168.10.109 cascadya@192.168.50.2\n\n#sync files through SSH to Simulator Modbus\nsyncproject\nrsync -avz -e \"ssh -J cascadya@192.168.10.109\" ~/git/cascadya-project/Mosquitto\\ Scripts/Full\\ System/Modbus\\ Simulator/ cascadya@192.168.50.2:~/simulator_sbc/",
+                            "description": "Add a description..."
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}
