@@ -1,5 +1,1 @@
-roles:
-  - src: dev-sec.os-hardening
-    version: master
-  - src: dev-sec.ssh-hardening
-    version: master
+roles: []

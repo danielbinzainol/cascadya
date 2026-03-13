@@ -1,0 +1,14 @@
+---
+enable_tpm_luks: false
+tpm_luks_device: /dev/sda4
+tpm_luks_crypttab_name: cascadya_data
+tpm_luks_crypttab_password: none
+tpm_luks_pcrs: "7"
+
+tpm_luks_required_packages:
+  - cryptsetup
+  - systemd-cryptsetup
+  - tpm2-tools
+
+tpm_luks_default_crypttab_options:
+  - luks

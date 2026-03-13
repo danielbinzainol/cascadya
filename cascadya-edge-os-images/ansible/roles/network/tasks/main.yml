@@ -1,22 +1,22 @@
 ---
 - name: Install WireGuard
-  apt:
+  ansible.builtin.apt:
     name:
       - wireguard
       - resolvconf
     state: present
 
-- name: Enable IP Forwarding (Required for VPN)
-  sysctl:
+- name: Optionally enable IP forwarding for WireGuard routing use cases
+  ansible.builtin.sysctl:
     name: net.ipv4.ip_forward
     value: '1'
-    sysctl_set: yes
+    sysctl_set: true
     state: present
-    reload: yes
+    reload: true
+  when: network_enable_ip_forward | bool
 
-# CRITICAL: This expects you to have created 'wg0.conf' in roles/network/files/
 - name: Deploy WireGuard Config
-  copy:
+  ansible.builtin.copy:
     src: wg0.conf
     dest: /etc/wireguard/wg0.conf
     mode: '0600'
@@ -25,14 +25,7 @@
   notify: Restart WireGuard
 
 - name: Enable WireGuard Service
-  systemd:
+  ansible.builtin.systemd_service:
     name: wg-quick@wg0
-    enabled: yes
+    enabled: true
     state: started
-
-# Handlers usually go in a separate handlers/main.yml, but we can keep it simple here
-  handlers:
-    - name: Restart WireGuard
-      service:
-        name: wg-quick@wg0
-        state: restarted

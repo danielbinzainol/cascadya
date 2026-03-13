@@ -1,59 +1,146 @@
 ---
-- name: Create Agent Directory
-  file:
-    path: /opt/cascadya-agent
-    state: directory
-    mode: '0755'
-    owner: "{{ target_user }}"
-    group: "{{ target_user }}"
+- name: Install edge-agent OS dependencies
+  ansible.builtin.apt:
+    name: "{{ edge_agent_apt_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
 
-- name: Create Certs Directory
-  file:
-    path: /etc/cascadya/certs
+- name: Create persistent Cascadya data directory
+  ansible.builtin.file:
+    path: "{{ cascadya_data_dir }}"
     state: directory
-    mode: '0755'
-    owner: root
-    group: root
+    owner: "{{ edge_agent_service_user }}"
+    group: "{{ edge_agent_service_user }}"
+    mode: "0750"
 
-# --- CERTIFICATES ---
-- name: Deploy Certificates
-  copy:
-    src: "certs/{{ item.src }}"
-    dest: "/etc/cascadya/certs/{{ item.dest }}"
+- name: Create edge-agent runtime directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ edge_agent_service_user }}"
+    group: "{{ edge_agent_service_user }}"
     mode: "{{ item.mode }}"
+  loop: "{{ edge_agent_directories }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Check per-device client certificates on the controller
+  ansible.builtin.stat:
+    path: "{{ edge_agent_local_cert_dir }}/{{ item.filename }}"
+  delegate_to: localhost
+  become: false
+  loop: "{{ edge_agent_dynamic_cert_specs }}"
+  loop_control:
+    label: "{{ item.filename }}"
+  register: edge_agent_local_cert_stats
+
+- name: Fail when per-device client certificates are missing on the controller
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - item.stat.isreg
+    fail_msg: >-
+      Missing {{ item.item.filename }} in {{ edge_agent_local_cert_dir }} on the
+      Ansible controller.
+  loop: "{{ edge_agent_local_cert_stats.results }}"
+  loop_control:
+    label: "{{ item.item.filename }}"
+
+- name: Deploy edge-agent Python sources
+  ansible.builtin.copy:
+    src: "src/agent/{{ item }}"
+    dest: "{{ edge_agent_app_dir }}/{{ item }}"
+    owner: "{{ edge_agent_service_user }}"
+    group: "{{ edge_agent_service_user }}"
+    mode: "0644"
+  loop: "{{ edge_agent_source_files }}"
+  register: edge_agent_source_copy
+
+- name: Deploy edge-agent Python requirements
+  ansible.builtin.copy:
+    src: src/requirements.txt
+    dest: "{{ edge_agent_app_dir }}/requirements.txt"
+    owner: "{{ edge_agent_service_user }}"
+    group: "{{ edge_agent_service_user }}"
+    mode: "0644"
+  register: edge_agent_requirements_copy
+
+- name: Deploy CA certificate
+  ansible.builtin.copy:
+    src: certs/ca.crt
+    dest: "{{ edge_agent_certs_dir }}/ca.crt"
+    owner: "{{ edge_agent_service_user }}"
+    group: "{{ edge_agent_service_user }}"
+    mode: "0600"
+  register: edge_agent_ca_cert_copy
+
+- name: Deploy per-device client certificates
+  ansible.builtin.copy:
+    src: "{{ edge_agent_local_cert_dir }}/{{ item.filename }}"
+    dest: "{{ edge_agent_certs_dir }}/{{ item.filename }}"
+    owner: "{{ edge_agent_service_user }}"
+    group: "{{ edge_agent_service_user }}"
+    mode: "{{ item.mode }}"
+  loop: "{{ edge_agent_dynamic_cert_specs }}"
+  loop_control:
+    label: "{{ item.filename }}"
+  no_log: true
+  register: edge_agent_dynamic_certs_copy
+
+- name: Install edge-agent Python dependencies in the virtual environment
+  ansible.builtin.pip:
+    requirements: "{{ edge_agent_app_dir }}/requirements.txt"
+    virtualenv: "{{ edge_agent_venv_dir }}"
+    virtualenv_command: "{{ edge_agent_virtualenv_command }}"
+    state: present
+  become_user: "{{ edge_agent_service_user }}"
+  register: edge_agent_python_dependencies
+
+- name: Deploy edge-agent systemd units
+  ansible.builtin.template:
+    src: "{{ item }}.service.j2"
+    dest: "{{ edge_agent_systemd_dir }}/{{ item }}.service"
     owner: root
     group: root
-  loop:
-    - { src: 'device.crt', dest: 'device.crt', mode: '0644' }
-    - { src: 'device.key', dest: 'device.key', mode: '0600' }
-    - { src: 'ca.crt',     dest: 'ca.crt',     mode: '0644' }
-    # Optional: If you use the chain file separately
-    #- { src: 'chain.crt',  dest: 'chain.crt',  mode: '0644' }
+    mode: "0644"
+  loop: "{{ edge_agent_services }}"
+  register: edge_agent_systemd_units_copy
 
-# --- APPLICATION CODE ---
-- name: Deploy Agent Source Code
-  copy:
-    src: src/
-    dest: /opt/cascadya-agent/
-    owner: "{{ target_user }}"
-    group: "{{ target_user }}"
-    # This copies the *contents* of src/ (agent/, main.py, etc.) into /opt/cascadya-agent/
+- name: Collect systemd service facts
+  ansible.builtin.service_facts:
 
-- name: Install Python Requirements
-  pip:
-    requirements: /opt/cascadya-agent/requirements.txt
-    virtualenv: /opt/cascadya-agent/venv
-    virtualenv_command: python3 -m venv
+- name: Stop and disable the legacy MQTT edge-agent service
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: false
+    state: stopped
+  loop: "{{ edge_agent_legacy_services }}"
+  when: item in ansible_facts.services
 
-- name: Deploy Systemd Service
-  copy:
-    src: src/cascadya-agent.service
-    dest: /etc/systemd/system/cascadya-agent.service
-    mode: '0644'
+- name: Remove legacy edge-agent systemd units
+  ansible.builtin.file:
+    path: "{{ edge_agent_systemd_dir }}/{{ item }}"
+    state: absent
+  loop: "{{ edge_agent_legacy_services }}"
 
-- name: Enable and Start Agent
-  systemd:
-    name: cascadya-agent
-    enabled: yes
+- name: Ensure edge-agent services are enabled and started
+  ansible.builtin.systemd_service:
+    name: "{{ item }}.service"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop: "{{ edge_agent_services }}"
+
+- name: Restart edge-agent services when the deployment changes
+  ansible.builtin.systemd_service:
+    name: "{{ item }}.service"
     state: restarted
-    daemon_reload: yes
+  loop: "{{ edge_agent_services }}"
+  when: >-
+    edge_agent_source_copy is changed or
+    edge_agent_requirements_copy is changed or
+    edge_agent_ca_cert_copy is changed or
+    edge_agent_dynamic_certs_copy is changed or
+    edge_agent_python_dependencies is changed or
+    edge_agent_systemd_units_copy is changed

@@ -1,28 +1,23 @@
 ---
 - name: Provisioning Cascadya Edge (Industrial Release)
   hosts: all
-  become: yes
-
-  # Load Global Variables
-  # This automatically loads vars from group_vars/all.yml
+  become: true
 
   pre_tasks:
     - name: Update APT Cache
-      apt:
-        update_cache: yes
+      ansible.builtin.apt:
+        update_cache: true
         cache_valid_time: 3600
 
   roles:
     - role: common
-    - role: dev-sec.os-hardening
-    - role: dev-sec.ssh-hardening
-    - role: security
     - role: network
     - role: edge-agent
+    - role: security-hardening
+    - role: tpm-luks-unlock
 
-  # --- RECOVERED CLEANUP TASK ---
   post_tasks:
     - name: Final Cleanup
-      apt:
-        autoremove: yes
-        clean: yes
+      ansible.builtin.apt:
+        autoremove: true
+        clean: true

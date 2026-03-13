@@ -11,6 +11,7 @@ Conflicts=getty@tty1.service
 
 [Service]
 Type=oneshot
+EnvironmentFile=-/etc/default/install-to-disk
 ExecStart=/usr/local/bin/install-to-disk.sh
 
 # --- AFFICHAGE ---

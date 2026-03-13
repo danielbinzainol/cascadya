@@ -1,0 +1,20 @@
+---
+security_hardening_service_user: "{{ target_user }}"
+security_hardening_data_dir: "{{ cascadya_data_dir }}"
+security_hardening_agent_dir: "{{ security_hardening_data_dir }}/agent"
+security_hardening_cert_dir: "{{ security_hardening_agent_dir }}/certs"
+security_hardening_ssh_service_name: ssh
+
+security_hardening_sshd_settings:
+  - regexp: "^#?PermitRootLogin\\s+"
+    line: "PermitRootLogin no"
+  - regexp: "^#?PasswordAuthentication\\s+"
+    line: "PasswordAuthentication no"
+
+security_hardening_sysctl:
+  - name: net.ipv4.ip_forward
+    value: "0"
+  - name: net.ipv4.tcp_syncookies
+    value: "1"
+  - name: net.ipv4.conf.all.accept_redirects
+    value: "0"

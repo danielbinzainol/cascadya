@@ -13,6 +13,10 @@ variable "ssh_username" { type = string }
 variable "ssh_password" { type = string }
 variable "ovmf_code"    { type = string }
 variable "ovmf_vars"    { type = string }
+variable "preseed_filename" {
+  type    = string
+  default = "preseed-uefi.cfg"
+}
 
 source "qemu" "debian-base" {
   # --- SOURCE : ISO INTERNET ---
@@ -24,7 +28,7 @@ source "qemu" "debian-base" {
   vm_name          = "debian-base.img"
   
   shutdown_command = "echo '${var.ssh_password}' | sudo -S shutdown -P now"
-  disk_size        = "8G"
+  disk_size        = "24G"
   format           = "raw"
   accelerator      = "none"
   headless         = false
@@ -54,7 +58,7 @@ source "qemu" "debian-base" {
     "linux /install.amd/vmlinuz ",
     "auto=true ",
     "priority=critical ",
-    "url=http://{{ .HTTPIP }}:{{ .HTTPPort }}/preseed-uefi.cfg ",
+    "url=http://{{ .HTTPIP }}:{{ .HTTPPort }}/${var.preseed_filename} ",
     "domain=local ",
     "hostname=cascadya ",
     "--- <enter>",

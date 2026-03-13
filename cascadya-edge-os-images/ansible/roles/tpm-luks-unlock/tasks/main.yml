@@ -1,0 +1,176 @@
+---
+- name: Install TPM/LUKS support packages
+  ansible.builtin.apt:
+    name: "{{ tpm_luks_required_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when: enable_tpm_luks | bool
+
+- name: Check TPM device availability
+  ansible.builtin.stat:
+    path: /dev/tpmrm0
+  register: tpm_luks_tpm_device
+  when: enable_tpm_luks | bool
+
+- name: Check whether the target data device is already a LUKS container
+  ansible.builtin.command:
+    argv:
+      - cryptsetup
+      - isLuks
+      - "{{ tpm_luks_device }}"
+  register: tpm_luks_is_luks
+  changed_when: false
+  failed_when: false
+  when:
+    - enable_tpm_luks | bool
+    - tpm_luks_tpm_device.stat.exists
+
+- name: Skip TPM enrollment when the data device is not encrypted yet
+  ansible.builtin.debug:
+    msg: >-
+      Skipping TPM enrollment because {{ tpm_luks_device }} is not a LUKS
+      container yet. Encrypt /data first, then enable this role.
+  when:
+    - enable_tpm_luks | bool
+    - tpm_luks_tpm_device.stat.exists
+    - tpm_luks_is_luks.rc != 0
+
+- name: Read current LUKS metadata
+  ansible.builtin.command:
+    argv:
+      - cryptsetup
+      - luksDump
+      - "{{ tpm_luks_device }}"
+  register: tpm_luks_luksdump
+  changed_when: false
+  when:
+    - enable_tpm_luks | bool
+    - tpm_luks_tpm_device.stat.exists
+    - tpm_luks_is_luks.rc == 0
+
+- name: Detect an existing TPM enrollment
+  ansible.builtin.set_fact:
+    tpm_luks_token_present: >-
+      {{
+        (
+          tpm_luks_luksdump.stdout
+          | regex_search('(?m)^\\s*\\d+:\\s+systemd-tpm2\\b')
+        ) is not none
+      }}
+  when:
+    - enable_tpm_luks | bool
+    - tpm_luks_tpm_device.stat.exists
+    - tpm_luks_is_luks.rc == 0
+
+- name: Check if crypttab exists
+  ansible.builtin.stat:
+    path: /etc/crypttab
+  register: tpm_luks_crypttab_stat
+  when:
+    - enable_tpm_luks | bool
+    - tpm_luks_tpm_device.stat.exists
+    - tpm_luks_is_luks.rc == 0
+
+- name: Read crypttab
+  ansible.builtin.slurp:
+    src: /etc/crypttab
+  register: tpm_luks_crypttab_raw
+  when:
+    - enable_tpm_luks | bool
+    - tpm_luks_tpm_device.stat.exists
+    - tpm_luks_is_luks.rc == 0
+    - tpm_luks_crypttab_stat.stat.exists
+
+- name: Extract current crypttab entry
+  ansible.builtin.set_fact:
+    tpm_luks_crypttab_line: >-
+      {{
+        (
+          (
+            tpm_luks_crypttab_raw.content | default('') | b64decode
+          )
+        ).splitlines()
+        | select('match', '^' ~ tpm_luks_crypttab_name ~ '\\s')
+        | list
+        | first
+        | default('')
+      }}
+  when:
+    - enable_tpm_luks | bool
+    - tpm_luks_tpm_device.stat.exists
+    - tpm_luks_is_luks.rc == 0
+
+- name: Split current crypttab fields
+  ansible.builtin.set_fact:
+    tpm_luks_crypttab_fields: "{{ tpm_luks_crypttab_line.split() if tpm_luks_crypttab_line else [] }}"
+  when:
+    - enable_tpm_luks | bool
+    - tpm_luks_tpm_device.stat.exists
+    - tpm_luks_is_luks.rc == 0
+
+- name: Build desired crypttab values
+  ansible.builtin.set_fact:
+    tpm_luks_crypttab_source: >-
+      {{
+        (tpm_luks_crypttab_fields | length > 1)
+        | ternary(tpm_luks_crypttab_fields[1], tpm_luks_device)
+      }}
+    tpm_luks_crypttab_keyfile: >-
+      {{
+        (tpm_luks_crypttab_fields | length > 2)
+        | ternary(tpm_luks_crypttab_fields[2], tpm_luks_crypttab_password)
+      }}
+    tpm_luks_existing_crypttab_options: >-
+      {{
+        (
+          (
+            (tpm_luks_crypttab_fields | length > 3)
+            | ternary(
+              tpm_luks_crypttab_fields[3],
+              tpm_luks_default_crypttab_options | join(',')
+            )
+          ).split(',')
+        )
+      }}
+  when:
+    - enable_tpm_luks | bool
+    - tpm_luks_tpm_device.stat.exists
+    - tpm_luks_is_luks.rc == 0
+
+- name: Ensure TPM option is present in crypttab
+  ansible.builtin.lineinfile:
+    path: /etc/crypttab
+    regexp: "^{{ tpm_luks_crypttab_name }}\\s"
+    line: >-
+      {{ tpm_luks_crypttab_name }}
+      {{ tpm_luks_crypttab_source }}
+      {{ tpm_luks_crypttab_keyfile }}
+      {{
+        (
+          tpm_luks_existing_crypttab_options
+          + ['tpm2-device=auto']
+        ) | reject('equalto', '') | unique | join(',')
+      }}
+    create: true
+  notify: Update initramfs
+  when:
+    - enable_tpm_luks | bool
+    - tpm_luks_tpm_device.stat.exists
+    - tpm_luks_is_luks.rc == 0
+
+- name: Enroll the data LUKS volume into TPM2
+  ansible.builtin.command:
+    argv:
+      - systemd-cryptenroll
+      - --tpm2-device=auto
+      - "--tpm2-pcrs={{ tpm_luks_pcrs }}"
+      - "{{ tpm_luks_device }}"
+  register: tpm_luks_cryptenroll
+  changed_when: true
+  when:
+    - enable_tpm_luks | bool
+    - tpm_luks_tpm_device.stat.exists
+    - tpm_luks_is_luks.rc == 0
+    - not (tpm_luks_token_present | default(false))
+  notify: Update initramfs

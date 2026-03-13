@@ -17,12 +17,6 @@
       - python3-pip
       - python3-venv
       - python3-full
-      # TPM / Security Tools
-      - tpm2-tools
-      - clevis
-      - clevis-tpm2
-      - clevis-luks
-      - cryptsetup
     state: present
     update_cache: yes
     cache_valid_time: 3600

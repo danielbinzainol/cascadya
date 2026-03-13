@@ -1,11 +1,17 @@
 ---
 # User Configuration
 target_user: "cascadya"
+cascadya_data_dir: "/data/cascadya"
 
 # SSH Hardening
 ssh_permit_root_login: "no"
 ssh_allow_groups: "sudo"
 ssh_use_pam: "yes"
+
+# TPM / LUKS
+enable_tpm_luks: false
+tpm_luks_device: "/dev/sda4"
+tpm_luks_crypttab_name: "cascadya_data"
 
 # OS Hardening
 os_security_users_allow: ['root', 'cascadya']

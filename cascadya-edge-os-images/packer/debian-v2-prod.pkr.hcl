@@ -11,73 +11,54 @@ variable "ssh_username" { type = string }
 variable "ssh_password" { type = string }
 variable "ovmf_code"    { type = string }
 variable "ovmf_vars"    { type = string }
+variable "iso_url" {
+  type    = string
+  default = ""
+}
+variable "iso_checksum" {
+  type    = string
+  default = ""
+}
 
-source "qemu" "debian-final" {
-  # --- SOURCE & DESTINATION ---
-  iso_url           = "output-debian-base/debian-base.img"
-  iso_checksum      = "none"
-  disk_image        = true
-  output_directory  = "output-final"
-  vm_name           = "cascadya-v2-prod.img"
-  
-  # --- CONFIGURATION VM ---
-  disk_interface    = "virtio"
-  format            = "raw"
-  accelerator       = "none"
-  headless          = false
-  shutdown_command  = "echo '${var.ssh_password}' | sudo -S shutdown -P now"
+source "qemu" "debian-v2-prod" {
+  iso_url          = "output-debian-base/debian-base.img"
+  iso_checksum     = "none"
+  disk_image       = true
+  output_directory = "output-final"
+  vm_name          = "cascadya-v2-prod.img"
 
-  # --- UEFI ---
+  disk_interface   = "virtio"
+  format           = "raw"
+  accelerator      = "none"
+  headless         = false
+  shutdown_command = "echo '${var.ssh_password}' | sudo -S shutdown -P now"
+
   efi_boot          = true
   efi_firmware_code = var.ovmf_code
   efi_firmware_vars = var.ovmf_vars
 
-  # --- SSH ---
-  ssh_username      = var.ssh_username
-  ssh_password      = var.ssh_password
-  ssh_timeout       = "20m"
+  ssh_username = var.ssh_username
+  ssh_password = var.ssh_password
+  ssh_timeout  = "20m"
 
-  memory            = 2048
-  cpus              = 1
+  memory = 2048
+  cpus   = 1
 }
 
 build {
-  sources = ["source.qemu.debian-final"]
+  sources = ["source.qemu.debian-v2-prod"]
 
-  # --- 1. INSTALLATION DES OUTILS ZERO-TOUCH ---
   provisioner "shell" {
     execute_command = "echo '{{.SSHPassword}}' | sudo -S -E sh -c '{{ .Path }}'"
     inline = [
-      "echo '>>> Ajout des dépôts non-free...'",
-      "sed -i 's/main$/main contrib non-free non-free-firmware/' /etc/apt/sources.list",
       "apt-get update",
-      "echo '>>> Installation des outils système...'",
+      "echo '>>> Installation des outils systeme du mode installateur...'",
       "apt-get install -y cloud-guest-utils cryptsetup gdisk parted"
     ]
   }
 
-  # --- 2. PREPARATION HARDENING (NOUVEAU) ---
-  # On copie le fichier de dépendances Ansible
-
-  # On installe les rôles de sécurité (DevSec)
-  provisioner "shell" {
-    execute_command = "echo '{{.SSHPassword}}' | sudo -S -E sh -c '{{ .Path }}'"
-    inline = [
-      "echo '>>> Installation des rôles Ansible Galaxy...'",
-      "ansible-galaxy install -r /tmp/requirements.yml"
-    ]
-  }
-
-  # --- 3. ANSIBLE (EXECUTION) ---
-  provisioner "ansible-local" {
-    playbook_file = "ansible/site.yml"
-    # IMPORTANT : Permet à Ansible de voir le dossier 'files' (pour l'agent et les certs)
-    playbook_dir  = "ansible"
-  }
-
-  # --- 4. SCRIPTS ZERO TOUCH ---
   provisioner "file" {
-    source      = "scripts/install-to-disk.sh"
+    source      = "scripts/install-to-disk-v2.sh"
     destination = "/tmp/install-to-disk.sh"
   }
 
@@ -86,22 +67,25 @@ build {
     destination = "/tmp/install-mode.service"
   }
 
+  provisioner "file" {
+    source      = "scripts/install-to-disk.env"
+    destination = "/tmp/install-to-disk.env"
+  }
+
   provisioner "shell" {
     execute_command = "echo '{{.SSHPassword}}' | sudo -S -E sh -c '{{ .Path }}'"
     inline = [
       "echo '>>> Installation du script Zero-Touch...'",
       "mv /tmp/install-to-disk.sh /usr/local/bin/install-to-disk.sh",
-      
-      # --- SECURITE ANTI-WINDOWS (CRITICAL FIX) ---
       "sed -i 's/\r$//' /usr/local/bin/install-to-disk.sh",
-      
       "chmod +x /usr/local/bin/install-to-disk.sh",
       "mv /tmp/install-mode.service /etc/systemd/system/install-mode.service",
+      "mv /tmp/install-to-disk.env /etc/default/install-to-disk",
+      "chmod 0644 /etc/default/install-to-disk",
       "systemctl enable install-mode.service"
     ]
   }
 
-  # --- 5. FIX GRAPHIQUE (HDMI) ---
   provisioner "shell" {
     execute_command = "echo '{{.SSHPassword}}' | sudo -S -E sh -c '{{ .Path }}'"
     inline = [
@@ -111,22 +95,18 @@ build {
     ]
   }
 
-  # --- 6. NETTOYAGE FINAL & BLACKLIST WIFI ---
   provisioner "shell" {
     execute_command = "echo '{{.SSHPassword}}' | sudo -S -E sh -c '{{ .Path }}'"
     inline = [
-      "echo '>>> Désactivation Wifi/BT (Mode Industriel)...'",
+      "echo '>>> Desactivation Wifi/BT (Mode Industriel)...'",
       "echo 'blacklist iwlwifi' > /etc/modprobe.d/blacklist-iwlwifi.conf",
       "echo 'blacklist btintel' >> /etc/modprobe.d/blacklist-iwlwifi.conf",
       "echo 'blacklist btrtl' >> /etc/modprobe.d/blacklist-iwlwifi.conf",
-      
       "echo '>>> Nettoyage final...'",
-      "apt-get remove -y ansible git",
       "apt-get autoremove -y",
       "apt-get clean",
       "rm -rf /var/lib/apt/lists/*",
-      "rm -f /root/.bash_history",
-      "rm -f /tmp/requirements.yml"
+      "rm -f /root/.bash_history"
     ]
   }
 }

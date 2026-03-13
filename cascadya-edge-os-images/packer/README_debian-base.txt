@@ -1,34 +1,35 @@
 ================================================================================
 FICHIER : debian-base.pkr.hcl
-ROLE    : Construction de l'image de Fondation (Golden Master)
-FREQ    : Très Rare (Uniquement lors d'un changement de version Debian)
-DUREE   : ~30 à 60 minutes (selon hardware)
+ROLE    : Construction de l'image de fondation
+FREQ    : Rare (principalement quand Debian, le preseed ou le layout changent)
+DUREE   : ~30 a 60 minutes selon l'hote
 ================================================================================
 
 [DESCRIPTION]
-Ce fichier Packer est responsable de la création de la couche "OS" pure.
-Il part de l'ISO officiel de Debian 13 (Trixie) et effectue l'installation
-silencieuse via le fichier de réponse automatique "http/preseed-uefi.cfg".
+Ce template construit la couche OS Debian pure a partir de l'ISO netinst
+Debian 12.13.0. Le mode par defaut est maintenant le mode "phase 1 stable" :
+EFI + Root A + Root B + /data en clair.
 
-[POURQUOI CETTE ÉTAPE ?]
-L'installation de Debian est longue (surtout sans accélération matérielle).
-Pour éviter de perdre 45 minutes à chaque fois qu'on veut tester un script,
-on isole cette étape lourde. Une fois cette image générée, on ne la touche plus.
+[POURQUOI CETTE ETAPE ?]
+L'installation Debian est la partie la plus lente. On la separe pour pouvoir
+iterer ensuite sur l'image Zero-Touch sans reinstaller l'OS a chaque fois.
 
-[DÉTAILS TECHNIQUES]
-1. Source       : Télécharge l'ISO Debian Netinst depuis internet.
-2. Partition    : Utilise le partitionnement défini dans le Preseed (EFI + Ext4).
-3. Utilisateur  : Crée l'utilisateur 'cascadya' (UID 1000).
-4. Droits       : Configure 'sudo' en mode NOPASSWD (via le Preseed) pour faciliter
-                  l'automatisation future par Ansible.
-5. Optimisation :
-   - RAM  : 4096 Mo (Pour compenser la lenteur CPU).
-   - CPU  : 1 (Pour éviter le crash "RCU Stall" fréquent en émulation QEMU).
-   - Timeout : 1h30 (Pour éviter que Packer ne coupe le build si l'install est lente).
+[DETAILS TECHNIQUES]
+1. Source       : ISO Debian netinst officiel
+2. Partition    : preseed 4 partitions (EFI + Root A + Root B + /data)
+3. Utilisateur  : cree `cascadya` avec sudo NOPASSWD
+4. Taille disque: image brute de 24 Go cote build
+5. But          : fournir une base stable avant d'activer eventuellement LUKS
+
+[FICHIERS PRESEED]
+- Defaut stable : `http/preseed-uefi.cfg`
+- Variante experimentale LUKS dans l'installeur :
+  `http/preseed-uefi-v4-luks-experimental.cfg`
 
 [SORTIE]
-Génère le dossier : output-debian-base/
-Contient le fichier : debian-base.img (Disque dur virtuel de 8Go avec Debian installé).
+Dossier : `output-debian-base/`
+Fichier : `debian-base.img`
 
-[COMMANDE POUR LANCER]
-.\packer build -var-file="packer/variables.pkr.hcl" packer/debian-base.pkr.hcl
+[COMMANDES]
+.\tools\packer.exe init packer/debian-base.pkr.hcl
+.\tools\packer.exe build -var-file="packer/variables.pkr.hcl" packer/debian-base.pkr.hcl

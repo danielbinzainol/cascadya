@@ -5,7 +5,7 @@ from tkinter import ttk, messagebox
 from core.runner import ScriptRunner
 
 # --- HARDCODED REFERENCE FOLDER ---
-BASE_DIR = r"C:\Users\Daniel BIN ZAINOL\Downloads\python script"
+BASE_DIR = r"C:\Users\Daniel BIN ZAINOL\Desktop\GIT - Daniel\python script"
 DESC_FILE = os.path.join(BASE_DIR, "script_descriptions.json")
 
 class ScriptLauncherApp:
