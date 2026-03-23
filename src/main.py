@@ -6,7 +6,7 @@ from src.dataset import analyze, detect_elapsed_time_anomalies, resample
 from src.train import model_choice, create_feature, train_model
 from src.evaluate import cv_evaluate
 from src.autres import fit_pred_fore_priori_plot_workflow
-from plots import plot_timeseries_csv
+from plots import plot_timeseries
 
 
 def main():
@@ -16,7 +16,7 @@ def main():
     # target
     y = df[["measured_at_utc", "steam_consumption_m3_h"]]
     y_10min = resample(y, desired_timedelta="10min", aggregate_function="mean") # TODO vérfiier comment se fait ce mean, pas sur que je sois content, mieux vaut peut etre prendre le point le plus proche
-    plot_timeseries_csv(y_10min.set_index("measured_at_utc"))
+    plot_timeseries(y_10min.set_index("measured_at_utc"))
 
     X = create_feature(y)
 

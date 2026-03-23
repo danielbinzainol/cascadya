@@ -9,7 +9,7 @@ from statsmodels.graphics.tsaplots import plot_pacf, plot_acf
 from pathlib import Path
 
 
-def plot_timeseries_csv(
+def plot_timeseries(
     df: pd.DataFrame,
 ):
     ax = df.plot(figsize=(10, 6))
@@ -21,7 +21,7 @@ def plot_timeseries_csv(
     plt.show()
 
 
-def plot_weekday_seasonal_csv(
+def plot_weekday_seasonal(
         df: pd.DataFrame,
         value_col,
         option_mean= False
@@ -32,7 +32,7 @@ def plot_weekday_seasonal_csv(
     else:
         df["day"] = df.index.dayofweek
         # weekday_means = df.groupby(df.index.dayofweek).mean().reindex(range(7))
-        ax = df.plot.scatter(x="day", df=value_col, figsize=(10, 6), alpha=0.4)
+        ax = df.plot.scatter(x="day", y=value_col, figsize=(10, 6), alpha=0.4)
     ax.set_xlabel("Weekday")
     ax.set_ylabel(value_col)
     ax.set_xticks(range(7))
@@ -41,6 +41,34 @@ def plot_weekday_seasonal_csv(
     plt.tight_layout()
     plt.show()      
 
+def seasonal_plot(X, y, period, freq, ax=None, **kwargs):
+    if ax is None:
+        _, ax = plt.subplots()
+    palette = sns.color_palette("husl", n_colors=X[period].nunique(),)
+    ax = sns.lineplot(
+        x=freq,
+        y=y,
+        hue=period,
+        data=X,
+        ax=ax,
+        palette=palette,
+        legend=False,
+        **kwargs,
+    )
+    ax.set_title(f"Seasonal Plot ({period}/{freq})")
+    for line, name in zip(ax.lines, X[period].unique()):
+        y_ = line.get_ydata()[-1]
+        ax.annotate(
+            name,
+            xy=(1, y_),
+            xytext=(6, 0),
+            color=line.get_color(),
+            xycoords=ax.get_yaxis_transform(),
+            textcoords="offset points",
+            size=14,
+            va="center",
+        )
+    return ax
 
 ### Simple regression on lag of 1 hour ###
 def simple_lag_plot(X_lag_1h, y, y_pred, value_col):
