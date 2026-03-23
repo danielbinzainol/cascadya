@@ -7,7 +7,7 @@ import datetime
 
 from src.ingest import localize_and_convert_to_utc
 from src.dataset import detect_elapsed_time_anomalies
-from plots import plot_timeseries_csv, plot_gap_filled_timeseries
+from plots import plot_timeseries, plot_gap_filled_timeseries
 from src.utils import load_config, convert_gas_units
 
 DEFAULT_INTERMEDIARY_OUTPUT_PATH_NOT_SAMPLED = Path(r"data\tarkett\intermediary") / "data_tarkett_not_sampled.csv"
@@ -462,7 +462,7 @@ def build_tarkett_dataset(
     output_path.parent.mkdir(parents=True, exist_ok=True)    
     df_hourly_gap_filled.to_csv(output_path, index=False, sep=sep, decimal=decimal)
 
-    plot_timeseries_csv(df_hourly.set_index("timeslot_start_at"))
+    plot_timeseries(df_hourly.set_index("timeslot_start_at"))
     plot_gap_filled_timeseries(df_hourly_gap_filled)
 
     return df_hourly, df_hourly_gap_filled, duplicates, elapsed_anomalies
