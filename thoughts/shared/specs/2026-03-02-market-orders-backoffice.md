@@ -1,44 +1,51 @@
 # Market Orders Backoffice Specification
 
+## Glossary
+admin: role of an internal user
+validator: role of an internal user
+viewer: role of an internal user
+rejection: a decision from the user to reject the proposed market orders
+
 ## Executive Summary
 Build a new backoffice for operations and data teams to explore, review, and validate market orders, then compare orders against market results. The product supports both day-ahead and intraday workflows, with explicit validation for day-ahead and visualization-only for intraday in v1. The solution targets fast onboarding (Vue frontend), strong operational reliability, and clear decision accountability.
 
 ## Problem Statement
-The current module computes market orders, but there is no dedicated review and validation interface before execution, and no unified view to compare proposed orders, planning, past behavior, and resulting market allocations. This creates risk of low visibility on coherence, weak traceability of accept/reject decisions, and slower reaction when order-result gaps appear.
+The current module computes market orders, but there is no dedicated review and validation interface before execution, and no unified view to compare proposed orders, planning forecasts, past behavior, and resulting market allocations. This creates risk of low visibility on coherence, weak traceability of accept/reject decisions, and slower reaction when order-result gaps appear.
 
 ## Success Criteria
 - Every day-ahead order set has a clear status before the noon Europe/Paris deadline: validated, rejected (with reason), or auto-default applied.
 - Every non-zero order-vs-result delta is visually identifiable for day-ahead and intraday views.
 - Every rejection is justified, attributable to a user, and handled within operational workflow.
-- Manual-validation plants follow reminder and escalation notifications before deadline; automatic-validation plants send one informational notification to the responsible validator.
+- Manual-validation sites follow reminder and escalation notifications before deadline; automatic-validation sites send one informational notification to the responsible validator.
 - System retains 3 years of historical data for comparison and analysis.
 
 ## User Personas
-- Internal user (validator or viewer): Reviews charts, checks coherence against planning/past orders/consumption data, and monitors results. The one with the "validator" right validates or rejects day-ahead order sets.
-- Admin: Manages users, roles, plant-level default behavior, and global configuration.
+- Internal user (validator or viewer): Reviews charts, checks coherence against planning forecasts/past orders/consumption data, and monitors results. The one with the "validator" right validates or rejects day-ahead order sets.
+- Admin: Manages users, roles, site-level default behavior, and global configuration.
 
 ## User Journey
 ### Day-Ahead Review and Decision
 1. User logs into backoffice.
 2. User selects mode: `Review Market Orders` or `Review Market Results`.
-3. Dashboard highlights pending reviews/validations by plant, date, and horizon.
-4. User selects plant/date/horizon.
-5. Orders review view shows superimposed chart: production planning + market orders, with past/future shading (default visible window: 1 week in the past + 1 day in the future).
-6. User can quickly switch to a preset view showing 1 month in the past and can also set custom date limits.
-7. Each plant has a validation mode parameter: `manual` or `automatic`.
-8. If plant mode is `manual`, validator either:
+3. Dashboard highlights pending reviews/validations by site, date, and horizon.
+4. User selects site/date/horizon.
+5. Orders review view shows superimposed chart: production planning (the mean forecast or the quantile forecast, produced by the forecasting modules)+ market orders, with past/future shading (default visible window: 1 week in the past + 1 day in the future).
+6. An indicator based on the historical error levels of the forecast vs. the realised consumption is visible in the dashboard and adds context.
+7. User can quickly switch to a preset view showing 1 month in the past and can also set custom date limits.
+8. Each site has a validation mode parameter: `manual` or `automatic`.
+9. If site mode is `manual`, validator either:
 - Validates order set, or
 - Rejects order set and must provide reason.
-9. In `manual` mode, first reminder notification is sent to responsible validator one hour before deadline.
-10. If no validation exists close to deadline in `manual` mode, escalation notification is sent to all users.
-11. If still no validation by noon Europe/Paris in `manual` mode, plant-level default decision is applied automatically.
-12. If plant mode is `automatic`, produced order is auto-validated and one informational notification is sent to the responsible validator.
-13. System stores decision with plant, date, horizon, username/system actor, UTC timestamp, decision, optional rejection reason, and order-set identifier/hash.
+10. In `manual` mode, first reminder notification is sent to responsible validator one hour before deadline.
+11. If no validation exists close to deadline in `manual` mode, escalation notification is sent to all users.
+12. If still no validation by noon Europe/Paris in `manual` mode, site-level default decision is applied automatically.
+13. If site mode is `automatic`, produced order is auto-validated and one informational notification is sent to the responsible validator.
+14. System stores decision with site, date, horizon, username/system actor, UTC timestamp, decision, optional rejection reason, and order-set identifier/hash.
 
 ### Day-Ahead Results Comparison
 1. Around 13:00 Europe/Paris, day-ahead market results are pulled from API.
-2. User opens `Review Market Results` for plant/date/horizon.
-3. Chart displays planning + orders + results.
+2. User opens `Review Market Results` for site/date/horizon.
+3. Chart displays planning (mean or quantile forecasts) + orders + results.
 4. Any non-zero delta between orders and results is highlighted with filled difference areas.
 5. No additional validation action is required at this stage.
 
@@ -52,7 +59,8 @@ The current module computes market orders, but there is no dedicated review and 
 ### Must Have (P0)
 - Role-based access control with local users:
 - Roles: `admin`, `validator`, `viewer`.
-- Admin can assign per-plant responsible validator.
+- Admin can assign per-site responsible validator.
+- Access through wireguard VPN
 - User authentication and password reset via email verification link (no admin direct reset).
 - Security defaults:
 - Minimum 12-character password.
@@ -60,9 +68,9 @@ The current module computes market orders, but there is no dedicated review and 
 - Session timeout after 8 hours.
 - Account lock after 5 failed login attempts.
 - Day-ahead review workspace:
-- Plant/date/horizon selection.
+- site/date/horizon selection.
 - Pending status indicators.
-- Superimposed chart of planning and market orders.
+- Superimposed chart of planning forecasts and market orders.
 - Past vs future visual shading.
 - Default chart window: 1 week in the past + 1 day in the future.
 - Quick switch to 1-month-past preset and custom date limits.
@@ -70,12 +78,12 @@ The current module computes market orders, but there is no dedicated review and 
 - Validate or reject (reject requires reason).
 - Store only the current effective decision if changed later.
 - Persist decision metadata including order-set identifier/hash.
-- Per-plant validation mode:
+- Per-site validation mode:
 - `manual`: order requires validation by a validator before noon Europe/Paris.
 - `automatic`: produced order is auto-validated by system.
 - Deadline automation:
-- Hard deadline at 12:00 Europe/Paris.
-- Per-plant default fallback action when pending:
+- Hard deadline at 10:30 Europe/Paris.
+- Per-site default fallback action when pending:
 - Copy yesterday's orders, or
 - Buy nothing, or
 - Copy last week's orders.
@@ -97,7 +105,7 @@ The current module computes market orders, but there is no dedicated review and 
 Acceptance criteria (P0)
 - Given a pending day-ahead set at 11:00 Europe/Paris in `manual` mode, responsible validator receives one reminder on selected channel unless muted.
 - Given rejection action, system blocks submission without a non-empty reason.
-- Given `manual` mode and no validation by 12:00 Europe/Paris, configured plant default is applied automatically.
+- Given `manual` mode and no validation by 12:00 Europe/Paris, configured site default is applied automatically.
 - Given `manual` mode and no validation close to deadline, escalation notification is sent to all users.
 - Given `automatic` mode, produced order is auto-validated and one informational notification is sent to responsible validator.
 - Given results available, chart highlights every non-zero order-result difference.
@@ -105,16 +113,16 @@ Acceptance criteria (P0)
 - Given a decision update, only latest decision is shown as effective current state.
 
 ### Should Have (P1)
-- Dashboard summary cards by plant: pending, validated, rejected, auto-defaulted, and recent gap counts.
+- Dashboard summary cards by site: pending, validated, rejected, auto-defaulted, and recent gap counts.
 - Advanced filtering (date range, horizon, decision status, user).
-- Quick links from alert notifications directly to relevant plant/date/horizon view.
+- Quick links from alert notifications directly to relevant site/date/horizon view.
 
 Acceptance criteria (P1)
 - User can filter backlog to find all rejected sets in a date range.
 - User can open a notification link and land on exact review context.
 
 ### Nice to Have (P2)
-- Delta severity bands (small/medium/large) configurable per plant.
+- Delta severity bands (small/medium/large) configurable per site.
 - Bulk export (CSV) of charted comparison windows.
 - Lightweight anomaly annotations for intraday deltas.
 
@@ -137,14 +145,14 @@ Rationale
 
 ### Data Model
 Core entities:
-- `plants`: plant metadata, fallback decision, alert mute settings, responsible validator.
+- `sites`: site metadata, fallback decision, alert mute settings, responsible validator.
 - `users`: identity, role, auth fields, notification preferences.
-- `day_ahead_order_sets`: plant/date/horizon, generated_at, source, hash/version, payload reference.
-- `day_ahead_decisions`: current effective decision for plant/date/horizon/order_set_hash.
+- `day_ahead_order_sets`: site/date/horizon, generated_at, source, hash/version, payload reference.
+- `day_ahead_decisions`: current effective decision for site/date/horizon/order_set_hash.
 - `day_ahead_results`: timeseries points from market API.
 - `intraday_orders`: timeseries points sent to broker API.
 - `intraday_results`: timeseries points from broker WebSocket.
-- `planning_timeseries`: production planning points.
+- `planning_forecasts`: production planning forecasts (mean, quantile).
 - `consumption_timeseries`: past and predicted consumption points.
 - `notifications`: reminder/alert events and delivery status.
 
@@ -156,7 +164,7 @@ Core entities:
 - Pull day-ahead results daily.
 - Decision engine:
 - Enforces noon Europe/Paris deadline.
-- Applies per-plant default when pending.
+- Applies per-site default when pending.
 - Opens 30-minute correction window when broker error event indicates invalid orders.
 - Backoffice API:
 - Serves chart and decision data.
@@ -191,7 +199,7 @@ Core entities:
 - Day-ahead chart queries return in <2 seconds for default 1-week view.
 - Intraday stream ingestion tolerates bursty updates and persists with ordered timestamps.
 - Scalability:
-- Start at 1 plant and scale to 10 plants by 18 months without architecture rewrite.
+- Start at 1 site and scale to 10 sites by 18 months without architecture rewrite.
 - Reliability:
 - 99.5% uptime target.
 - Idempotent ingestion for repeated broker/day-ahead pulls where possible.
@@ -200,13 +208,14 @@ Core entities:
 - Observability:
 - Structured logs and metrics for ingestion, deadline jobs, notifications, and API errors.
 - Data retention:
-- 3 years of time-series and decision-related records.
+- 3 years of time-series and decision-related records. Older data points are not deleted, but stored in a "long-term" storage, to improve performance, if possible.
 
 ## Out of Scope (v1)
 - Intraday per-order manual validation workflow.
 - Compliance program implementation (no explicit GDPR/SOC2 requirement in v1).
 - Multi-tenant architecture across separate organizations.
 - Advanced forecasting model changes (backoffice consumes model output, does not redesign model logic).
+- Another tab in the backoffice to review the forecasts.
 
 ## Open Questions for Implementation
 - Confirm production-approved OAuth2 flow for this tenant (`client_credentials` in integration code vs `authorizationCode` in published OpenAPI security flow) and finalize token renewal/rotation policy.
