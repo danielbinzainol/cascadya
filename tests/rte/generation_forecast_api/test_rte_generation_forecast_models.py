@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from src.rte.generation_forecast_api.rte_generation_forecast_models import GenerationForecastResponse
+from src.rte.generation_forecast_api.rte_generation_forecast_models import (
+    GenerationForecastResponse,
+    TotalForecastResponse,
+)
 
 
 def _forecast_payload() -> dict:
@@ -51,3 +54,41 @@ def test_generation_forecast_response_keeps_optional_fields_flexible() -> None:
     parsed = GenerationForecastResponse.model_validate(payload)
 
     assert parsed.forecasts[0].values[0].value == 2450
+
+
+def _total_forecast_payload() -> dict:
+    return {
+        "total_forecast": [
+            {
+                "type": "D-1",
+                "start_date": "2026-03-20T00:00:00+01:00",
+                "end_date": "2026-03-21T00:00:00+01:00",
+                "values": [
+                    {
+                        "start_date": "2026-03-20T00:00:00+01:00",
+                        "end_date": "2026-03-20T00:15:00+01:00",
+                        "updated_date": "2026-03-20T00:20:00+01:00",
+                        "value": 12150,
+                    }
+                ],
+            }
+        ]
+    }
+
+
+def test_total_forecast_response_parses_total_forecast_root_key() -> None:
+    parsed = TotalForecastResponse.model_validate(_total_forecast_payload())
+
+    assert len(parsed.total_forecast) == 1
+    assert parsed.total_forecast[0].type == "D-1"
+    assert parsed.total_forecast[0].values[0].value == 12150
+
+
+def test_total_forecast_response_accepts_total_forecast_camel_case_root_key() -> None:
+    payload = _total_forecast_payload()
+    payload["totalForecast"] = payload.pop("total_forecast")
+
+    parsed = TotalForecastResponse.model_validate(payload)
+
+    assert len(parsed.total_forecast) == 1
+    assert parsed.total_forecast[0].type == "D-1"

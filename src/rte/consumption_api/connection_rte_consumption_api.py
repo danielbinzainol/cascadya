@@ -5,11 +5,11 @@ import os
 
 from fastapi import FastAPI, HTTPException, Query
 
-from src.rte.consumption_api.rte_consumption_client import (
+from src.rte.rte_client import (
     DEFAULT_RTE_CONSUMPTION_BASE_URL,
-    RteConsumptionApiError,
-    RteConsumptionAuthConfig,
-    RteConsumptionAuthError,
+    RteApiError,
+    RteAuthConfig,
+    RteAuthError,
     RteConsumptionClient,
 )
 from src.rte.rte_auth import resolve_rte_auth_env
@@ -25,7 +25,7 @@ async def get_rte_consumption_short_term(
     end_date: datetime.datetime | None = None,
 ) -> ShortTermResponse:
     resolved_auth = resolve_rte_auth_env()
-    auth_config = RteConsumptionAuthConfig(
+    auth_config = RteAuthConfig(
         access_token=resolved_auth.access_token,
         client_id=resolved_auth.client_id,
         client_secret=resolved_auth.client_secret,
@@ -43,7 +43,7 @@ async def get_rte_consumption_short_term(
             )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except RteConsumptionAuthError as exc:
+    except RteAuthError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
-    except RteConsumptionApiError as exc:
+    except RteApiError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc

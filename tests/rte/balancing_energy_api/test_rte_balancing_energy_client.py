@@ -6,10 +6,10 @@ import datetime
 import httpx
 import pytest
 
-from src.rte.balancing_energy_api.rte_balancing_energy_client import (
+from src.rte.rte_client import (
     DEFAULT_RTE_TOKEN_URL,
-    RteBalancingEnergyAuthConfig,
-    RteBalancingEnergyBadRequestError,
+    RteAuthConfig,
+    RteBadRequestError,
     RteBalancingEnergyClient,
 )
 
@@ -52,7 +52,7 @@ def test_get_imbalance_data_builds_expected_query_params_and_headers() -> None:
     async def scenario() -> None:
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
             client = RteBalancingEnergyClient(
-                auth=RteBalancingEnergyAuthConfig(access_token="known-token"),
+                auth=RteAuthConfig(access_token="known-token"),
                 http_client=http_client,
             )
             response = await client.get_imbalance_data(
@@ -73,7 +73,7 @@ def test_get_imbalance_data_builds_expected_query_params_and_headers() -> None:
 
 def test_get_imbalance_data_raises_when_datetime_is_naive() -> None:
     async def scenario() -> None:
-        async with RteBalancingEnergyClient(auth=RteBalancingEnergyAuthConfig(access_token="known-token")) as client:
+        async with RteBalancingEnergyClient(auth=RteAuthConfig(access_token="known-token")) as client:
             with pytest.raises(ValueError, match="must include timezone"):
                 await client.get_imbalance_data(
                     start_date=datetime.datetime(2026, 3, 20, 0, 0),
@@ -97,7 +97,7 @@ def test_get_imbalance_data_fetches_oauth_token_with_precomputed_basic_auth() ->
     async def scenario() -> None:
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
             client = RteBalancingEnergyClient(
-                auth=RteBalancingEnergyAuthConfig(
+                auth=RteAuthConfig(
                     basic_authorization_b64="ZmFrZS1iYXNlNjQ=",
                     token_url=DEFAULT_RTE_TOKEN_URL,
                 ),
@@ -123,10 +123,10 @@ def test_get_imbalance_data_maps_http_400_to_bad_request_error() -> None:
     async def scenario() -> None:
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
             client = RteBalancingEnergyClient(
-                auth=RteBalancingEnergyAuthConfig(access_token="known-token"),
+                auth=RteAuthConfig(access_token="known-token"),
                 http_client=http_client,
             )
-            with pytest.raises(RteBalancingEnergyBadRequestError, match="enumerated field"):
+            with pytest.raises(RteBadRequestError, match="enumerated field"):
                 await client.get_imbalance_data()
 
     asyncio.run(scenario())

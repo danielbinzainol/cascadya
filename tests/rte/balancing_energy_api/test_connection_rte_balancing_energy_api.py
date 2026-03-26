@@ -5,7 +5,7 @@ import datetime
 from fastapi.testclient import TestClient
 
 import src.rte.balancing_energy_api.connection_rte_balancing_energy_api
-from src.rte.balancing_energy_api.rte_balancing_energy_client import RteBalancingEnergyAuthError
+from src.rte.rte_client import RteAuthError
 from src.rte.balancing_energy_api.rte_balancing_energy_models import ImbalanceDataResponse
 
 
@@ -147,7 +147,7 @@ def test_imbalance_data_endpoint_maps_auth_error(monkeypatch) -> None:
 
         async def get_imbalance_data(self, *, start_date, end_date):  # noqa: ANN001
             _ = (start_date, end_date)
-            raise RteBalancingEnergyAuthError("invalid token", status_code=401)
+            raise RteAuthError("invalid token", status_code=401)
 
     monkeypatch.setattr(
         src.rte.balancing_energy_api.connection_rte_balancing_energy_api,

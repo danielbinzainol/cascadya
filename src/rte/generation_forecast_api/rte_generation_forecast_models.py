@@ -39,3 +39,27 @@ class GenerationForecastResponse(RteGenerationForecastBaseModel):
             return {"forecasts": data["generationForecasts"]}
 
         return data
+
+
+class TotalForecastSeries(RteGenerationForecastBaseModel):
+    type: str | None = None
+    start_date: AwareDatetime | None = None
+    end_date: AwareDatetime | None = None
+    values: list[GenerationForecastPoint] = Field(default_factory=list)
+
+
+class TotalForecastResponse(RteGenerationForecastBaseModel):
+    total_forecast: list[TotalForecastSeries]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_root_payload(cls, data):  # noqa: ANN001
+        if not isinstance(data, dict):
+            return data
+
+        if "total_forecast" in data:
+            return data
+        if "totalForecast" in data:
+            return {"total_forecast": data["totalForecast"]}
+
+        return data

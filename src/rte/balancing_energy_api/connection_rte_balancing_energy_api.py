@@ -5,11 +5,11 @@ import os
 
 from fastapi import FastAPI, HTTPException
 
-from src.rte.balancing_energy_api.rte_balancing_energy_client import (
+from src.rte.rte_client import (
     DEFAULT_RTE_BALANCING_ENERGY_BASE_URL,
-    RteBalancingEnergyApiError,
-    RteBalancingEnergyAuthConfig,
-    RteBalancingEnergyAuthError,
+    RteApiError,
+    RteAuthConfig,
+    RteAuthError,
     RteBalancingEnergyClient,
 )
 from src.rte.balancing_energy_api.rte_balancing_energy_models import ImbalanceDataResponse
@@ -24,7 +24,7 @@ async def get_rte_balancing_energy_imbalance_data(
     end_date: datetime.datetime | None = None,
 ) -> ImbalanceDataResponse:
     resolved_auth = resolve_rte_auth_env()
-    auth_config = RteBalancingEnergyAuthConfig(
+    auth_config = RteAuthConfig(
         access_token=resolved_auth.access_token,
         client_id=resolved_auth.client_id,
         client_secret=resolved_auth.client_secret,
@@ -38,7 +38,7 @@ async def get_rte_balancing_energy_imbalance_data(
             return await client.get_imbalance_data(start_date=start_date, end_date=end_date)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except RteBalancingEnergyAuthError as exc:
+    except RteAuthError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
-    except RteBalancingEnergyApiError as exc:
+    except RteApiError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc

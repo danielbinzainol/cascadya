@@ -6,10 +6,10 @@ import datetime
 import httpx
 import pytest
 
-from src.rte.consumption_api.rte_consumption_client import (
+from src.rte.rte_client import (
     DEFAULT_RTE_TOKEN_URL,
-    RteConsumptionAuthConfig,
-    RteConsumptionBadRequestError,
+    RteAuthConfig,
+    RteBadRequestError,
     RteConsumptionClient,
 )
 from src.rte.consumption_api.rte_consumption_models import ShortTermQueryType, ShortTermResponseType
@@ -50,7 +50,7 @@ def test_get_short_term_builds_expected_query_params_and_headers() -> None:
     async def scenario() -> None:
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
             client = RteConsumptionClient(
-                auth=RteConsumptionAuthConfig(access_token="known-token"),
+                auth=RteAuthConfig(access_token="known-token"),
                 http_client=http_client,
             )
             response = await client.get_short_term(
@@ -74,7 +74,7 @@ def test_get_short_term_builds_expected_query_params_and_headers() -> None:
 
 def test_get_short_term_raises_when_only_one_date_is_provided() -> None:
     async def scenario() -> None:
-        async with RteConsumptionClient(auth=RteConsumptionAuthConfig(access_token="known-token")) as client:
+        async with RteConsumptionClient(auth=RteAuthConfig(access_token="known-token")) as client:
             with pytest.raises(ValueError, match="must either both be filled in"):
                 await client.get_short_term(
                     start_date=datetime.datetime(2026, 3, 20, 0, 0, tzinfo=datetime.UTC),
@@ -86,7 +86,7 @@ def test_get_short_term_raises_when_only_one_date_is_provided() -> None:
 
 def test_get_short_term_raises_when_datetime_is_naive() -> None:
     async def scenario() -> None:
-        async with RteConsumptionClient(auth=RteConsumptionAuthConfig(access_token="known-token")) as client:
+        async with RteConsumptionClient(auth=RteAuthConfig(access_token="known-token")) as client:
             with pytest.raises(ValueError, match="must include timezone"):
                 await client.get_short_term(
                     start_date=datetime.datetime(2026, 3, 20, 0, 0),
@@ -116,7 +116,7 @@ def test_get_short_term_fetches_oauth_token_with_client_credentials() -> None:
     async def scenario() -> None:
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
             client = RteConsumptionClient(
-                auth=RteConsumptionAuthConfig(
+                auth=RteAuthConfig(
                     client_id="client-id",
                     client_secret="client-secret",
                     token_url=DEFAULT_RTE_TOKEN_URL,
@@ -144,7 +144,7 @@ def test_get_short_term_fetches_oauth_token_with_precomputed_basic_auth() -> Non
     async def scenario() -> None:
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
             client = RteConsumptionClient(
-                auth=RteConsumptionAuthConfig(
+                auth=RteAuthConfig(
                     basic_authorization_b64="ZmFrZS1iYXNlNjQ=",
                     token_url=DEFAULT_RTE_TOKEN_URL,
                 ),
@@ -172,10 +172,10 @@ def test_get_short_term_maps_http_400_to_bad_request_error() -> None:
     async def scenario() -> None:
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
             client = RteConsumptionClient(
-                auth=RteConsumptionAuthConfig(access_token="known-token"),
+                auth=RteAuthConfig(access_token="known-token"),
                 http_client=http_client,
             )
-            with pytest.raises(RteConsumptionBadRequestError, match="enumerated field"):
+            with pytest.raises(RteBadRequestError, match="enumerated field"):
                 await client.get_short_term(types=[ShortTermQueryType.REALISED])
 
     asyncio.run(scenario())

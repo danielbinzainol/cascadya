@@ -5,7 +5,7 @@ import datetime
 from fastapi.testclient import TestClient
 
 import src.rte.consumption_api.connection_rte_consumption_api
-from src.rte.consumption_api.rte_consumption_client import RteConsumptionAuthError
+from src.rte.rte_client import RteAuthError
 from src.rte.consumption_api.rte_consumption_models import ShortTermResponse
 
 
@@ -143,7 +143,7 @@ def test_rte_short_term_endpoint_maps_auth_error(monkeypatch) -> None:
 
         async def get_short_term(self, *, types, start_date, end_date):  # noqa: ANN001
             _ = (types, start_date, end_date)
-            raise RteConsumptionAuthError("invalid token", status_code=401)
+            raise RteAuthError("invalid token", status_code=401)
 
     monkeypatch.setattr(
         src.rte.consumption_api.connection_rte_consumption_api, "RteConsumptionClient", FakeRteConsumptionClient

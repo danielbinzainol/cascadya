@@ -6,10 +6,10 @@ import datetime
 import httpx
 import pytest
 
-from src.rte.generation_forecast_api.rte_generation_forecast_client import (
+from src.rte.rte_client import (
     DEFAULT_RTE_TOKEN_URL,
-    RteGenerationForecastAuthConfig,
-    RteGenerationForecastBadRequestError,
+    RteAuthConfig,
+    RteBadRequestError,
     RteGenerationForecastClient,
 )
 
@@ -35,6 +35,26 @@ def _response_payload() -> dict:
     }
 
 
+def _total_forecast_response_payload() -> dict:
+    return {
+        "total_forecast": [
+            {
+                "type": "D-1",
+                "start_date": "2026-03-20T00:00:00+01:00",
+                "end_date": "2026-03-21T00:00:00+01:00",
+                "values": [
+                    {
+                        "start_date": "2026-03-20T00:00:00+01:00",
+                        "end_date": "2026-03-20T00:15:00+01:00",
+                        "updated_date": "2026-03-20T00:20:00+01:00",
+                        "value": 12150,
+                    }
+                ],
+            }
+        ]
+    }
+
+
 def test_get_forecasts_builds_expected_query_params_and_headers() -> None:
     captured: dict[str, str] = {}
 
@@ -51,7 +71,7 @@ def test_get_forecasts_builds_expected_query_params_and_headers() -> None:
     async def scenario() -> None:
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
             client = RteGenerationForecastClient(
-                auth=RteGenerationForecastAuthConfig(access_token="known-token"),
+                auth=RteAuthConfig(access_token="known-token"),
                 http_client=http_client,
             )
             response = await client.get_forecasts(
@@ -77,7 +97,7 @@ def test_get_forecasts_builds_expected_query_params_and_headers() -> None:
 
 def test_get_forecasts_raises_when_only_one_date_is_provided() -> None:
     async def scenario() -> None:
-        async with RteGenerationForecastClient(auth=RteGenerationForecastAuthConfig(access_token="known-token")) as client:
+        async with RteGenerationForecastClient(auth=RteAuthConfig(access_token="known-token")) as client:
             with pytest.raises(ValueError, match="must either both be filled in"):
                 await client.get_forecasts(
                     start_date=datetime.datetime(2026, 3, 20, 0, 0, tzinfo=datetime.UTC),
@@ -89,7 +109,7 @@ def test_get_forecasts_raises_when_only_one_date_is_provided() -> None:
 
 def test_get_forecasts_raises_when_datetime_is_naive() -> None:
     async def scenario() -> None:
-        async with RteGenerationForecastClient(auth=RteGenerationForecastAuthConfig(access_token="known-token")) as client:
+        async with RteGenerationForecastClient(auth=RteAuthConfig(access_token="known-token")) as client:
             with pytest.raises(ValueError, match="must include timezone"):
                 await client.get_forecasts(
                     start_date=datetime.datetime(2026, 3, 20, 0, 0),
@@ -119,7 +139,7 @@ def test_get_forecasts_fetches_oauth_token_with_client_credentials() -> None:
     async def scenario() -> None:
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
             client = RteGenerationForecastClient(
-                auth=RteGenerationForecastAuthConfig(
+                auth=RteAuthConfig(
                     client_id="client-id",
                     client_secret="client-secret",
                     token_url=DEFAULT_RTE_TOKEN_URL,
@@ -147,7 +167,7 @@ def test_get_forecasts_fetches_oauth_token_with_precomputed_basic_auth() -> None
     async def scenario() -> None:
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
             client = RteGenerationForecastClient(
-                auth=RteGenerationForecastAuthConfig(
+                auth=RteAuthConfig(
                     basic_authorization_b64="ZmFrZS1iYXNlNjQ=",
                     token_url=DEFAULT_RTE_TOKEN_URL,
                 ),
@@ -175,10 +195,47 @@ def test_get_forecasts_maps_http_400_to_bad_request_error() -> None:
     async def scenario() -> None:
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
             client = RteGenerationForecastClient(
-                auth=RteGenerationForecastAuthConfig(access_token="known-token"),
+                auth=RteAuthConfig(access_token="known-token"),
                 http_client=http_client,
             )
-            with pytest.raises(RteGenerationForecastBadRequestError, match="enumerated field"):
+            with pytest.raises(RteBadRequestError, match="enumerated field"):
                 await client.get_forecasts(production_types=["WIND"])
 
     asyncio.run(scenario())
+
+
+def test_get_total_forecast_builds_expected_query_params_and_headers() -> None:
+    captured: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["method"] = request.method
+        captured["path"] = request.url.path
+        captured["auth_header"] = request.headers["Authorization"]
+        captured["type"] = request.url.params.get("type", "")
+        captured["start_date"] = request.url.params.get("start_date", "")
+        captured["end_date"] = request.url.params.get("end_date", "")
+        return httpx.Response(200, json=_total_forecast_response_payload())
+
+    async def scenario() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+            client = RteGenerationForecastClient(
+                auth=RteAuthConfig(access_token="known-token"),
+                http_client=http_client,
+            )
+            response = await client.get_total_forecast(
+                forecast_types=["D-1", "ID"],
+                start_date=datetime.datetime(2026, 3, 20, 0, 0, tzinfo=datetime.UTC),
+                end_date=datetime.datetime(2026, 3, 21, 0, 0, tzinfo=datetime.UTC),
+            )
+
+        assert response.total_forecast[0].type == "D-1"
+        assert response.total_forecast[0].values[0].value == 12150
+
+    asyncio.run(scenario())
+
+    assert captured["method"] == "GET"
+    assert captured["path"] == "/open_api/generation_forecast/v3/total_forecast"
+    assert captured["auth_header"] == "Bearer known-token"
+    assert captured["type"] == "D-1,ID"
+    assert captured["start_date"] == "2026-03-20T00:00:00+00:00"
+    assert captured["end_date"] == "2026-03-21T00:00:00+00:00"
