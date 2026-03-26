@@ -53,7 +53,7 @@
 		2. Si oui, procéder à un test paramétrique de Welch ANOVA pour chaque composante individuelle (month, weekday, hour, minute, holiday_fr)
 		3. Si non, procéder à un [test non-paramétrique de Kruskal-Wallis](https://stats.stackexchange.com/a/310262/383421) pour chaque composante individuelle.
 		4. A côté de la p-value, procéder à la mesure de la taille d'effet, en calculant eta^2 et epsiolon^2. Ces valeurs auront surtout un intérêt si les tests de Kruskal-Wallis montrent qu'il existe un impact des composantes individuelles sur les prix, elles en donneront l'ampleur.
-		5. Si les tests de Kruskal-Wallins montrent qu'il existe un impact d'une ou plusieurs compostantes individuelles sur les prix, réaliser un test post-hoc de Dunn permet de comparer les éléments par paire, afin de savoir quelles composantes sont celles qui ont un effet.
+		5. Si les tests de Kruskal-Wallins ou de Welch ANOVA montrent qu'il existe un impact d'une ou plusieurs compostantes individuelles sur les prix, réaliser un test post-hoc de Dunn permet de comparer les éléments par paire, afin de savoir quelles composantes sont celles qui ont un effet.
 		6. Calculer les "Mutual Information (MI(component, price))", pour savoir à quel point connaitre une composante individuelle réduit l'incertitude sur le prix.
 
 
