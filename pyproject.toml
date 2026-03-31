@@ -33,6 +33,7 @@ dev = [
     "pytest-cov>=6.2.1",
     "ruff>=0.15.8",
     "pre-commit>=4.5.1",
+    "ty>=0.0.26",
 ]
 
 [tool.pytest.ini_options]
@@ -60,3 +61,6 @@ skip_covered = false
 
 [tool.ruff]
 extend-exclude = ["*.ipynb"]
+
+[tool.ty.src]
+exclude = ["notebooks"]
