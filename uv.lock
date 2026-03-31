@@ -884,7 +884,6 @@ dependencies = [
     { name = "openpyxl" },
     { name = "pandas" },
     { name = "pathlib" },
-    { name = "pre-commit" },
     { name = "pyqt6" },
     { name = "pyyaml" },
     { name = "scikit-learn" },
@@ -898,6 +897,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "ipykernel" },
+    { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "pytest-csv-params" },
@@ -916,7 +916,6 @@ requires-dist = [
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "pandas", specifier = ">=2.3.3" },
     { name = "pathlib", specifier = ">=1.0.1" },
-    { name = "pre-commit", specifier = ">=4.5.1" },
     { name = "pyqt6", specifier = ">=6.10.2" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "scikit-learn", specifier = ">=1.8.0" },
@@ -930,6 +929,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "ipykernel", specifier = ">=7.2.0" },
+    { name = "pre-commit", specifier = ">=4.5.1" },
     { name = "pytest", specifier = "<9.0.0" },
     { name = "pytest-cov", specifier = ">=6.2.1" },
     { name = "pytest-csv-params", specifier = ">=1.3.2" },
