@@ -50,7 +50,7 @@ def main():
         fit_pred_fore_priori_plot_workflow(model, X_train, X_test)
 
     # evaluate model through cross-validation for time series
-    cv_results = cv_evaluate(model, X, y, ts_cv=ts_cv, model_prop="n_features_in_")
+    _ = cv_evaluate(model, X, y, ts_cv=ts_cv, model_prop="n_features_in_")
 
     # ######## simple 80/20 split workflow
     # # naive 80/20 approach, splitting in November

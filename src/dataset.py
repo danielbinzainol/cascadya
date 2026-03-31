@@ -8,7 +8,7 @@ def analyze(
 ):
     df = df.reset_index()
     df[timestamp_diff_col] = df[timestamp_col].diff()
-    hist = (df[timestamp_diff_col] / pd.Timedelta(minutes=1)).hist(log=True)
+    _ = (df[timestamp_diff_col] / pd.Timedelta(minutes=1)).hist(log=True)
 
     print(df[timestamp_diff_col].describe())
 

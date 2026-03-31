@@ -72,7 +72,7 @@ def build_df_all():
     file_index_df = (
         pd.DataFrame(file_index).sort_values("first_timestamp").reset_index(drop=True)
     )
-    display(file_index_df)
+    print(file_index_df)
 
     return df_all
 
