@@ -4,7 +4,9 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 
 class RteGenerationForecastBaseModel(BaseModel):
-    model_config = ConfigDict(extra="allow", validate_by_name=True, validate_by_alias=True)
+    model_config = ConfigDict(
+        extra="allow", validate_by_name=True, validate_by_alias=True
+    )
 
 
 class GenerationForecastPoint(RteGenerationForecastBaseModel):

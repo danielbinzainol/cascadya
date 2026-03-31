@@ -22,31 +22,43 @@ def resolve_market_orders_csv_path(project: str, file_id: str) -> Path:
     if not PROJECT_RE.fullmatch(project):
         raise HTTPException(status_code=400, detail="Invalid project format.")
     if not FILE_ID_RE.fullmatch(file_id):
-        raise HTTPException(status_code=400, detail="Invalid file_id format. Expected YYYYMMDD_YYYYMMDD_HHMM.")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file_id format. Expected YYYYMMDD_YYYYMMDD_HHMM.",
+        )
 
     csv_filename = f"{project}_{file_id}.csv"
     csv_path = (MARKET_ORDERS_DIR / csv_filename).resolve()
     if csv_path.parent != MARKET_ORDERS_DIR:
-        raise HTTPException(status_code=400, detail="Resolved path is outside allowed directory.")
+        raise HTTPException(
+            status_code=400, detail="Resolved path is outside allowed directory."
+        )
     if not csv_path.exists():
-        raise HTTPException(status_code=404, detail=f"CSV file not found for project={project}, file_id={file_id}.")
+        raise HTTPException(
+            status_code=404,
+            detail=f"CSV file not found for project={project}, file_id={file_id}.",
+        )
     return csv_path
+
 
 # Route to input data and get data to plot, with a project given in input
 @app.get("/plots/{project}")
-def show_plots(project:str):
+def show_plots(project: str):
     df = data_workflow(project)
     return {"df to send to plot_workflow": df}
+
 
 # Route to test giving an argument: change message basd in input
 @app.get("/message/{msg}")
 def change_msg(msg: str) -> dict:
     return {"message": f"Hello World custom: {msg}"}
 
+
 @app.get("/market-orders/{project}")
-def call_complex_market_orders_data_workflow(project:str):
+def call_complex_market_orders_data_workflow(project: str):
     paths = complex_market_orders_data_workflow(project)
     return paths
+
 
 @app.get("/plot-market-orders/{project}/{file_id}")
 def plot_mo(project: str, file_id: str):

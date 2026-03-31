@@ -12,6 +12,7 @@ from src.utils import (
     convert_saturated_steam_units,
 )
 
+
 def test_convert_saturated_steam_units_from_m3_to_kwh_th() -> None:
     df = pd.DataFrame({"steam_m3": [1.0, 2.0]})
 

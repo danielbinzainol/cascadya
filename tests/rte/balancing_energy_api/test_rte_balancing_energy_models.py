@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from src.rte.balancing_energy_api.rte_balancing_energy_models import ImbalanceDataResponse
+from src.rte.balancing_energy_api.rte_balancing_energy_models import (
+    ImbalanceDataResponse,
+)
 
 
 def _imbalance_payload() -> dict:
@@ -33,7 +35,9 @@ def test_imbalance_data_response_parses_expected_fields() -> None:
     assert len(parsed.imbalance_data) == 1
     assert parsed.imbalance_data[0].resolution == "PT15M"
     assert parsed.imbalance_data[0].values[0].imbalance == 200
-    assert parsed.imbalance_data[0].values[0].positive_imbalance_settlement_price == 45.55
+    assert (
+        parsed.imbalance_data[0].values[0].positive_imbalance_settlement_price == 45.55
+    )
 
 
 def test_imbalance_data_response_accepts_extra_fields() -> None:

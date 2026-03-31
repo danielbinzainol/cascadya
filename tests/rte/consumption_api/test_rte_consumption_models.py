@@ -3,7 +3,10 @@ from __future__ import annotations
 from pydantic import ValidationError
 import pytest
 
-from src.rte.consumption_api.rte_consumption_models import ShortTermResponse, ShortTermResponseType
+from src.rte.consumption_api.rte_consumption_models import (
+    ShortTermResponse,
+    ShortTermResponseType,
+)
 
 
 def _short_term_payload(*, forecast_type: str = "REALISED") -> dict:
@@ -27,7 +30,9 @@ def _short_term_payload(*, forecast_type: str = "REALISED") -> dict:
 
 
 def test_short_term_response_parses_with_realised_type() -> None:
-    parsed = ShortTermResponse.model_validate(_short_term_payload(forecast_type="REALISED"))
+    parsed = ShortTermResponse.model_validate(
+        _short_term_payload(forecast_type="REALISED")
+    )
 
     assert len(parsed.short_term) == 1
     assert parsed.short_term[0].type == ShortTermResponseType.REALISED
@@ -35,7 +40,9 @@ def test_short_term_response_parses_with_realised_type() -> None:
 
 
 def test_short_term_response_parses_with_actual_type() -> None:
-    parsed = ShortTermResponse.model_validate(_short_term_payload(forecast_type="ACTUAL"))
+    parsed = ShortTermResponse.model_validate(
+        _short_term_payload(forecast_type="ACTUAL")
+    )
 
     assert parsed.short_term[0].type == ShortTermResponseType.ACTUAL
 

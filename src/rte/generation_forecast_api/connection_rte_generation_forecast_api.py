@@ -21,7 +21,9 @@ from src.rte.generation_forecast_api.rte_generation_forecast_models import (
 app = FastAPI()
 
 
-@app.get("/rte/generation-forecast/forecasts", response_model=GenerationForecastResponse)
+@app.get(
+    "/rte/generation-forecast/forecasts", response_model=GenerationForecastResponse
+)
 async def get_rte_generation_forecasts(
     production_types: list[str] | None = Query(default=None, alias="production_type"),
     type_values: list[str] | None = Query(default=None, alias="type"),
@@ -36,10 +38,14 @@ async def get_rte_generation_forecasts(
         basic_authorization_b64=resolved_auth.basic_authorization_b64,
         token_url=resolved_auth.token_url,
     )
-    base_url = os.getenv("RTE_GENERATION_FORECAST_BASE_URL", DEFAULT_RTE_GENERATION_FORECAST_BASE_URL)
+    base_url = os.getenv(
+        "RTE_GENERATION_FORECAST_BASE_URL", DEFAULT_RTE_GENERATION_FORECAST_BASE_URL
+    )
 
     try:
-        async with RteGenerationForecastClient(base_url=base_url, auth=auth_config) as client:
+        async with RteGenerationForecastClient(
+            base_url=base_url, auth=auth_config
+        ) as client:
             return await client.get_forecasts(
                 production_types=production_types,
                 forecast_types=type_values,
@@ -54,7 +60,9 @@ async def get_rte_generation_forecasts(
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
-@app.get("/rte/generation-forecast/total-forecast", response_model=TotalForecastResponse)
+@app.get(
+    "/rte/generation-forecast/total-forecast", response_model=TotalForecastResponse
+)
 async def get_rte_generation_total_forecast(
     type_values: list[str] | None = Query(default=None, alias="type"),
     start_date: datetime.datetime | None = None,
@@ -68,10 +76,14 @@ async def get_rte_generation_total_forecast(
         basic_authorization_b64=resolved_auth.basic_authorization_b64,
         token_url=resolved_auth.token_url,
     )
-    base_url = os.getenv("RTE_GENERATION_FORECAST_BASE_URL", DEFAULT_RTE_GENERATION_FORECAST_BASE_URL)
+    base_url = os.getenv(
+        "RTE_GENERATION_FORECAST_BASE_URL", DEFAULT_RTE_GENERATION_FORECAST_BASE_URL
+    )
 
     try:
-        async with RteGenerationForecastClient(base_url=base_url, auth=auth_config) as client:
+        async with RteGenerationForecastClient(
+            base_url=base_url, auth=auth_config
+        ) as client:
             return await client.get_total_forecast(
                 forecast_types=type_values,
                 start_date=start_date,

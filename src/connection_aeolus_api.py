@@ -23,8 +23,12 @@ from app import resolve_market_orders_csv_path
 app = FastAPI()
 
 DEFAULT_AEOLUS_BASE_URL = "https://e6.aeolus.main.e6-group.com/api/v2"
-DEFAULT_AEOLUS_TOKEN_URL = "https://eole-api-gateway-prod.auth.eu-west-1.amazoncognito.com/oauth2/token"
-DEFAULT_AEOLUS_WRITE_TRANSACTIONS_SCOPE = "https://aeolus.main.e6-group.com/write:transactions"
+DEFAULT_AEOLUS_TOKEN_URL = (
+    "https://eole-api-gateway-prod.auth.eu-west-1.amazoncognito.com/oauth2/token"
+)
+DEFAULT_AEOLUS_WRITE_TRANSACTIONS_SCOPE = (
+    "https://aeolus.main.e6-group.com/write:transactions"
+)
 
 
 class PublishAeolusAuthInput(BaseModel):
@@ -44,7 +48,9 @@ class PublishMarketOrdersRequest(BaseModel):
     market: AllowedMarket = AllowedMarket.DAY_AHEAD
     transaction_type: AllowedTransactionType = AllowedTransactionType.MARKET
     position_type: PositionType = PositionType.PURCHASE
-    default_product_time_step: ProductTimeStepApi = ProductTimeStepApi.QUARTER_OF_AN_HOUR
+    default_product_time_step: ProductTimeStepApi = (
+        ProductTimeStepApi.QUARTER_OF_AN_HOUR
+    )
     drop_zero_quantities: bool = True
 
 
@@ -66,11 +72,19 @@ def _resolve_auth_config(auth_input: PublishAeolusAuthInput | None) -> AeolusAut
     env_client_id = os.getenv("AEOLUS_CLIENT_ID")
     env_client_secret = os.getenv("AEOLUS_CLIENT_SECRET")
     env_allowed_scopes = _split_scope_values(os.getenv("AEOLUS_ALLOWED_SCOPES"))
-    env_token_scope = os.getenv("AEOLUS_TOKEN_SCOPE", DEFAULT_AEOLUS_WRITE_TRANSACTIONS_SCOPE)
+    env_token_scope = os.getenv(
+        "AEOLUS_TOKEN_SCOPE", DEFAULT_AEOLUS_WRITE_TRANSACTIONS_SCOPE
+    )
     env_token_url = os.getenv("AEOLUS_TOKEN_URL", DEFAULT_AEOLUS_TOKEN_URL)
 
-    token_value = auth_input.access_token.get_secret_value() if auth_input and auth_input.access_token else env_access_token
-    client_id = auth_input.client_id if auth_input and auth_input.client_id else env_client_id
+    token_value = (
+        auth_input.access_token.get_secret_value()
+        if auth_input and auth_input.access_token
+        else env_access_token
+    )
+    client_id = (
+        auth_input.client_id if auth_input and auth_input.client_id else env_client_id
+    )
     client_secret = (
         auth_input.client_secret.get_secret_value()
         if auth_input and auth_input.client_secret
@@ -108,7 +122,10 @@ def _resolve_publish_csv_paths(project: str, file_ids: list[str] | None) -> list
     return [resolve_market_orders_csv_path(project, file_id) for file_id in file_ids]
 
 
-@app.post("/aeolus/publish-market-orders/{project}", response_model=PublishMarketOrdersResponse)
+@app.post(
+    "/aeolus/publish-market-orders/{project}",
+    response_model=PublishMarketOrdersResponse,
+)
 async def publish_market_orders(project: str, payload: PublishMarketOrdersRequest):
     csv_paths = _resolve_publish_csv_paths(project, payload.file_ids)
     transactions_payload = market_orders_paths_to_payload(
@@ -121,13 +138,20 @@ async def publish_market_orders(project: str, payload: PublishMarketOrdersReques
         drop_zero_quantities=payload.drop_zero_quantities,
     )
     if not transactions_payload.transactions:
-        raise HTTPException(status_code=400, detail="No publishable market orders found (all quantities are zero).")
+        raise HTTPException(
+            status_code=400,
+            detail="No publishable market orders found (all quantities are zero).",
+        )
 
     auth_config = _resolve_auth_config(payload.auth)
 
     try:
-        async with AeolusClient(base_url=payload.aeolus_base_url, auth=auth_config) as client:
-            create_response = await client.create_farm_cleared_volumes(transactions_payload)
+        async with AeolusClient(
+            base_url=payload.aeolus_base_url, auth=auth_config
+        ) as client:
+            create_response = await client.create_farm_cleared_volumes(
+                transactions_payload
+            )
     except AeolusAuthError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     except AeolusApiError as exc:

@@ -69,7 +69,9 @@ def test_get_forecasts_builds_expected_query_params_and_headers() -> None:
         return httpx.Response(200, json=_response_payload())
 
     async def scenario() -> None:
-        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler)
+        ) as http_client:
             client = RteGenerationForecastClient(
                 auth=RteAuthConfig(access_token="known-token"),
                 http_client=http_client,
@@ -97,10 +99,14 @@ def test_get_forecasts_builds_expected_query_params_and_headers() -> None:
 
 def test_get_forecasts_raises_when_only_one_date_is_provided() -> None:
     async def scenario() -> None:
-        async with RteGenerationForecastClient(auth=RteAuthConfig(access_token="known-token")) as client:
+        async with RteGenerationForecastClient(
+            auth=RteAuthConfig(access_token="known-token")
+        ) as client:
             with pytest.raises(ValueError, match="must either both be filled in"):
                 await client.get_forecasts(
-                    start_date=datetime.datetime(2026, 3, 20, 0, 0, tzinfo=datetime.UTC),
+                    start_date=datetime.datetime(
+                        2026, 3, 20, 0, 0, tzinfo=datetime.UTC
+                    ),
                     end_date=None,
                 )
 
@@ -109,7 +115,9 @@ def test_get_forecasts_raises_when_only_one_date_is_provided() -> None:
 
 def test_get_forecasts_raises_when_datetime_is_naive() -> None:
     async def scenario() -> None:
-        async with RteGenerationForecastClient(auth=RteAuthConfig(access_token="known-token")) as client:
+        async with RteGenerationForecastClient(
+            auth=RteAuthConfig(access_token="known-token")
+        ) as client:
             with pytest.raises(ValueError, match="must include timezone"):
                 await client.get_forecasts(
                     start_date=datetime.datetime(2026, 3, 20, 0, 0),
@@ -127,8 +135,12 @@ def test_get_forecasts_fetches_oauth_token_with_client_credentials() -> None:
         if request.url.path == "/token/oauth/":
             assert request.method == "POST"
             assert request.headers["Authorization"].startswith("Basic ")
-            assert request.headers["Content-Type"].startswith("application/x-www-form-urlencoded")
-            return httpx.Response(200, json={"access_token": "issued-token", "expires_in": 7200})
+            assert request.headers["Content-Type"].startswith(
+                "application/x-www-form-urlencoded"
+            )
+            return httpx.Response(
+                200, json={"access_token": "issued-token", "expires_in": 7200}
+            )
 
         if request.url.path == "/open_api/generation_forecast/v3/forecasts":
             assert request.headers["Authorization"] == "Bearer issued-token"
@@ -137,7 +149,9 @@ def test_get_forecasts_fetches_oauth_token_with_client_credentials() -> None:
         return httpx.Response(404, json={"error": "unexpected path"})
 
     async def scenario() -> None:
-        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler)
+        ) as http_client:
             client = RteGenerationForecastClient(
                 auth=RteAuthConfig(
                     client_id="client-id",
@@ -150,7 +164,10 @@ def test_get_forecasts_fetches_oauth_token_with_client_credentials() -> None:
 
     asyncio.run(scenario())
 
-    assert captured_paths == ["/token/oauth/", "/open_api/generation_forecast/v3/forecasts"]
+    assert captured_paths == [
+        "/token/oauth/",
+        "/open_api/generation_forecast/v3/forecasts",
+    ]
 
 
 def test_get_forecasts_fetches_oauth_token_with_precomputed_basic_auth() -> None:
@@ -165,7 +182,9 @@ def test_get_forecasts_fetches_oauth_token_with_precomputed_basic_auth() -> None
         return httpx.Response(404, json={"error": "unexpected path"})
 
     async def scenario() -> None:
-        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler)
+        ) as http_client:
             client = RteGenerationForecastClient(
                 auth=RteAuthConfig(
                     basic_authorization_b64="ZmFrZS1iYXNlNjQ=",
@@ -193,7 +212,9 @@ def test_get_forecasts_maps_http_400_to_bad_request_error() -> None:
         )
 
     async def scenario() -> None:
-        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler)
+        ) as http_client:
             client = RteGenerationForecastClient(
                 auth=RteAuthConfig(access_token="known-token"),
                 http_client=http_client,
@@ -217,7 +238,9 @@ def test_get_total_forecast_builds_expected_query_params_and_headers() -> None:
         return httpx.Response(200, json=_total_forecast_response_payload())
 
     async def scenario() -> None:
-        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler)
+        ) as http_client:
             client = RteGenerationForecastClient(
                 auth=RteAuthConfig(access_token="known-token"),
                 http_client=http_client,

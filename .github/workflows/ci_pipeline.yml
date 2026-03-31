@@ -33,6 +33,11 @@ jobs:
       - name: Run tests
         run: uv run pytest
 
-      # - name: Lint with flake8
-      #   run: |
-      #     flake8
+  ruff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/ruff-action@v3
+        with:
+          version: 0.15.4 #pins a version, to always use the same rules
+          args: check

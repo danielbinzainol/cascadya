@@ -11,7 +11,9 @@ from src.aeolus_market_bridge import (
 from src.aeolus_models import ProductTimeStepApi
 
 
-def _market_orders_frame(timestamps: list[str], powers_kw: list[float], prices_max: list[float]) -> pd.DataFrame:
+def _market_orders_frame(
+    timestamps: list[str], powers_kw: list[float], prices_max: list[float]
+) -> pd.DataFrame:
     return pd.DataFrame(
         {
             "asset_id": ["inariz"] * len(timestamps),
@@ -40,7 +42,9 @@ def test_infer_product_time_step_detects_quarter_hour() -> None:
     assert product_time_step == ProductTimeStepApi.QUARTER_OF_AN_HOUR
 
 
-def test_market_orders_dataframe_to_transactions_converts_to_positive_quantities() -> None:
+def test_market_orders_dataframe_to_transactions_converts_to_positive_quantities() -> (
+    None
+):
     orders = _market_orders_frame(
         timestamps=["2026-02-11 00:00:00", "2026-02-11 00:15:00"],
         powers_kw=[-180.2, 0.0],
@@ -56,7 +60,10 @@ def test_market_orders_dataframe_to_transactions_converts_to_positive_quantities
     assert len(transactions) == 1
     assert transactions[0].farm_id == 123
     assert transactions[0].quantity_in_kw == 180
-    assert transactions[0].market_product_time_step == ProductTimeStepApi.QUARTER_OF_AN_HOUR
+    assert (
+        transactions[0].market_product_time_step
+        == ProductTimeStepApi.QUARTER_OF_AN_HOUR
+    )
 
 
 def test_market_orders_dataframe_to_transactions_rejects_mixed_time_steps() -> None:
@@ -93,4 +100,7 @@ def test_market_orders_paths_to_payload_aggregates_files(tmp_path) -> None:
     payload = market_orders_paths_to_payload([path_1, path_2], farm_id=42)
 
     assert len(payload.transactions) == 2
-    assert [transaction.quantity_in_kw for transaction in payload.transactions] == [100, 200]
+    assert [transaction.quantity_in_kw for transaction in payload.transactions] == [
+        100,
+        200,
+    ]
