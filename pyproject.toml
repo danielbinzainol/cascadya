@@ -31,6 +31,7 @@ dependencies = [
 dev = [
     "ipykernel>=7.2.0",
     "pytest-cov>=6.2.1",
+    "ruff>=0.15.8",
 ]
 
 [tool.pytest.ini_options]
@@ -55,3 +56,6 @@ branch = true
 [tool.coverage.report]
 show_missing = true
 skip_covered = false
+
+[tool.ruff]
+extend-exclude = ["*.ipynb"]

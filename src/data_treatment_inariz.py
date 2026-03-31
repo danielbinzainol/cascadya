@@ -1,5 +1,4 @@
 from pathlib import Path
-import time
 import pandas as pd
 
 INPUT_DIR = Path(

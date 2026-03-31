@@ -80,7 +80,7 @@ def simple_lag_plot(X_lag_1h, y, y_pred, value_col):
     ax.set_aspect('equal')
     ax.set_ylabel(value_col)
     ax.set_xlabel('Lag_1')
-    ax.set_title(f'Lag Plot of {value_col}');    
+    ax.set_title(f'Lag Plot of {value_col}')    
     plt.show()
 
     # show accuracy of forecast cmopared to read data

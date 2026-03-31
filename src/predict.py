@@ -62,7 +62,7 @@ def simple_copy(
     
     if respect_weekdays:
         if not respect_time:
-            warnings.warn(f"Option respect_weekdays is True and overrides option respect_time. Option respect_time was chosen as False, but changed to True.")
+            warnings.warn("Option respect_weekdays is True and overrides option respect_time. Option respect_time was chosen as False, but changed to True.")
         respect_time = False
         respect_weekdays_and_time = True
     else:

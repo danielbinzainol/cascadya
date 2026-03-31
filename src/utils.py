@@ -43,7 +43,7 @@ def convert_gas_units(
     if target_unit not in ACCEPTED_GAS_UNITS:
         raise ValueError(f"target_unit {target_unit} not in {ACCEPTED_GAS_UNITS}")
     if initial_unit == target_unit:
-        raise ValueError(f"initial_unit and target_unit are identical")
+        raise ValueError("initial_unit and target_unit are identical")
     
     conversion_scales = {
         "m3": 1, 
@@ -74,7 +74,7 @@ def convert_saturated_steam_units(
     if target_unit not in ACCEPTED_SATURATED_STEAM_UNITS:
         raise ValueError(f"target_unit {target_unit} not in {ACCEPTED_SATURATED_STEAM_UNITS}")
     if initial_unit == target_unit:
-        raise ValueError(f"initial_unit and target_unit are identical")
+        raise ValueError("initial_unit and target_unit are identical")
 
     conversion_scales = {
         "m3": 1, 

@@ -46,7 +46,7 @@ def build_market_orders(
         raise ValueError(f"Missing or wrong tzinfo for timestamp column {timestamp_col}")
 
     if df[timestamp_col].isna().any() | df[value_col].isna().any() :
-        raise ValueError(f"NaN values in timestamp or value columns")
+        raise ValueError("NaN values in timestamp or value columns")
 
     if "kwhth" not in value_col.split("_")[-1]:
         raise ValueError(f"Value col {value_col} is not in kWh")
