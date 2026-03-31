@@ -50,7 +50,9 @@ def test_get_imbalance_data_builds_expected_query_params_and_headers() -> None:
         return httpx.Response(200, json=_response_payload())
 
     async def scenario() -> None:
-        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler)
+        ) as http_client:
             client = RteBalancingEnergyClient(
                 auth=RteAuthConfig(access_token="known-token"),
                 http_client=http_client,
@@ -73,7 +75,9 @@ def test_get_imbalance_data_builds_expected_query_params_and_headers() -> None:
 
 def test_get_imbalance_data_raises_when_datetime_is_naive() -> None:
     async def scenario() -> None:
-        async with RteBalancingEnergyClient(auth=RteAuthConfig(access_token="known-token")) as client:
+        async with RteBalancingEnergyClient(
+            auth=RteAuthConfig(access_token="known-token")
+        ) as client:
             with pytest.raises(ValueError, match="must include timezone"):
                 await client.get_imbalance_data(
                     start_date=datetime.datetime(2026, 3, 20, 0, 0),
@@ -95,7 +99,9 @@ def test_get_imbalance_data_fetches_oauth_token_with_precomputed_basic_auth() ->
         return httpx.Response(404, json={"error": "unexpected path"})
 
     async def scenario() -> None:
-        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler)
+        ) as http_client:
             client = RteBalancingEnergyClient(
                 auth=RteAuthConfig(
                     basic_authorization_b64="ZmFrZS1iYXNlNjQ=",
@@ -121,7 +127,9 @@ def test_get_imbalance_data_maps_http_400_to_bad_request_error() -> None:
         )
 
     async def scenario() -> None:
-        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler)
+        ) as http_client:
             client = RteBalancingEnergyClient(
                 auth=RteAuthConfig(access_token="known-token"),
                 http_client=http_client,

@@ -5,20 +5,26 @@ INPUT_DIR = Path(
     r"D:\Cascadya\Cascadya - Documents\08. COMPTE CLIENT\Inariz_Lamballe\2. Données sous NDA\planning de production"
 )
 
-REQUIRED_COLUMNS_POSITIONS = {2: "DATE", 4: "CODE PF10/SF90", 12:"temps de production", 14:"temps nettoyage"}
+REQUIRED_COLUMNS_POSITIONS = {
+    2: "DATE",
+    4: "CODE PF10/SF90",
+    12: "temps de production",
+    14: "temps nettoyage",
+}
 
 DEFAULT_INTERMEDIARY_OUTPUT_DIR = Path(r"data\inariz\intermediary")
 
 
 def detect_most_recent_file(input_dir: Path):
     mtime_path = {
-        path.stat().st_mtime: path #time of last modification of the file, expressed in epoch (seconds from Jan 1st 1970 UTC)
+        path.stat().st_mtime: path  # time of last modification of the file, expressed in epoch (seconds from Jan 1st 1970 UTC)
         for path in input_dir.iterdir()
         if path.is_file() and path.suffix.lower().startswith(".xls")
     }
     most_recent_modification_date = sorted(mtime_path.keys())[-1]
     most_recent_file_path = mtime_path[most_recent_modification_date]
     return most_recent_modification_date, most_recent_file_path
+
 
 def _read_inariz_planning_excel(path: Path) -> pd.DataFrame:
     # print(f"---------------- Start reading {path} ------------")
@@ -52,10 +58,8 @@ def _read_inariz_planning_excel(path: Path) -> pd.DataFrame:
         return cleaned not in {"DATE", "Total"} and cleaned != ""
 
     # Identify rows for which the date column is empty
-    split_positions = [
-        idx for idx, value in enumerate(df[2]) if _is_split_row(value)
-    ]
-    
+    split_positions = [idx for idx, value in enumerate(df[2]) if _is_split_row(value)]
+
     df_sections = []
     for i, start in enumerate(split_positions):
         end = split_positions[i + 1] if i + 1 < len(split_positions) else len(df)
@@ -71,17 +75,21 @@ def _read_inariz_planning_excel(path: Path) -> pd.DataFrame:
         df_section = df_section[REQUIRED_COLUMNS_POSITIONS.values()]
 
         # localize
-        df_section["DATE"] = pd.to_datetime(df_section["DATE"]).dt.tz_localize("Europe/Paris")
+        df_section["DATE"] = pd.to_datetime(df_section["DATE"]).dt.tz_localize(
+            "Europe/Paris"
+        )
         # convert to UTC
         df_section["timestamp_utc"] = df_section["DATE"].dt.tz_convert("UTC")
         # rename
-        df_section = df_section.rename(columns={"DATE":"timestamp (local time)"})
+        df_section = df_section.rename(columns={"DATE": "timestamp (local time)"})
 
         # Drop the rows overritten by a lower row, for which the date is later than a lower row with an earlier date
-        # Rule : if the date goes in the past, discard the whole data for the inital day. 
+        # Rule : if the date goes in the past, discard the whole data for the inital day.
         # Because it is possible that 3 rows starting 5am, 11am, 4pm are replaced by one unique row starting 6am.
         df_section["_date"] = pd.to_datetime(df_section["timestamp_utc"]).dt.date
-        df_section["_elapsed"] =  pd.to_datetime(df_section["timestamp_utc"]).diff() #periods=-1 would give difference with following row
+        df_section["_elapsed"] = pd.to_datetime(
+            df_section["timestamp_utc"]
+        ).diff()  # periods=-1 would give difference with following row
         # detect if one day has a negative elapsed time, thus "erased" rows
         # initialise the _to_delete column, necessary in case several situations to_delete are present
         df_section["_to_delete"] = ""
@@ -91,14 +99,17 @@ def _read_inariz_planning_excel(path: Path) -> pd.DataFrame:
             for idx, value in enumerate(df_section["_elapsed"]):
                 if value < pd.Timedelta(0):
                     # select all elements from previous rows that have the same date or later, and have not yet been taggued "to_delete"
-                    to_delete_mask = (df_section.loc[:idx-1,"_date"] >= df_section.at[idx,"_date"]) & (df_section["_to_delete"] != "to_delete")
+                    to_delete_mask = (
+                        df_section.loc[: idx - 1, "_date"]
+                        >= df_section.at[idx, "_date"]
+                    ) & (df_section["_to_delete"] != "to_delete")
                     df_section.loc[to_delete_mask, "_to_delete"] = "to_delete"
 
             erased_mask = df_section["_to_delete"] == "to_delete"
 
             # Remove the "erased" rows
             df_section = df_section[~erased_mask]
-            
+
         # keep only the relevant columns
         df_section = df_section.drop(columns=["_date", "_elapsed", "_to_delete"])
 
@@ -107,10 +118,13 @@ def _read_inariz_planning_excel(path: Path) -> pd.DataFrame:
 
     return df_sections
 
+
 def ingest_prod_planning_inariz():
     # todo ajouter ici une boucle while à un moment
     last_modified_date = 0
-    most_recent_modification_date, most_recent_file_path = detect_most_recent_file(INPUT_DIR)
+    most_recent_modification_date, most_recent_file_path = detect_most_recent_file(
+        INPUT_DIR
+    )
     if most_recent_modification_date < last_modified_date:
         raise ValueError("dates pas cohérentes")
     elif most_recent_modification_date == last_modified_date:
@@ -122,12 +136,14 @@ def ingest_prod_planning_inariz():
 
         df_sections = _read_inariz_planning_excel(most_recent_file_path)
         for i, df_section in enumerate(df_sections):
-            output_filename = most_recent_file_path.stem + f"_autoclave_{i+1}_inariz.csv"
+            output_filename = (
+                most_recent_file_path.stem + f"_autoclave_{i + 1}_inariz.csv"
+            )
             output_path = DEFAULT_INTERMEDIARY_OUTPUT_DIR / output_filename
 
             DEFAULT_INTERMEDIARY_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
             df_section.to_csv(output_path, index=False, sep=";", decimal=",")
-        
+
     return None
 
 
@@ -153,7 +169,9 @@ def check_planning_sequence(
         raise FileNotFoundError(path)
 
     df = pd.read_csv(path, sep=sep)
-    missing_cols = [col for col in (date_col, prod_col, clean_col) if col not in df.columns]
+    missing_cols = [
+        col for col in (date_col, prod_col, clean_col) if col not in df.columns
+    ]
     if missing_cols:
         raise ValueError(f"Missing columns in {path.name}: {', '.join(missing_cols)}")
 
@@ -166,7 +184,9 @@ def check_planning_sequence(
     expected_next = df[date_col] + total_duration
     actual_next = df[date_col].shift(-1)
 
-    mismatch_mask = expected_next.notna() & actual_next.notna() & (expected_next != actual_next)
+    mismatch_mask = (
+        expected_next.notna() & actual_next.notna() & (expected_next != actual_next)
+    )
     mismatches = df.loc[mismatch_mask].copy()
     mismatches["expected_next_timestamp_utc"] = expected_next[mismatch_mask]
     mismatches["actual_next_timestamp_utc"] = actual_next[mismatch_mask]
@@ -180,15 +200,16 @@ def check_planning_sequence(
         print(mismatches)
         return csv_path, mismatches
 
+
 def check_all_planning_sequence(
     dir: Path | str,
 ):
     input_dir = Path(dir)
     if not input_dir.is_dir():
-       raise ValueError(f"wrong directory path: {input_dir}")  
+        raise ValueError(f"wrong directory path: {input_dir}")
     if not input_dir.exists():
         raise FileNotFoundError(input_dir)
-    
+
     for path in input_dir.iterdir():
         csv_path, mismatches = check_planning_sequence(path)
 

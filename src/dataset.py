@@ -1,11 +1,14 @@
 import pandas as pd
 
-def analyze(df: pd.DataFrame,
-            timestamp_col: str = "measured_at_utc",
-            timestamp_diff_col: str = "timestamp_diff_col"):
+
+def analyze(
+    df: pd.DataFrame,
+    timestamp_col: str = "measured_at_utc",
+    timestamp_diff_col: str = "timestamp_diff_col",
+):
     df = df.reset_index()
     df[timestamp_diff_col] = df[timestamp_col].diff()
-    hist = (df[timestamp_diff_col] / pd.Timedelta(minutes = 1)).hist(log=True)
+    hist = (df[timestamp_diff_col] / pd.Timedelta(minutes=1)).hist(log=True)
 
     print(df[timestamp_diff_col].describe())
 
@@ -27,7 +30,9 @@ def detect_elapsed_time_anomalies(
     expected = elapsed.dropna().mode()
     expected_delta = expected.iloc[0] if not expected.empty else pd.Timedelta(0)
 
-    anomalies_mask = elapsed.notna() & ((elapsed < expected_delta * 0.9) | (elapsed > expected_delta * 1.1))
+    anomalies_mask = elapsed.notna() & (
+        (elapsed < expected_delta * 0.9) | (elapsed > expected_delta * 1.1)
+    )
     elapsed_anomalies = df.loc[anomalies_mask, [timestamp_col]].copy()
     elapsed_anomalies["Previous timestamp"] = df[timestamp_col].shift(1)
     elapsed_anomalies["Elapsed"] = elapsed[anomalies_mask]
@@ -41,10 +46,12 @@ def detect_elapsed_time_anomalies(
     return elapsed_anomalies, expected_delta
 
 
-def resample(df: pd.DataFrame,
-             timestamp_col: str = "measured_at_utc",
-             desired_timedelta: str = "15min",
-             aggregate_function: str = "sum") -> pd.DataFrame:
+def resample(
+    df: pd.DataFrame,
+    timestamp_col: str = "measured_at_utc",
+    desired_timedelta: str = "15min",
+    aggregate_function: str = "sum",
+) -> pd.DataFrame:
     df = df.copy()
     df = df.set_index(timestamp_col)
 

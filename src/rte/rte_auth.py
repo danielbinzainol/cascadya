@@ -53,7 +53,10 @@ def _read_rte_basic_auth_b64_from_vault() -> str | None:
     )
 
     if not client.is_authenticated():
-        raise HTTPException(status_code=500, detail="Vault authentication failed for configured RTE credentials.")
+        raise HTTPException(
+            status_code=500,
+            detail="Vault authentication failed for configured RTE credentials.",
+        )
 
     try:
         read_response = client.secrets.kv.v2.read_secret_version(
@@ -62,7 +65,9 @@ def _read_rte_basic_auth_b64_from_vault() -> str | None:
         )
     except Exception as exc:  # noqa: BLE001
         LOGGER.exception("Failed to read RTE secret from Vault.")
-        raise HTTPException(status_code=500, detail="Failed to read RTE secret from Vault.") from exc
+        raise HTTPException(
+            status_code=500, detail="Failed to read RTE secret from Vault."
+        ) from exc
 
     secret_data = read_response.get("data", {}).get("data", {})
     secret_value = secret_data.get(vault_secret_key)
@@ -79,12 +84,16 @@ def resolve_rte_auth_env() -> RteResolvedAuthEnv:
     token_url = os.getenv("RTE_TOKEN_URL", DEFAULT_RTE_TOKEN_URL)
     access_token = SecretStr(access_token_raw) if access_token_raw else None
     client_secret = SecretStr(client_secret_raw) if client_secret_raw else None
-    basic_authorization_b64 = SecretStr(basic_authorization_b64_raw) if basic_authorization_b64_raw else None
+    basic_authorization_b64 = (
+        SecretStr(basic_authorization_b64_raw) if basic_authorization_b64_raw else None
+    )
 
     has_client_credentials = bool(client_id and client_secret_raw)
     if not access_token and not basic_authorization_b64 and not has_client_credentials:
         vault_basic_auth_b64 = _read_rte_basic_auth_b64_from_vault()
-        basic_authorization_b64 = SecretStr(vault_basic_auth_b64) if vault_basic_auth_b64 else None
+        basic_authorization_b64 = (
+            SecretStr(vault_basic_auth_b64) if vault_basic_auth_b64 else None
+        )
 
     if not access_token and not basic_authorization_b64 and not has_client_credentials:
         raise HTTPException(

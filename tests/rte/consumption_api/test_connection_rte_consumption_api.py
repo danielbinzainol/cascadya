@@ -50,9 +50,13 @@ def test_rte_short_term_endpoint_calls_client_with_env_config(monkeypatch) -> No
             return ShortTermResponse.model_validate(_short_term_payload())
 
     monkeypatch.setattr(
-        src.rte.consumption_api.connection_rte_consumption_api, "RteConsumptionClient", FakeRteConsumptionClient
+        src.rte.consumption_api.connection_rte_consumption_api,
+        "RteConsumptionClient",
+        FakeRteConsumptionClient,
     )
-    monkeypatch.setenv("RTE_CONSUMPTION_BASE_URL", "https://custom-rte-host/open_api/consumption/v1")
+    monkeypatch.setenv(
+        "RTE_CONSUMPTION_BASE_URL", "https://custom-rte-host/open_api/consumption/v1"
+    )
     monkeypatch.setenv("RTE_ACCESS_TOKEN", "rte-token-value")
 
     client = TestClient(src.rte.consumption_api.connection_rte_consumption_api.app)
@@ -72,8 +76,12 @@ def test_rte_short_term_endpoint_calls_client_with_env_config(monkeypatch) -> No
     assert captured["base_url"] == "https://custom-rte-host/open_api/consumption/v1"
     assert captured["access_token"].get_secret_value() == "rte-token-value"
     assert captured["types"] == ["REALISED", "ID"]
-    assert captured["start_date"] == datetime.datetime(2026, 3, 20, 0, 0, tzinfo=datetime.UTC)
-    assert captured["end_date"] == datetime.datetime(2026, 3, 21, 0, 0, tzinfo=datetime.UTC)
+    assert captured["start_date"] == datetime.datetime(
+        2026, 3, 20, 0, 0, tzinfo=datetime.UTC
+    )
+    assert captured["end_date"] == datetime.datetime(
+        2026, 3, 21, 0, 0, tzinfo=datetime.UTC
+    )
 
 
 def test_rte_short_term_endpoint_rejects_missing_env_credentials(monkeypatch) -> None:
@@ -100,7 +108,9 @@ def test_rte_short_term_endpoint_accepts_shared_basic_auth_b64(monkeypatch) -> N
     class FakeRteConsumptionClient:
         def __init__(self, *, base_url: str, auth: object) -> None:
             captured["base_url"] = base_url
-            captured["basic_authorization_b64"] = getattr(auth, "basic_authorization_b64", None)
+            captured["basic_authorization_b64"] = getattr(
+                auth, "basic_authorization_b64", None
+            )
 
         async def __aenter__(self) -> "FakeRteConsumptionClient":
             return self
@@ -113,7 +123,9 @@ def test_rte_short_term_endpoint_accepts_shared_basic_auth_b64(monkeypatch) -> N
             return ShortTermResponse.model_validate(_short_term_payload())
 
     monkeypatch.setattr(
-        src.rte.consumption_api.connection_rte_consumption_api, "RteConsumptionClient", FakeRteConsumptionClient
+        src.rte.consumption_api.connection_rte_consumption_api,
+        "RteConsumptionClient",
+        FakeRteConsumptionClient,
     )
     monkeypatch.delenv("RTE_ACCESS_TOKEN", raising=False)
     monkeypatch.delenv("RTE_CLIENT_ID", raising=False)
@@ -146,7 +158,9 @@ def test_rte_short_term_endpoint_maps_auth_error(monkeypatch) -> None:
             raise RteAuthError("invalid token", status_code=401)
 
     monkeypatch.setattr(
-        src.rte.consumption_api.connection_rte_consumption_api, "RteConsumptionClient", FakeRteConsumptionClient
+        src.rte.consumption_api.connection_rte_consumption_api,
+        "RteConsumptionClient",
+        FakeRteConsumptionClient,
     )
     monkeypatch.setenv("RTE_ACCESS_TOKEN", "rte-token-value")
 

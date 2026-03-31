@@ -19,7 +19,9 @@ def _forecast(
 
 def test_build_market_orders_rejects_non_utc_timezone(tmp_path):
     forecast = _forecast(
-        pd.date_range("2026-02-11 00:00:00", periods=2, freq="15min", tz="Europe/Paris"),
+        pd.date_range(
+            "2026-02-11 00:00:00", periods=2, freq="15min", tz="Europe/Paris"
+        ),
         [100.0, 120.0],
     )
 

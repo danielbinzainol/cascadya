@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 import src.connection_aeolus_api
 
+
 def _write_market_orders_csv(path: Path, *, power_kw_sell: list[float]) -> None:
     rows = len(power_kw_sell)
     frame = pd.DataFrame(
@@ -25,7 +26,9 @@ def _write_market_orders_csv(path: Path, *, power_kw_sell: list[float]) -> None:
     frame.to_csv(path, sep=";", index=False)
 
 
-def test_publish_market_orders_endpoint_publishes_transactions(monkeypatch, tmp_path) -> None:
+def test_publish_market_orders_endpoint_publishes_transactions(
+    monkeypatch, tmp_path
+) -> None:
     csv_path = tmp_path / "inariz_20260211_20260223_1735.csv"
     _write_market_orders_csv(csv_path, power_kw_sell=[-150.0, -300.0])
     captured: dict[str, int] = {}
@@ -45,7 +48,11 @@ def test_publish_market_orders_endpoint_publishes_transactions(monkeypatch, tmp_
             captured["transaction_count"] = len(payload.transactions)
             return SimpleNamespace(transaction_ids=[11, 12])
 
-    monkeypatch.setattr(src.connection_aeolus_api, "_resolve_publish_csv_paths", lambda _project, _file_ids: [csv_path])
+    monkeypatch.setattr(
+        src.connection_aeolus_api,
+        "_resolve_publish_csv_paths",
+        lambda _project, _file_ids: [csv_path],
+    )
     monkeypatch.setattr(src.connection_aeolus_api, "AeolusClient", FakeAeolusClient)
 
     client = TestClient(src.connection_aeolus_api.app)
@@ -67,11 +74,17 @@ def test_publish_market_orders_endpoint_publishes_transactions(monkeypatch, tmp_
     assert captured["auth_set"] == 1
 
 
-def test_publish_market_orders_endpoint_rejects_empty_publish(monkeypatch, tmp_path) -> None:
+def test_publish_market_orders_endpoint_rejects_empty_publish(
+    monkeypatch, tmp_path
+) -> None:
     csv_path = tmp_path / "inariz_20260211_20260223_1735.csv"
     _write_market_orders_csv(csv_path, power_kw_sell=[0.0, 0.0])
 
-    monkeypatch.setattr(src.connection_aeolus_api, "_resolve_publish_csv_paths", lambda _project, _file_ids: [csv_path])
+    monkeypatch.setattr(
+        src.connection_aeolus_api,
+        "_resolve_publish_csv_paths",
+        lambda _project, _file_ids: [csv_path],
+    )
 
     client = TestClient(src.connection_aeolus_api.app)
     response = client.post(

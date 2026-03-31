@@ -43,7 +43,9 @@ READ_ASSETS_SCOPE = "https://aeolus.main.e6-group.com/read:assets"
 READ_ASSET_FORECAST_SCOPE = "https://aeolus.main.e6-group.com/read:asset:forecast"
 WRITE_ASSET_FORECAST_SCOPE = "https://aeolus.main.e6-group.com/write:asset:forecast"
 READ_ASSET_MAINTENANCE_SCOPE = "https://aeolus.main.e6-group.com/read:asset:maintenance"
-WRITE_ASSET_MAINTENANCE_SCOPE = "https://aeolus.main.e6-group.com/write:asset:maintenance"
+WRITE_ASSET_MAINTENANCE_SCOPE = (
+    "https://aeolus.main.e6-group.com/write:asset:maintenance"
+)
 READ_ASSET_METER_SCOPE = "https://aeolus.main.e6-group.com/read:asset:meter"
 WRITE_ASSET_METER_SCOPE = "https://aeolus.main.e6-group.com/write:asset:meter"
 READ_PORTFOLIOS_SCOPE = "https://aeolus.main.e6-group.com/read:portfolios"
@@ -55,7 +57,9 @@ READ_CONNECTION_POINT_SCOPE = "https://aeolus.main.e6-group.com/read:connection_
 WRITE_CONNECTION_POINT_SCOPE = "https://aeolus.main.e6-group.com/write:connection_point"
 WRITE_TRANSACTIONS_SCOPE = "https://aeolus.main.e6-group.com/write:transactions"
 WRITE_METERING_SCOPE = "https://aeolus.main.e6-group.com/write:metering"
-WRITE_WEATHER_MEASUREMENT_SCOPE = "https://aeolus.main.e6-group.com/write:weather_measurement"
+WRITE_WEATHER_MEASUREMENT_SCOPE = (
+    "https://aeolus.main.e6-group.com/write:weather_measurement"
+)
 
 
 class AeolusApiError(RuntimeError):
@@ -85,7 +89,9 @@ class AeolusAuthError(AeolusApiError):
 class AeolusAuthConfig:
     access_token: str | None = None
     allowed_scopes: set[str] = field(default_factory=set)
-    token_url: str = "https://eole-api-gateway-prod.auth.eu-west-1.amazoncognito.com/oauth2/token"
+    token_url: str = (
+        "https://eole-api-gateway-prod.auth.eu-west-1.amazoncognito.com/oauth2/token"
+    )
     client_id: str | None = None
     client_secret: str | None = None
     token_scope: str | None = None
@@ -127,7 +133,9 @@ class AeolusClient:
         await self._http.aclose()
 
     async def get_assets(self) -> dict[str, list[AssetModel]]:
-        payload = await self._request("GET", "/assets", required_scopes={READ_ASSETS_SCOPE})
+        payload = await self._request(
+            "GET", "/assets", required_scopes={READ_ASSETS_SCOPE}
+        )
         return TypeAdapter(dict[str, list[AssetModel]]).validate_python(payload)
 
     async def get_asset_forecast(
@@ -151,7 +159,9 @@ class AeolusClient:
         )
         return ForecastAssetPoints.model_validate(payload)
 
-    async def create_asset_forecast(self, *, asset_id: int, body: AssetTimeSeriesPayload) -> AssetTimeSeriesResponse:
+    async def create_asset_forecast(
+        self, *, asset_id: int, body: AssetTimeSeriesPayload
+    ) -> AssetTimeSeriesResponse:
         payload = await self._request(
             "POST",
             f"/asset/{asset_id}/forecast",
@@ -180,7 +190,9 @@ class AeolusClient:
         )
         return TypeAdapter(list[Maintenance]).validate_python(payload)
 
-    async def create_asset_maintenance(self, *, asset_id: int, body: MaintenancePayload) -> MaintenanceResponse:
+    async def create_asset_maintenance(
+        self, *, asset_id: int, body: MaintenancePayload
+    ) -> MaintenanceResponse:
         payload = await self._request(
             "POST",
             f"/asset/{asset_id}/maintenance",
@@ -190,16 +202,23 @@ class AeolusClient:
         )
         return MaintenanceResponse.model_validate(payload)
 
-    async def update_asset_maintenance(self, *, asset_id: int, maintenances: list[Maintenance]) -> None:
+    async def update_asset_maintenance(
+        self, *, asset_id: int, maintenances: list[Maintenance]
+    ) -> None:
         await self._request(
             "PUT",
             f"/asset/{asset_id}/maintenance",
-            json=[maintenance.model_dump(by_alias=True, exclude_none=True) for maintenance in maintenances],
+            json=[
+                maintenance.model_dump(by_alias=True, exclude_none=True)
+                for maintenance in maintenances
+            ],
             expected_status={204},
             required_scopes={WRITE_ASSET_MAINTENANCE_SCOPE},
         )
 
-    async def delete_asset_maintenance(self, *, asset_id: int, maintenance_id: int) -> None:
+    async def delete_asset_maintenance(
+        self, *, asset_id: int, maintenance_id: int
+    ) -> None:
         await self._request(
             "DELETE",
             f"/asset/{asset_id}/maintenance/{maintenance_id}",
@@ -230,7 +249,9 @@ class AeolusClient:
         )
         return AssetPointsWithCreatedDate.model_validate(payload)
 
-    async def create_asset_metering(self, *, asset_id: int, body: AssetTimeSeriesPayload) -> AssetTimeSeriesResponse:
+    async def create_asset_metering(
+        self, *, asset_id: int, body: AssetTimeSeriesPayload
+    ) -> AssetTimeSeriesResponse:
         payload = await self._request(
             "POST",
             f"/asset/{asset_id}/metering",
@@ -275,7 +296,9 @@ class AeolusClient:
         params: dict[str, Any] = {
             "start": start,
             "end": end,
-            "product_time_step_in": [step.value for step in product_time_step_in] if product_time_step_in else None,
+            "product_time_step_in": [step.value for step in product_time_step_in]
+            if product_time_step_in
+            else None,
         }
         payload = await self._request(
             "GET",
@@ -323,7 +346,9 @@ class AeolusClient:
         return PortfolioTransactionsResponse.model_validate(payload)
 
     async def get_countries(self) -> list[dict[str, Any]]:
-        payload = await self._request("GET", "/countries", required_scopes={READ_COUNTRIES_SCOPE})
+        payload = await self._request(
+            "GET", "/countries", required_scopes={READ_COUNTRIES_SCOPE}
+        )
         return TypeAdapter(list[dict[str, Any]]).validate_python(payload)
 
     async def get_bps(self) -> list[dict[str, Any]]:
@@ -404,11 +429,17 @@ class AeolusClient:
             "dateApplicationStartGte": date_application_start_gte,
             "dateApplicationEndLte": date_application_end_lte,
             "farmIdsIn": farm_ids_in,
-            "marketProductTimeStepIn": [item.value for item in market_product_time_step_in]
+            "marketProductTimeStepIn": [
+                item.value for item in market_product_time_step_in
+            ]
             if market_product_time_step_in
             else None,
-            "transactionTypesIn": [item.value for item in transaction_types_in] if transaction_types_in else None,
-            "marketTypesIn": [item.value for item in market_types_in] if market_types_in else None,
+            "transactionTypesIn": [item.value for item in transaction_types_in]
+            if transaction_types_in
+            else None,
+            "marketTypesIn": [item.value for item in market_types_in]
+            if market_types_in
+            else None,
         }
         payload = await self._request(
             "GET",
@@ -418,7 +449,9 @@ class AeolusClient:
         )
         return FarmClearedVolumesRetrieveResponse.model_validate(payload)
 
-    async def create_metering_records(self, body: MeteringsRecordsCreate) -> MeteringRecordsCreateResponse:
+    async def create_metering_records(
+        self, body: MeteringsRecordsCreate
+    ) -> MeteringRecordsCreateResponse:
         payload = await self._request(
             "POST",
             "/metering-records",
@@ -428,7 +461,9 @@ class AeolusClient:
         )
         return MeteringRecordsCreateResponse.model_validate(payload)
 
-    async def create_meterings_legacy(self, body: MeteringsCreateLegacy) -> MeteringRecordsCreateResponse:
+    async def create_meterings_legacy(
+        self, body: MeteringsCreateLegacy
+    ) -> MeteringRecordsCreateResponse:
         payload = await self._request(
             "POST",
             "/meterings",
@@ -462,13 +497,17 @@ class AeolusClient:
         required_scopes: set[str] | None = None,
     ) -> Any:
         expected_status = expected_status or {200}
-        token = await self._resolve_access_token(required_scopes=required_scopes or set())
+        token = await self._resolve_access_token(
+            required_scopes=required_scopes or set()
+        )
         sanitized_params = {
             key: self._normalize_datetime_values(value)
             for key, value in (params or {}).items()
             if value is not None
         }
-        sanitized_json = self._normalize_datetime_values(json) if json is not None else None
+        sanitized_json = (
+            self._normalize_datetime_values(json) if json is not None else None
+        )
         response = await self._http.request(
             method=method,
             url=f"{self._base_url}{path}",
@@ -488,12 +527,17 @@ class AeolusClient:
         if isinstance(value, list):
             return [self._normalize_datetime_values(item) for item in value]
         if isinstance(value, dict):
-            return {key: self._normalize_datetime_values(item) for key, item in value.items()}
+            return {
+                key: self._normalize_datetime_values(item)
+                for key, item in value.items()
+            }
         return value
 
     def _datetime_to_utc_iso(self, value: datetime.datetime) -> str:
         if value.tzinfo is None or value.utcoffset() is None:
-            raise ValueError("Datetime values sent to Aeolus must include timezone information.")
+            raise ValueError(
+                "Datetime values sent to Aeolus must include timezone information."
+            )
         return value.astimezone(datetime.UTC).isoformat()
 
     async def _resolve_access_token(self, *, required_scopes: set[str]) -> str:
@@ -520,7 +564,9 @@ class AeolusClient:
         self._ensure_scope_coverage(token.scopes, required_scopes)
         return token.access_token
 
-    def _ensure_scope_coverage(self, token_scopes: set[str], required_scopes: set[str]) -> None:
+    def _ensure_scope_coverage(
+        self, token_scopes: set[str], required_scopes: set[str]
+    ) -> None:
         if not required_scopes:
             return
         if not token_scopes:
@@ -549,15 +595,25 @@ class AeolusClient:
         payload = response.json()
         access_token = payload.get("access_token")
         if not access_token:
-            raise AeolusAuthError("Token endpoint response did not include access_token.", status_code=401, payload=payload)
+            raise AeolusAuthError(
+                "Token endpoint response did not include access_token.",
+                status_code=401,
+                payload=payload,
+            )
         expires_in = payload.get("expires_in")
         expires_at: datetime.datetime | None = None
         if isinstance(expires_in, int):
-            expires_at = datetime.datetime.now(tz=datetime.UTC) + datetime.timedelta(seconds=max(expires_in - 60, 0))
+            expires_at = datetime.datetime.now(tz=datetime.UTC) + datetime.timedelta(
+                seconds=max(expires_in - 60, 0)
+            )
         token_scope = payload.get("scope")
-        parsed_scopes = set(token_scope.split()) if isinstance(token_scope, str) else set()
+        parsed_scopes = (
+            set(token_scope.split()) if isinstance(token_scope, str) else set()
+        )
         parsed_scopes.update(self._auth.allowed_scopes)
-        return _BearerToken(access_token=access_token, expires_at=expires_at, scopes=parsed_scopes)
+        return _BearerToken(
+            access_token=access_token, expires_at=expires_at, scopes=parsed_scopes
+        )
 
     def _raise_for_status(self, response: httpx.Response) -> None:
         status_code = response.status_code
@@ -572,14 +628,22 @@ class AeolusClient:
                 message = f"Aeolus API error {status_code}"
         except ValueError:
             payload = response.text
-            message = payload if isinstance(payload, str) and payload else f"Aeolus API error {status_code}"
+            message = (
+                payload
+                if isinstance(payload, str) and payload
+                else f"Aeolus API error {status_code}"
+            )
 
         if status_code in {401}:
             raise AeolusAuthError(message, status_code=status_code, payload=payload)
         if status_code in {403}:
-            raise AeolusForbiddenError(message, status_code=status_code, payload=payload)
+            raise AeolusForbiddenError(
+                message, status_code=status_code, payload=payload
+            )
         if status_code in {404}:
             raise AeolusNotFoundError(message, status_code=status_code, payload=payload)
         if status_code in {422}:
-            raise AeolusValidationError(message, status_code=status_code, payload=payload)
+            raise AeolusValidationError(
+                message, status_code=status_code, payload=payload
+            )
         raise AeolusApiError(message, status_code=status_code, payload=payload)

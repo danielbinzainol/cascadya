@@ -2,10 +2,12 @@ import numpy as np
 from sklearn.metrics import root_mean_squared_error
 from sklearn.model_selection import cross_validate
 
+
 def evaluate_model(y_test, y_fore):
     rmse = root_mean_squared_error(y_test, y_fore)
     # print("Root Mean Square Error (RMSE):", rmse)
     return rmse
+
 
 def cv_evaluate(model, X, y, ts_cv, model_prop=None, model_step=None):
     cv_results = cross_validate(
