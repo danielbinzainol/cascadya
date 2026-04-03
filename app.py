@@ -42,9 +42,9 @@ def resolve_market_orders_csv_path(project: str, file_id: str) -> Path:
 
 
 # Route to input data and get data to plot, with a project given in input
-@app.get("/plots/{project}")
-def show_plots(project: str):
-    df = data_workflow(project)
+@app.get("/plots/{project}/{data_type}/{filename}")
+def show_plots(project: str, data_type: str, filename: str):
+    df = data_workflow(project, data_type, filename)
     return {"df to send to plot_workflow": df}
 
 
@@ -54,9 +54,11 @@ def change_msg(msg: str) -> dict:
     return {"message": f"Hello World custom: {msg}"}
 
 
-@app.get("/market-orders/{project}")
-def call_complex_market_orders_data_workflow(project: str):
-    paths = complex_market_orders_data_workflow(project)
+@app.get("/market-orders/{project}/{data_type}/{filename}")
+def call_complex_market_orders_data_workflow(
+    project: str, data_type: str, filename: str
+):
+    paths = complex_market_orders_data_workflow(project, data_type, filename)
     return paths
 
 

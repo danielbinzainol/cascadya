@@ -1,4 +1,6 @@
 from pathlib import Path
+
+# import time
 import pandas as pd
 
 INPUT_DIR = Path(
@@ -8,6 +10,7 @@ INPUT_DIR = Path(
 REQUIRED_COLUMNS_POSITIONS = {
     2: "DATE",
     4: "CODE PF10/SF90",
+    7: "QUANTITE (en autoclaves)",
     12: "temps de production",
     14: "temps nettoyage",
 }
@@ -15,11 +18,16 @@ REQUIRED_COLUMNS_POSITIONS = {
 DEFAULT_INTERMEDIARY_OUTPUT_DIR = Path(r"data\inariz\intermediary")
 
 
-def detect_most_recent_file(input_dir: Path):
+def detect_most_recent_file(input_dir: Path, version: str = None):
+    if not version:
+        version = ""
+
     mtime_path = {
         path.stat().st_mtime: path  # time of last modification of the file, expressed in epoch (seconds from Jan 1st 1970 UTC)
         for path in input_dir.iterdir()
-        if path.is_file() and path.suffix.lower().startswith(".xls")
+        if path.is_file()
+        and path.suffix.lower().startswith(".xls")
+        and version in path.stem
     }
     most_recent_modification_date = sorted(mtime_path.keys())[-1]
     most_recent_file_path = mtime_path[most_recent_modification_date]
@@ -119,11 +127,11 @@ def _read_inariz_planning_excel(path: Path) -> list:
     return df_sections
 
 
-def ingest_prod_planning_inariz():
+def ingest_prod_planning_inariz(version: str = None):
     # todo ajouter ici une boucle while à un moment
     last_modified_date = 0
     most_recent_modification_date, most_recent_file_path = detect_most_recent_file(
-        INPUT_DIR
+        INPUT_DIR, version
     )
     if most_recent_modification_date < last_modified_date:
         raise ValueError("dates pas cohérentes")
@@ -217,7 +225,7 @@ def check_all_planning_sequence(
 
 
 if __name__ == "__main__":
-    ingest_prod_planning_inariz()
+    ingest_prod_planning_inariz("11 V14")
     # mismatches = check_planning_sequence("Planning week 07 V9 LAM (PLANNING)_autoclave_1_inariz.csv")
     # print(mismatches)
     # check_all_planning_sequence(r"data\inariz\intermediary")

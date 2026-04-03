@@ -10,7 +10,9 @@ from plots import plot_timeseries
 
 
 def main():
-    df = data_workflow("inariz")
+    df = data_workflow(
+        "inariz", "steam_prod", "inariz_steam_prod_2026-02-09_to_2026-02-11.csv"
+    )
     analyze(df)
     elapsed_anomalies, expected_delta = detect_elapsed_time_anomalies(
         df, timestamp_col="measured_at_utc"
@@ -50,7 +52,7 @@ def main():
         fit_pred_fore_priori_plot_workflow(model, X_train, X_test)
 
     # evaluate model through cross-validation for time series
-    _ = cv_evaluate(model, X, y, ts_cv=ts_cv, model_prop="n_features_in_")
+    _ = cv_evaluate(model, X, y, ts_cv=ts_cv, model_prop="n_features_in_")  # cv_results
 
     # ######## simple 80/20 split workflow
     # # naive 80/20 approach, splitting in November

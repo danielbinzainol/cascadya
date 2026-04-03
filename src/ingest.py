@@ -5,18 +5,21 @@ import pandas as pd
 from src.utils import load_config
 
 
-def input_csv(project: str, **kwargs):
+def input_csv(project: str, data_type: str = None, filename: str = None, **kwargs):
     config = load_config()
-    path = Path(__file__).resolve().parent.parent / Path(
-        config[project]["data"]["path"]
+
+    path = (
+        Path(__file__).resolve().parent.parent
+        / Path(config[project]["data"][data_type]["dirpath"])
+        / Path(filename)
     )
     if not path.exists():
         raise FileNotFoundError(path)
 
-    if "skiprows" in config[project]["data"]:
-        kwargs.setdefault("skiprows", config[project]["data"]["skiprows"])
-    if "usecols" in config[project]["data"]:
-        kwargs.setdefault("usecols", config[project]["data"]["usecols"])
+    if "skiprows" in config[project]["data"][data_type]:
+        kwargs.setdefault("skiprows", config[project]["data"][data_type]["skiprows"])
+    if "usecols" in config[project]["data"][data_type]:
+        kwargs.setdefault("usecols", config[project]["data"][data_type]["usecols"])
 
     df = pd.read_csv(path, sep=";", decimal=",", **kwargs)
 
@@ -91,14 +94,14 @@ def localize_and_convert_to_utc(
     return df
 
 
-def data_workflow(project: str):
-    df = input_csv(project)
+def data_workflow(project: str, data_type: str, filename: str = None):
+    df = input_csv(project, data_type, filename)
 
     config = load_config()
 
     # parse timestamp_col, and rename
-    timestamp_col = config[project]["data"]["timestamp_col"]
-    timestamp_format = config[project]["data"]["timestamp_format"]
+    timestamp_col = config[project]["data"][data_type]["timestamp_col"]
+    timestamp_format = config[project]["data"][data_type]["timestamp_format"]
     df[timestamp_col] = pd.to_datetime(
         df[timestamp_col], errors="coerce", format=timestamp_format
     )
@@ -106,11 +109,11 @@ def data_workflow(project: str):
     df = df.rename(columns={timestamp_col: "measured_at"})
 
     # convert to UTC, and rename
-    source_timezone = config[project]["data"]["timezone"]
+    source_timezone = config[project]["data"][data_type]["timezone"]
     df = localize_and_convert_to_utc(df, source_timezone)
 
     # give information on the frequency of the index:
-    if "frequency" in config[project]["data"]:
-        df = df.asfreq(config[project]["data"]["frequency"])
+    if "frequency" in config[project]["data"][data_type]:
+        df = df.asfreq(config[project]["data"][data_type]["frequency"])
 
     return df

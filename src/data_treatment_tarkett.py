@@ -425,7 +425,9 @@ def build_tarkett_dataset(
     else:
         # get input_dir
         config = load_config()
-        input_dir = Path(config["tarkett"]["data"]["path"])
+        input_dir = Path(config["tarkett"]["data"]["gas_cons"]["dirpath"]) / Path(
+            "Données de Consommation gaz 2025"
+        )
 
         # contient les timestamps duplicates et les timestamps manquants
         df = load_tarkett_files(input_dir)
@@ -444,7 +446,7 @@ def build_tarkett_dataset(
     )
 
     # get source_timezone
-    source_timezone = config["tarkett"]["data"]["timezone"]
+    source_timezone = config["tarkett"]["data"]["gas_cons"]["timezone"]
 
     df = localize_and_convert_to_utc(
         df,

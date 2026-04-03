@@ -103,8 +103,10 @@ def build_market_orders(
 
 
 # tmp: certaines valeurs codées en dur sont spécifiques à inariz pour l'instant.
-def complex_market_orders_data_workflow(project: str):
-    df = data_workflow(project)
+def complex_market_orders_data_workflow(
+    project: str, data_type: str, filename: str = None
+):
+    df = data_workflow(project, data_type, filename)
 
     # include the unit into the main column name
     df = df.rename(columns={"Valeur": "steam_production_m3_h"})
