@@ -29,8 +29,8 @@ def build_market_orders(
     puissance_chaudiere_elec_mw: float,
     capacite_min_gaz_kwhth: float,
     *,
-    timestamp_col :str = "measured_at_utc",
-    value_col: str, # must be in kWhth
+    timestamp_col: str = "measured_at_utc",
+    value_col: str,  # must be in kWhth
     output_dir: Path | str = Path(r"data\market_orders"),
     run_at: datetime.datetime | pd.Timestamp | None = None,
     sep: str = ";",
@@ -43,10 +43,12 @@ def build_market_orders(
     df = forecast[[timestamp_col, value_col]].copy()
 
     if df[timestamp_col].dt.tz != datetime.timezone.utc:
-        raise ValueError(f"Missing or wrong tzinfo for timestamp column {timestamp_col}")
+        raise ValueError(
+            f"Missing or wrong tzinfo for timestamp column {timestamp_col}"
+        )
 
-    if df[timestamp_col].isna().any() | df[value_col].isna().any() :
-        raise ValueError(f"NaN values in timestamp or value columns")
+    if df[timestamp_col].isna().any() | df[value_col].isna().any():
+        raise ValueError("NaN values in timestamp or value columns")
 
     if "kwhth" not in value_col.split("_")[-1]:
         raise ValueError(f"Value col {value_col} is not in kWh")
@@ -56,25 +58,31 @@ def build_market_orders(
     # prix_seuil_euro_mwh = config[project_name]['prix_seuil_euro_mwh"]
     # puissance_chaudiere_elec_mw = config[project_name]["puissance_chaudiere_elec_mw"]
     # capacite_min_gaz_kwhth = config[project_name]["capacite_min_gaz_kwhth"]
-    
+
     # prise en compte du seuil pour la chaudière gaz
     available_kwhth = (df[value_col] - float(capacite_min_gaz_kwhth)).clip(lower=0)
     # prise en compte du rendement de la chaudière élec
     available_kwh = available_kwhth / COEFF_ELEC_BOILER_EFFICIENCY
     # conversion en puissance sur le quart d'heure
-    available_power_kw = available_kwh * 60/15
+    available_power_kw = available_kwh * 60 / 15
     # prise en compte de la puissance max pour la chaudière élec
-    available_power_kw = available_power_kw.clip(upper=float(puissance_chaudiere_elec_mw)*1000)
+    available_power_kw = available_power_kw.clip(
+        upper=float(puissance_chaudiere_elec_mw) * 1000
+    )
     # valeur finale
     power_kw_sell = -1 * available_power_kw
 
-    orders = pd.DataFrame({
-        "asset_id": project_name, #todo changer, l'asset_id est un INT chez e6
-        "Delivery_datetime(UTC_start_of_period)": df[timestamp_col].dt.strftime("%Y-%m-%d %H:%M:%S"),
-        "Price_min(E_MWh)": -500.0,
-        "Price_max(E_MWh)": float(prix_seuil_euro_mwh),
-        "Power_in_kW(Sell)": power_kw_sell,
-        })
+    orders = pd.DataFrame(
+        {
+            "asset_id": project_name,  # todo changer, l'asset_id est un INT chez e6
+            "Delivery_datetime(UTC_start_of_period)": df[timestamp_col].dt.strftime(
+                "%Y-%m-%d %H:%M:%S"
+            ),
+            "Price_min(E_MWh)": -500.0,
+            "Price_max(E_MWh)": float(prix_seuil_euro_mwh),
+            "Power_in_kW(Sell)": power_kw_sell,
+        }
+    )
 
     run_at = pd.Timestamp(run_at or datetime.datetime.now())
     run_day = run_at.strftime("%Y%m%d")
@@ -95,8 +103,10 @@ def build_market_orders(
 
 
 # tmp: certaines valeurs codées en dur sont spécifiques à inariz pour l'instant.
-def complex_market_orders_data_workflow(project: str):
-    df = data_workflow(project)
+def complex_market_orders_data_workflow(
+    project: str, data_type: str, filename: str = None
+):
+    df = data_workflow(project, data_type, filename)
 
     # include the unit into the main column name
     df = df.rename(columns={"Valeur": "steam_production_m3_h"})
@@ -105,21 +115,29 @@ def complex_market_orders_data_workflow(project: str):
     # set the timestamp as a column with a standard name, not as the index
     df = df.drop(columns=["Unité"])
 
-    df = df[["measured_at_utc", "steam_production_m3_h"]] #required, as the data_workflow creates new columns when localizing and converting to utc
+    df = df[
+        ["measured_at_utc", "steam_production_m3_h"]
+    ]  # required, as the data_workflow creates new columns when localizing and converting to utc
     df_15min = resample(df, desired_timedelta="15min", aggregate_function="mean")
     df_15min["steam_production_m3_h"] = df_15min["steam_production_m3_h"].fillna(0)
-    df_median1week = copy_median_values(df_15min, "measured_at_utc", "steam_production_m3_h", respect_holidays=False, respect_weekdays=True, respect_time=True, extension="semaine")
+    df_median1week = copy_median_values(
+        df_15min,
+        "measured_at_utc",
+        "steam_production_m3_h",
+        respect_holidays=False,
+        respect_weekdays=True,
+        respect_time=True,
+        extension="semaine",
+    )
     config = load_config()
 
     # convert m3/h to m3
-    df_median1week["steam_production_m3"] = df_median1week["steam_production_m3_h"] * 15/60 
+    df_median1week["steam_production_m3"] = (
+        df_median1week["steam_production_m3_h"] * 15 / 60
+    )
 
     df_median1week = convert_saturated_steam_units(
-        df_median1week,
-        "steam_production_m3",
-        "steam_production_kwhth",
-        "m3",
-        "kWh th"
+        df_median1week, "steam_production_m3", "steam_production_kwhth", "m3", "kWh th"
     )
 
     paths = build_market_orders(

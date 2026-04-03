@@ -10,8 +10,12 @@ from src.dataset import detect_elapsed_time_anomalies
 from plots import plot_timeseries, plot_gap_filled_timeseries
 from src.utils import load_config, convert_gas_units
 
-DEFAULT_INTERMEDIARY_OUTPUT_PATH_NOT_SAMPLED = Path(r"data\tarkett\intermediary") / "data_tarkett_not_sampled.csv"
-DEFAULT_INTERMEDIARY_OUTPUT_PATH = Path(r"data\tarkett\intermediary") / "data_tarkett.csv"
+DEFAULT_INTERMEDIARY_OUTPUT_PATH_NOT_SAMPLED = (
+    Path(r"data\tarkett\intermediary") / "data_tarkett_not_sampled.csv"
+)
+DEFAULT_INTERMEDIARY_OUTPUT_PATH = (
+    Path(r"data\tarkett\intermediary") / "data_tarkett.csv"
+)
 
 DEFAULT_OUTPUT_PATH = Path(r"data\tarkett\processed") / "data_tarkett_gap_filled.csv"
 
@@ -22,42 +26,45 @@ REQUIRED_COLUMNS = [
     "Valeur mesurée le",
 ]
 
-JOURS_OFF_PRESENTS = [datetime.date(2025, 5, 1), # férié
-                      datetime.date(2025, 5, 29), # férié
-                      datetime.date(2025, 5, 30), #pont
-                      ]
+JOURS_OFF_PRESENTS = [
+    datetime.date(2025, 5, 1),  # férié
+    datetime.date(2025, 5, 29),  # férié
+    datetime.date(2025, 5, 30),  # pont
+]
 
-CRENEAUX_3_8 = 4 # [4, 12, 20] # en vrai, plutôt à ces heures-là et demi, on suppose
+CRENEAUX_3_8 = 4  # [4, 12, 20] # en vrai, plutôt à ces heures-là et demi, on suppose
 
 
 # sur lesquels il manque de la donnée, en plus des dimanche
 # il existe des jours fériés sur lesquels il ne manque pas de donnée, est déjà à 0
-JOURS_OFF_MANQUANTS = [datetime.date(2025, 4, 21), # férié
-                       datetime.date(2025, 5, 2), # pont
-                       datetime.date(2025, 5, 3), # samedi pont, juste pour le tag
-                       datetime.date(2025, 5, 31), # samedi pont, juste pour le tag
-                       datetime.date(2025, 7, 14), # férié
-                       datetime.date(2025, 7, 19), # je ne sais pas pourquoi
-                       datetime.date(2025, 8, 15), # férié
-                       datetime.date(2025, 8, 16), # pont
-                       datetime.date(2025, 11, 10), #pont
-                       datetime.date(2025, 11, 11), # férié
-                       datetime.date(2025, 12, 13), # je ne sais pas pourquoi
-                       ]
+JOURS_OFF_MANQUANTS = [
+    datetime.date(2025, 4, 21),  # férié
+    datetime.date(2025, 5, 2),  # pont
+    datetime.date(2025, 5, 3),  # samedi pont, juste pour le tag
+    datetime.date(2025, 5, 31),  # samedi pont, juste pour le tag
+    datetime.date(2025, 7, 14),  # férié
+    datetime.date(2025, 7, 19),  # je ne sais pas pourquoi
+    datetime.date(2025, 8, 15),  # férié
+    datetime.date(2025, 8, 16),  # pont
+    datetime.date(2025, 11, 10),  # pont
+    datetime.date(2025, 11, 11),  # férié
+    datetime.date(2025, 12, 13),  # je ne sais pas pourquoi
+]
 
 # sur lesquels il manque de la donnée.
-JOURS_END_MANQUANTS = [datetime.date(2025, 7, 18), # je ne sais pas pourquoi
-                       datetime.date(2025, 8, 14), # veille de férié complet
-                       datetime.date(2025, 11, 1), # férié
-                       datetime.date(2025, 12, 12), # je ne sais pas pourquoi
-                       ]
+JOURS_END_MANQUANTS = [
+    datetime.date(2025, 7, 18),  # je ne sais pas pourquoi
+    datetime.date(2025, 8, 14),  # veille de férié complet
+    datetime.date(2025, 11, 1),  # férié
+    datetime.date(2025, 12, 12),  # je ne sais pas pourquoi
+]
 
-JOURS_BACK_MANQUANTS = [datetime.date(2025, 1, 6), # lendemain de vacances
-                        datetime.date(2025, 4, 22), # lendemain de férié
-                        datetime.date(2025, 7, 15), # lendemain de férié
-                        datetime.date(2025, 11, 12), # lendemain de férié
-                        ]
-
+JOURS_BACK_MANQUANTS = [
+    datetime.date(2025, 1, 6),  # lendemain de vacances
+    datetime.date(2025, 4, 22),  # lendemain de férié
+    datetime.date(2025, 7, 15),  # lendemain de férié
+    datetime.date(2025, 11, 12),  # lendemain de férié
+]
 
 
 def _coerce_numeric(series: pd.Series) -> pd.Series:
@@ -122,6 +129,7 @@ def load_tarkett_files(input_dir: Path | str) -> pd.DataFrame:
         frames.append(_read_tarkett_excel(path))
     return pd.concat(frames, ignore_index=True)
 
+
 def detect_duplicate_timestamps(
     df: pd.DataFrame,
     timestamp_col: str = "measured_at_utc",
@@ -158,15 +166,16 @@ def aggregate_hourly(
     df.rename(columns={timestamp_col: "timeslot_start_at"})
     return hourly
 
+
 def tag_activity(
-        df: pd.DataFrame, 
-        timestamp_col: str = "timeslot_start_at",
+    df: pd.DataFrame,
+    timestamp_col: str = "timeslot_start_at",
 ) -> pd.DataFrame:
     # utils
     df = df.sort_values(timestamp_col).reset_index(drop=True)
 
     df["_date"] = df[timestamp_col].dt.date
-    
+
     unique_dates = [d for d in df["_date"].dropna().unique()]
 
     missing_off_days = set(JOURS_OFF_MANQUANTS)
@@ -186,11 +195,7 @@ def tag_activity(
     all_back_to_work_days = missing_back_to_work_days.union(back_to_work_mondays)
 
     # off
-    sundays = {
-        d
-        for d in unique_dates
-        if d.weekday() == 6
-    }
+    sundays = {d for d in unique_dates if d.weekday() == 6}
 
     non_sunday_off_days = missing_off_days.union(present_off_days)
     all_off_days = non_sunday_off_days.union(sundays)
@@ -220,6 +225,7 @@ def tag_activity(
 
     return df, non_sunday_off_days, all_back_to_work_days
 
+
 def gap_fill_hourly_timeseries(
     df_hourly: pd.DataFrame,
     non_sunday_off_days,
@@ -233,12 +239,12 @@ def gap_fill_hourly_timeseries(
 
     df["_hour"] = df[timestamp_col].dt.hour
     df["_weekday"] = df[timestamp_col].dt.weekday
-    df["_date"] = df[timestamp_col].dt.date    
+    df["_date"] = df[timestamp_col].dt.date
 
     # stats: remove NaNs and days taggued as OFF from stats
     missing_mask = df[value_col].isna()
     original_mask = ~missing_mask
-        
+
     df.loc[original_mask, "tag"] = "original"
 
     ##
@@ -259,7 +265,7 @@ def gap_fill_hourly_timeseries(
             source_weekday = df.at[row_idx, "_weekday"]
         return weekday_hour_median.get((source_weekday, hour))
 
-    # Fill gaps from the end, 
+    # Fill gaps from the end,
     # if weekday: validating against the target hour's weekday Q1
     # if back_to_work day: validating against the target hour's back_to_work monday Q1
     if missing_mask.any():
@@ -293,9 +299,13 @@ def gap_fill_hourly_timeseries(
                 if pd.isna(median_val_for_gap) or pd.isna(current_value_of_target):
                     for m in range(k, start - 1, -1):
                         df.at[m, value_col] = 0
-                        df.at[m, "tag"] = "gap-filled with zeros because the stats info is missing"
+                        df.at[m, "tag"] = (
+                            "gap-filled with zeros because the stats info is missing"
+                        )
                     if not modified:
-                        df.at[target_idx, "tag"] = "considered, not modified, because the stats info is missing"
+                        df.at[target_idx, "tag"] = (
+                            "considered, not modified, because the stats info is missing"
+                        )
                     break
 
                 # check median_val_for_gap against its impact on target compared to q1
@@ -303,13 +313,17 @@ def gap_fill_hourly_timeseries(
                 if not pd.isna(q1_target):
                     threshold_ok = candidate_for_target > q1_target
                 else:
-                    raise ValueError(f"Missing Q1 info for target. weekday_hour_q1: {weekday_hour_q1}, target_weekday: {target_weekday}, target_hour: {target_hour}")
+                    raise ValueError(
+                        f"Missing Q1 info for target. weekday_hour_q1: {weekday_hour_q1}, target_weekday: {target_weekday}, target_hour: {target_hour}"
+                    )
 
                 # If the gap-filled value is zero, gap-fill all previous points with a 0
                 if median_val_for_gap == 0.0:
                     for m in range(k, start - 1, -1):
                         df.at[m, value_col] = 0
-                        df.at[m, "tag"] = "gap-filled with 0 because later points already filled at 0"
+                        df.at[m, "tag"] = (
+                            "gap-filled with 0 because later points already filled at 0"
+                        )
                     break
 
                 # If the test is valid, accept this fill and update the target value for the next step.
@@ -319,34 +333,38 @@ def gap_fill_hourly_timeseries(
                     current_value_of_target = candidate_for_target
                     modified = True
                     k -= 1
-                    continue # passe au prochain tour de boucle
+                    continue  # passe au prochain tour de boucle
 
                 # If the test is invalid, fill the rest of the beginning of the block; fill with zeros, break the while loop
                 for m in range(k, start - 1, -1):
                     df.at[m, value_col] = 0
-                    df.at[m, "tag"] = "gap-filled rest of block because threshold of modification already reached"
+                    df.at[m, "tag"] = (
+                        "gap-filled rest of block because threshold of modification already reached"
+                    )
                 break
 
             # Commit the final modified target value
             if modified:
                 df.at[target_idx, value_col] = current_value_of_target
                 df.at[target_idx, "tag"] = "modified"
-            # if no test has been seen as valid, the target has not been modified   
+            # if no test has been seen as valid, the target has not been modified
             else:
                 df.at[target_idx, "tag"] = "considered, not modified"
 
     # Create index for missing dates for Christmas holidays, and fill with zeros all remaining missing values
     df = df.set_index(timestamp_col)
-    date_index2 = pd.date_range(start="2025-01-01 00:00:00", end="2025-12-31 23:00:00", freq="h")
+    date_index2 = pd.date_range(
+        start="2025-01-01 00:00:00", end="2025-12-31 23:00:00", freq="h"
+    )
     df = df.reindex(date_index2)
     df = df.reset_index(names=timestamp_col)
-    
+
     holidays_mask = df["tag"].isna()
     df.loc[holidays_mask, "activity"] = "holidays"
     df.loc[holidays_mask, "tag"] = "gap-filled with zero for holidays"
     df.loc[holidays_mask, value_col] = 0
 
-    return df.drop(columns=["_hour", "_weekday", "_date"]) #, "_is_off_day"
+    return df.drop(columns=["_hour", "_weekday", "_date"])  # , "_is_off_day"
 
 
 def find_missing_timestamps_full_year(
@@ -381,7 +399,8 @@ def find_missing_timestamps_full_year(
 
 
 def build_tarkett_dataset(
-    output_intermediary_path_not_sampled: Path | str = DEFAULT_INTERMEDIARY_OUTPUT_PATH_NOT_SAMPLED,
+    output_intermediary_path_not_sampled: Path
+    | str = DEFAULT_INTERMEDIARY_OUTPUT_PATH_NOT_SAMPLED,
     output_intermediary_path: Path | str = DEFAULT_INTERMEDIARY_OUTPUT_PATH,
     output_path: Path | str = DEFAULT_OUTPUT_PATH,
     sep: str = ";",
@@ -392,39 +411,49 @@ def build_tarkett_dataset(
     output_intermediary_path_not_sampled.parent.mkdir(parents=True, exist_ok=True)
 
     if output_intermediary_path_not_sampled.exists():
-        print("---------------- loading existing intermediary files (cache) ------------")
+        print(
+            "---------------- loading existing intermediary files (cache) ------------"
+        )
         df = pd.read_csv(output_intermediary_path_not_sampled, sep=sep, decimal=decimal)
         if "Valeur mesurée le" in df.columns:
             df["Valeur mesurée le"] = pd.to_datetime(
                 df["Valeur mesurée le"],
                 errors="coerce",
                 yearfirst=True,
-                format="ISO8601"
+                format="ISO8601",
             )
     else:
         # get input_dir
-        config = load_config() 
-        input_dir = Path(config["tarkett"]["data"]["path"])
+        config = load_config()
+        input_dir = Path(config["tarkett"]["data"]["gas_cons"]["dirpath"]) / Path(
+            "Données de Consommation gaz 2025"
+        )
 
         # contient les timestamps duplicates et les timestamps manquants
         df = load_tarkett_files(input_dir)
         df = df.sort_values("Valeur mesurée le")
-        df.to_csv(output_intermediary_path_not_sampled, index=False, sep=sep, decimal=decimal)
+        df.to_csv(
+            output_intermediary_path_not_sampled, index=False, sep=sep, decimal=decimal
+        )
 
     print("---------------- loading files completed ------------")
 
-    df = df.rename(columns={"Valeur mesurée le": "measured_at", "Valeur mesurée": "cumulative_conso_gaz_chaudiere_SV4_m3"})
-
+    df = df.rename(
+        columns={
+            "Valeur mesurée le": "measured_at",
+            "Valeur mesurée": "cumulative_conso_gaz_chaudiere_SV4_m3",
+        }
+    )
 
     # get source_timezone
-    source_timezone = config["tarkett"]["data"]["timezone"]
+    source_timezone = config["tarkett"]["data"]["gas_cons"]["timezone"]
 
     df = localize_and_convert_to_utc(
         df,
         source_timezone=source_timezone,
         timestamp_col="measured_at",
     )
-    
+
     duplicates = detect_duplicate_timestamps(df)
     duplicate_timestamps_that_can_be_removed = (
         find_duplicate_timestamps_with_same_value(duplicates)
@@ -432,20 +461,26 @@ def build_tarkett_dataset(
 
     elapsed_anomalies, expected_delta = detect_elapsed_time_anomalies(df)
 
-
     if duplicate_timestamps_that_can_be_removed:
-        removable_mask = (
-            df["measured_at_utc"].isin(duplicate_timestamps_that_can_be_removed)
-            & df.duplicated(subset=["measured_at_utc"], keep="first")
-        )
+        removable_mask = df["measured_at_utc"].isin(
+            duplicate_timestamps_that_can_be_removed
+        ) & df.duplicated(subset=["measured_at_utc"], keep="first")
         df = df.loc[~removable_mask]
 
-    df = convert_gas_units(df, "cumulative_conso_gaz_chaudiere_SV4_m3", "cumulative_conso_gaz_chaudiere_SV4_kWh", "m3", "kWh PCS")
-    
+    df = convert_gas_units(
+        df,
+        "cumulative_conso_gaz_chaudiere_SV4_m3",
+        "cumulative_conso_gaz_chaudiere_SV4_kWh",
+        "m3",
+        "kWh PCS",
+    )
+
     # add kwh use
     # start by sorting, to make sure the diff is applied on a clean df
     df = df.sort_values("measured_at_utc")
-    df["conso_gaz_chaudiere_SV4_kWh"] = df["cumulative_conso_gaz_chaudiere_SV4_kWh"].diff()
+    df["conso_gaz_chaudiere_SV4_kWh"] = df[
+        "cumulative_conso_gaz_chaudiere_SV4_kWh"
+    ].diff()
 
     df_hourly = aggregate_hourly(df)
     df_hourly = df_hourly[["timeslot_start_at", "conso_gaz_chaudiere_SV4_kWh"]]
@@ -456,10 +491,12 @@ def build_tarkett_dataset(
 
     # gap-filling
     df_hourly, non_sunday_off_days, all_back_to_work_days = tag_activity(df_hourly)
-    df_hourly_gap_filled = gap_fill_hourly_timeseries(df_hourly, non_sunday_off_days, all_back_to_work_days)
+    df_hourly_gap_filled = gap_fill_hourly_timeseries(
+        df_hourly, non_sunday_off_days, all_back_to_work_days
+    )
 
     output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)    
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     df_hourly_gap_filled.to_csv(output_path, index=False, sep=sep, decimal=decimal)
 
     plot_timeseries(df_hourly.set_index("timeslot_start_at"))
@@ -469,4 +506,6 @@ def build_tarkett_dataset(
 
 
 if __name__ == "__main__":
-    df_hourly, df_hourly_gap_filled, duplicates, elapsed_anomalies = build_tarkett_dataset()
+    df_hourly, df_hourly_gap_filled, duplicates, elapsed_anomalies = (
+        build_tarkett_dataset()
+    )
