@@ -34,7 +34,7 @@ def detect_most_recent_file(input_dir: Path, version: str = None):
     return most_recent_modification_date, most_recent_file_path
 
 
-def _read_inariz_planning_excel(path: Path) -> pd.DataFrame:
+def _read_inariz_planning_excel(path: Path) -> list:
     # print(f"---------------- Start reading {path} ------------")
 
     while True:

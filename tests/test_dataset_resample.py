@@ -3,10 +3,13 @@ import pytest
 
 from src.dataset import resample
 
+
 def test_resample_sums_values_on_30min_windows() -> None:
     df = pd.DataFrame(
         {
-            "measured_at_utc": pd.date_range("2026-01-01 00:00:00", periods=4, freq="15min", tz="UTC"),
+            "measured_at_utc": pd.date_range(
+                "2026-01-01 00:00:00", periods=4, freq="15min", tz="UTC"
+            ),
             "steam_production_kwhth": [1.0, 2.0, 3.0, 4.0],
         }
     )
@@ -32,7 +35,9 @@ def test_resample_sums_values_on_30min_windows() -> None:
 def test_resample_supports_custom_timestamp_column_and_mean() -> None:
     df = pd.DataFrame(
         {
-            "ts": pd.date_range("2026-01-01 00:00:00", periods=4, freq="15min", tz="UTC"),
+            "ts": pd.date_range(
+                "2026-01-01 00:00:00", periods=4, freq="15min", tz="UTC"
+            ),
             "a": [1.0, 2.0, 3.0, 4.0],
             "b": [10.0, 20.0, 30.0, 40.0],
         }

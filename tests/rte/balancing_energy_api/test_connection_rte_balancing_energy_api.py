@@ -6,7 +6,9 @@ from fastapi.testclient import TestClient
 
 import src.rte.balancing_energy_api.connection_rte_balancing_energy_api
 from src.rte.rte_client import RteAuthError
-from src.rte.balancing_energy_api.rte_balancing_energy_models import ImbalanceDataResponse
+from src.rte.balancing_energy_api.rte_balancing_energy_models import (
+    ImbalanceDataResponse,
+)
 
 
 def _imbalance_data_payload() -> dict:
@@ -57,10 +59,15 @@ def test_imbalance_data_endpoint_calls_client_with_env_config(monkeypatch) -> No
         "RteBalancingEnergyClient",
         FakeRteBalancingEnergyClient,
     )
-    monkeypatch.setenv("RTE_BALANCING_ENERGY_BASE_URL", "https://custom-rte-host/open_api/balancing_energy/v5")
+    monkeypatch.setenv(
+        "RTE_BALANCING_ENERGY_BASE_URL",
+        "https://custom-rte-host/open_api/balancing_energy/v5",
+    )
     monkeypatch.setenv("RTE_ACCESS_TOKEN", "rte-token-value")
 
-    client = TestClient(src.rte.balancing_energy_api.connection_rte_balancing_energy_api.app)
+    client = TestClient(
+        src.rte.balancing_energy_api.connection_rte_balancing_energy_api.app
+    )
     response = client.get(
         "/rte/balancing-energy/imbalance-data",
         params=[
@@ -72,10 +79,16 @@ def test_imbalance_data_endpoint_calls_client_with_env_config(monkeypatch) -> No
     assert response.status_code == 200
     payload = response.json()
     assert payload["imbalance_data"][0]["resolution"] == "PT15M"
-    assert captured["base_url"] == "https://custom-rte-host/open_api/balancing_energy/v5"
+    assert (
+        captured["base_url"] == "https://custom-rte-host/open_api/balancing_energy/v5"
+    )
     assert captured["access_token"].get_secret_value() == "rte-token-value"
-    assert captured["start_date"] == datetime.datetime(2026, 3, 20, 0, 0, tzinfo=datetime.UTC)
-    assert captured["end_date"] == datetime.datetime(2026, 3, 21, 0, 0, tzinfo=datetime.UTC)
+    assert captured["start_date"] == datetime.datetime(
+        2026, 3, 20, 0, 0, tzinfo=datetime.UTC
+    )
+    assert captured["end_date"] == datetime.datetime(
+        2026, 3, 21, 0, 0, tzinfo=datetime.UTC
+    )
 
 
 def test_imbalance_data_endpoint_rejects_missing_env_credentials(monkeypatch) -> None:
@@ -89,7 +102,9 @@ def test_imbalance_data_endpoint_rejects_missing_env_credentials(monkeypatch) ->
     monkeypatch.delenv("VAULT_ADDR", raising=False)
     monkeypatch.delenv("VAULT_TOKEN", raising=False)
 
-    client = TestClient(src.rte.balancing_energy_api.connection_rte_balancing_energy_api.app)
+    client = TestClient(
+        src.rte.balancing_energy_api.connection_rte_balancing_energy_api.app
+    )
     response = client.get("/rte/balancing-energy/imbalance-data")
 
     assert response.status_code == 400
@@ -102,7 +117,9 @@ def test_imbalance_data_endpoint_accepts_shared_basic_auth_b64(monkeypatch) -> N
     class FakeRteBalancingEnergyClient:
         def __init__(self, *, base_url: str, auth: object) -> None:
             captured["base_url"] = base_url
-            captured["basic_authorization_b64"] = getattr(auth, "basic_authorization_b64", None)
+            captured["basic_authorization_b64"] = getattr(
+                auth, "basic_authorization_b64", None
+            )
 
         async def __aenter__(self) -> "FakeRteBalancingEnergyClient":
             return self
@@ -127,7 +144,9 @@ def test_imbalance_data_endpoint_accepts_shared_basic_auth_b64(monkeypatch) -> N
     monkeypatch.delenv("RTE_VAULT_SECRET_PATH", raising=False)
     monkeypatch.setenv("RTE_BASIC_AUTH_B64", "ZmFrZS1iYXNlNjQ=")
 
-    client = TestClient(src.rte.balancing_energy_api.connection_rte_balancing_energy_api.app)
+    client = TestClient(
+        src.rte.balancing_energy_api.connection_rte_balancing_energy_api.app
+    )
     response = client.get("/rte/balancing-energy/imbalance-data")
 
     assert response.status_code == 200
@@ -156,7 +175,9 @@ def test_imbalance_data_endpoint_maps_auth_error(monkeypatch) -> None:
     )
     monkeypatch.setenv("RTE_ACCESS_TOKEN", "rte-token-value")
 
-    client = TestClient(src.rte.balancing_energy_api.connection_rte_balancing_energy_api.app)
+    client = TestClient(
+        src.rte.balancing_energy_api.connection_rte_balancing_energy_api.app
+    )
     response = client.get("/rte/balancing-energy/imbalance-data")
 
     assert response.status_code == 401

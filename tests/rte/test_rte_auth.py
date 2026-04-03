@@ -62,7 +62,9 @@ def test_resolve_rte_auth_env_reads_basic_auth_from_vault(monkeypatch) -> None:
     assert captured["mount_point"] == "kv"
 
 
-def test_resolve_rte_auth_env_raises_when_vault_configured_but_hvac_missing(monkeypatch) -> None:
+def test_resolve_rte_auth_env_raises_when_vault_configured_but_hvac_missing(
+    monkeypatch,
+) -> None:
     monkeypatch.delenv("RTE_BASIC_AUTH_B64", raising=False)
     monkeypatch.delenv("RTE_ACCESS_TOKEN", raising=False)
     monkeypatch.delenv("RTE_CLIENT_ID", raising=False)
@@ -70,8 +72,12 @@ def test_resolve_rte_auth_env_raises_when_vault_configured_but_hvac_missing(monk
     monkeypatch.setenv("RTE_VAULT_ADDR", "https://vault.scaleway.example:8200")
     monkeypatch.setenv("RTE_VAULT_TOKEN", "vault-token")
     monkeypatch.setenv("RTE_VAULT_SECRET_PATH", "rte/api")
+
     def _raise_missing_hvac():  # noqa: ANN202
-        raise HTTPException(status_code=500, detail="Vault access is configured but 'hvac' is not installed.")
+        raise HTTPException(
+            status_code=500,
+            detail="Vault access is configured but 'hvac' is not installed.",
+        )
 
     monkeypatch.setattr(rte_auth, "_get_hvac_module", _raise_missing_hvac)
 

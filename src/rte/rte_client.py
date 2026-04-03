@@ -8,7 +8,9 @@ from typing import Any
 import httpx
 from pydantic import SecretStr
 
-from src.rte.balancing_energy_api.rte_balancing_energy_models import ImbalanceDataResponse
+from src.rte.balancing_energy_api.rte_balancing_energy_models import (
+    ImbalanceDataResponse,
+)
 from src.rte.consumption_api.rte_consumption_models import (
     RteApiErrorPayload,
     ShortTermQueryType,
@@ -20,9 +22,15 @@ from src.rte.generation_forecast_api.rte_generation_forecast_models import (
 )
 
 DEFAULT_RTE_TOKEN_URL = "https://digital.iservices.rte-france.com/token/oauth/"
-DEFAULT_RTE_CONSUMPTION_BASE_URL = "https://digital.iservices.rte-france.com/open_api/consumption/v1"
-DEFAULT_RTE_GENERATION_FORECAST_BASE_URL = "https://digital.iservices.rte-france.com/open_api/generation_forecast/v3"
-DEFAULT_RTE_BALANCING_ENERGY_BASE_URL = "https://digital.iservices.rte-france.com/open_api/balancing_energy/v5"
+DEFAULT_RTE_CONSUMPTION_BASE_URL = (
+    "https://digital.iservices.rte-france.com/open_api/consumption/v1"
+)
+DEFAULT_RTE_GENERATION_FORECAST_BASE_URL = (
+    "https://digital.iservices.rte-france.com/open_api/generation_forecast/v3"
+)
+DEFAULT_RTE_BALANCING_ENERGY_BASE_URL = (
+    "https://digital.iservices.rte-france.com/open_api/balancing_energy/v5"
+)
 
 
 class RteApiError(RuntimeError):
@@ -135,7 +143,9 @@ class RteApiClientBase:
 
     def _datetime_to_api_format(self, value: datetime.datetime) -> str:
         if value.tzinfo is None or value.utcoffset() is None:
-            raise ValueError("Datetime values sent to RTE must include timezone information.")
+            raise ValueError(
+                "Datetime values sent to RTE must include timezone information."
+            )
         return value.isoformat()
 
     def _join_distinct_values(self, values: list[str]) -> str:
@@ -149,7 +159,9 @@ class RteApiClientBase:
             return self._cached_token.access_token
 
         if self._auth.access_token:
-            self._cached_token = BearerToken(access_token=self._auth.access_token.get_secret_value())
+            self._cached_token = BearerToken(
+                access_token=self._auth.access_token.get_secret_value()
+            )
             return self._cached_token.access_token
 
         has_basic_auth_b64 = bool(self._auth.basic_authorization_b64)
@@ -166,11 +178,15 @@ class RteApiClientBase:
 
     async def _fetch_client_credentials_token(self) -> BearerToken:
         basic_credentials = (
-            self._auth.basic_authorization_b64.get_secret_value() if self._auth.basic_authorization_b64 else None
+            self._auth.basic_authorization_b64.get_secret_value()
+            if self._auth.basic_authorization_b64
+            else None
         )
         if not basic_credentials:
             basic_credentials = base64.b64encode(
-                f"{self._auth.client_id}:{self._auth.client_secret.get_secret_value()}".encode("utf-8")
+                f"{self._auth.client_id}:{self._auth.client_secret.get_secret_value()}".encode(
+                    "utf-8"
+                )
             ).decode("ascii")
         response = await self._http.post(
             self._auth.token_url,
@@ -196,7 +212,9 @@ class RteApiClientBase:
         expires_at: datetime.datetime | None = None
         expires_in = payload.get("expires_in")
         if isinstance(expires_in, int):
-            expires_at = datetime.datetime.now(tz=datetime.UTC) + datetime.timedelta(seconds=max(expires_in - 60, 0))
+            expires_at = datetime.datetime.now(tz=datetime.UTC) + datetime.timedelta(
+                seconds=max(expires_in - 60, 0)
+            )
         return BearerToken(access_token=access_token, expires_at=expires_at)
 
     def _raise_for_status(self, response: httpx.Response) -> None:
@@ -205,7 +223,11 @@ class RteApiClientBase:
         message: str
         try:
             payload = response.json()
-            parsed_payload = RteApiErrorPayload.model_validate(payload) if isinstance(payload, dict) else None
+            parsed_payload = (
+                RteApiErrorPayload.model_validate(payload)
+                if isinstance(payload, dict)
+                else None
+            )
             if parsed_payload and parsed_payload.error_description:
                 message = parsed_payload.error_description
             elif parsed_payload and parsed_payload.error:
@@ -216,7 +238,11 @@ class RteApiClientBase:
                 message = f"RTE {self._service_label} API error {status_code}"
         except ValueError:
             payload = response.text
-            message = payload if isinstance(payload, str) and payload else f"RTE {self._service_label} API error {status_code}"
+            message = (
+                payload
+                if isinstance(payload, str) and payload
+                else f"RTE {self._service_label} API error {status_code}"
+            )
 
         if status_code == 400:
             raise RteBadRequestError(message, status_code=status_code, payload=payload)
@@ -258,7 +284,9 @@ class RteConsumptionClient(RteApiClientBase):
         has_start_date = start_date is not None
         has_end_date = end_date is not None
         if has_start_date != has_end_date:
-            raise ValueError("start_date and end_date must either both be filled in or both be omitted.")
+            raise ValueError(
+                "start_date and end_date must either both be filled in or both be omitted."
+            )
 
         params: dict[str, str] = {}
         if types:
@@ -300,7 +328,9 @@ class RteGenerationForecastClient(RteApiClientBase):
         has_start_date = start_date is not None
         has_end_date = end_date is not None
         if has_start_date != has_end_date:
-            raise ValueError("start_date and end_date must either both be filled in or both be omitted.")
+            raise ValueError(
+                "start_date and end_date must either both be filled in or both be omitted."
+            )
 
         params: dict[str, str] = {}
         if production_types:
@@ -324,7 +354,9 @@ class RteGenerationForecastClient(RteApiClientBase):
         has_start_date = start_date is not None
         has_end_date = end_date is not None
         if has_start_date != has_end_date:
-            raise ValueError("start_date and end_date must either both be filled in or both be omitted.")
+            raise ValueError(
+                "start_date and end_date must either both be filled in or both be omitted."
+            )
 
         params: dict[str, str] = {}
         if forecast_types:

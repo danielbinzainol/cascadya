@@ -13,7 +13,10 @@ from src.rte.rte_client import (
     RteConsumptionClient,
 )
 from src.rte.rte_auth import resolve_rte_auth_env
-from src.rte.consumption_api.rte_consumption_models import ShortTermQueryType, ShortTermResponse
+from src.rte.consumption_api.rte_consumption_models import (
+    ShortTermQueryType,
+    ShortTermResponse,
+)
 
 app = FastAPI()
 

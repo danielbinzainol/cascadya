@@ -8,12 +8,16 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validato
 
 
 class AeolusBaseModel(BaseModel):
-    model_config = ConfigDict(extra="allow", validate_by_name=True, validate_by_alias=True)
+    model_config = ConfigDict(
+        extra="allow", validate_by_name=True, validate_by_alias=True
+    )
 
     @field_validator("*")
     @classmethod
     def _ensure_utc_datetime(cls, value: Any) -> Any:
-        if isinstance(value, datetime.datetime) and value.utcoffset() != datetime.timedelta(0):
+        if isinstance(
+            value, datetime.datetime
+        ) and value.utcoffset() != datetime.timedelta(0):
             raise ValueError("Datetime values must be UTC (offset +00:00).")
         return value
 
@@ -104,7 +108,9 @@ class Maintenance(AeolusBaseModel):
     producing_unit_id: int = Field(alias="producingUnitId")
     prod_max_in_p: int | None = Field(default=None, alias="prodMaxInP")
     prod_max_in_mw: float | None = Field(default=None, alias="prodMaxInMW")
-    maintenance_strategy_id: int | None = Field(default=None, alias="maintenanceStrategyId")
+    maintenance_strategy_id: int | None = Field(
+        default=None, alias="maintenanceStrategyId"
+    )
     maintenance_group_id: int | None = Field(default=None, alias="maintenanceGroupId")
     description: str | None = None
 
@@ -116,7 +122,9 @@ class MaintenancePayload(AeolusBaseModel):
     producing_unit_ids: list[int] = Field(alias="producingUnitIds")
     prod_max_in_p: int | None = Field(default=None, alias="prodMaxInP")
     prod_max_in_mw: float | None = Field(default=None, alias="prodMaxInMW")
-    maintenance_strategy_id: int | None = Field(default=None, alias="maintenanceStrategyId")
+    maintenance_strategy_id: int | None = Field(
+        default=None, alias="maintenanceStrategyId"
+    )
     description: str | None = None
 
 
@@ -127,7 +135,9 @@ class MaintenanceResponse(AeolusBaseModel):
     producing_unit_ids: list[int] = Field(alias="producingUnitIds")
     prod_max_in_p: int | None = Field(default=None, alias="prodMaxInP")
     prod_max_in_mw: float | None = Field(default=None, alias="prodMaxInMW")
-    maintenance_strategy_id: int | None = Field(default=None, alias="maintenanceStrategyId")
+    maintenance_strategy_id: int | None = Field(
+        default=None, alias="maintenanceStrategyId"
+    )
     maintenance_group_id: int | None = Field(default=None, alias="maintenanceGroupId")
     description: str | None = None
 
@@ -213,7 +223,9 @@ class LegacyTimeSeriesPayload(AeolusBaseModel):
 
 
 class LegacyTimeSeriesResponse(AeolusBaseModel):
-    connection_point_ean_code: str | None = Field(default=None, alias="connectionPointEanCode")
+    connection_point_ean_code: str | None = Field(
+        default=None, alias="connectionPointEanCode"
+    )
     start: AwareDatetime
     end: AwareDatetime
     points: list[LegacyTimeSeriesPoint]
@@ -253,7 +265,9 @@ class FarmClearedVolumeItem(AeolusBaseModel):
 
 
 class FarmClearedVolumesRetrieveResponse(AeolusBaseModel):
-    farm_cleared_volumes: list[FarmClearedVolumeItem] = Field(alias="farmClearedVolumes")
+    farm_cleared_volumes: list[FarmClearedVolumeItem] = Field(
+        alias="farmClearedVolumes"
+    )
 
 
 class MeteringRecordCreate(AeolusBaseModel):
@@ -282,17 +296,26 @@ class WeatherMeasurementCreate(AeolusBaseModel):
     wind_direction_in_degrees: float | None = Field(alias="windDirectionInDegrees")
     temperature_in_celsius: float | None = Field(alias="temperatureInCelsius")
     pressure_in_pa: float | None = Field(alias="pressureInPa")
-    relative_humidity_in_percent: float | None = Field(alias="relativeHumidityInPercent")
-    global_horizontal_irradiance_in_w_per_m2: float | None = Field(alias="globalHorizontalIrradianceInWPerM2")
-    diffuse_horizontal_irradiance_in_w_per_m2: float | None = Field(alias="diffuseHorizontalIrradianceInWPerM2")
-    direct_normal_irradiance_in_w_per_m2: float | None = Field(alias="directNormalIrradianceInWPerM2")
+    relative_humidity_in_percent: float | None = Field(
+        alias="relativeHumidityInPercent"
+    )
+    global_horizontal_irradiance_in_w_per_m2: float | None = Field(
+        alias="globalHorizontalIrradianceInWPerM2"
+    )
+    diffuse_horizontal_irradiance_in_w_per_m2: float | None = Field(
+        alias="diffuseHorizontalIrradianceInWPerM2"
+    )
+    direct_normal_irradiance_in_w_per_m2: float | None = Field(
+        alias="directNormalIrradianceInWPerM2"
+    )
 
 
 class WeatherMeasurementsCreate(AeolusBaseModel):
-    weather_measurements: list[WeatherMeasurementCreate] = Field(alias="weatherMeasurements")
+    weather_measurements: list[WeatherMeasurementCreate] = Field(
+        alias="weatherMeasurements"
+    )
 
 
 class WeatherMeasurementsCreateResponse(AeolusBaseModel):
     message: str
     count: int
-

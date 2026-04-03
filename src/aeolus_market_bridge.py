@@ -29,11 +29,22 @@ def infer_product_time_step(
     *,
     default_product_time_step: ProductTimeStepApi = ProductTimeStepApi.QUARTER_OF_AN_HOUR,
 ) -> ProductTimeStepApi:
-    timestamps = pd.to_datetime(datetimes, utc=True, errors="raise").sort_values().drop_duplicates()
+    timestamps = (
+        pd.to_datetime(datetimes, utc=True, errors="raise")
+        .sort_values()
+        .drop_duplicates()
+    )
     if timestamps.size <= 1:
         return default_product_time_step
     deltas_minutes = (
-        timestamps.diff().dropna().dt.total_seconds().div(60).round().astype(int).unique().tolist()
+        timestamps.diff()
+        .dropna()
+        .dt.total_seconds()
+        .div(60)
+        .round()
+        .astype(int)
+        .unique()
+        .tolist()
     )
     if len(deltas_minutes) != 1:
         raise ValueError(f"Market orders contain mixed time steps: {deltas_minutes}")
@@ -59,12 +70,18 @@ def market_orders_dataframe_to_transactions(
     if farm_id <= 0:
         raise ValueError("farm_id must be a positive integer.")
 
-    missing_columns = [column_name for column_name in ORDER_HEADER if column_name not in market_orders.columns]
+    missing_columns = [
+        column_name
+        for column_name in ORDER_HEADER
+        if column_name not in market_orders.columns
+    ]
     if missing_columns:
         raise ValueError(f"Missing market order columns: {missing_columns}")
 
     working = market_orders[ORDER_HEADER].copy()
-    working[DELIVERY_DATETIME_COL] = pd.to_datetime(working[DELIVERY_DATETIME_COL], utc=True, errors="raise")
+    working[DELIVERY_DATETIME_COL] = pd.to_datetime(
+        working[DELIVERY_DATETIME_COL], utc=True, errors="raise"
+    )
     product_time_step = infer_product_time_step(
         working[DELIVERY_DATETIME_COL],
         default_product_time_step=default_product_time_step,
@@ -83,7 +100,9 @@ def market_orders_dataframe_to_transactions(
 
         delivery_datetime = row[DELIVERY_DATETIME_COL]
         if delivery_datetime.tzinfo is None:
-            raise ValueError("Delivery_datetime(UTC_start_of_period) must include timezone information.")
+            raise ValueError(
+                "Delivery_datetime(UTC_start_of_period) must include timezone information."
+            )
 
         transaction = TransactionCreate(
             farmId=farm_id,

@@ -6,7 +6,9 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 
 class RteConsumptionBaseModel(BaseModel):
-    model_config = ConfigDict(extra="allow", validate_by_name=True, validate_by_alias=True)
+    model_config = ConfigDict(
+        extra="allow", validate_by_name=True, validate_by_alias=True
+    )
 
 
 class ShortTermQueryType(str, Enum):
