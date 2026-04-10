@@ -23,6 +23,10 @@ dependencies = [
     "statsmodels>=0.14.6",
     "tqdm>=4.67.1",
     "uvicorn>=0.40.0",
+    "statsforecast>=2.0.1",
+    "ipykernel>=7.2.0",
+    "jupyter-core>=5.9.1",
+    "pre-commit>=4.5.1",
 ]
 
 [dependency-groups]
