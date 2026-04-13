@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Forecasts Backoffice</title>
+    <link rel="icon" type="image/svg+xml" href="/static/forecasts/assets/logo.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/forecasts/assets/logo.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/static/forecasts/styles.css" />
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+    <script src="/static/forecasts/app.js" defer></script>
+  </head>
+  <body>
+    <div id="app" class="page">
+      <nav class="top-nav">
+        <a href="/backoffice">Backoffice Home</a>
+      </nav>
+      <header class="hero">
+        <p class="kicker">Backoffice / Forecasts</p>
+        <h1>Steam Forecast Lab</h1>
+        <p class="subtitle">
+          Launch model runs, compare performance, and inspect forecasts from one interface.
+        </p>
+      </header>
+
+      <main class="layout">
+        <section class="panel">
+          <h2>New Run</h2>
+          <form class="form-grid" @submit.prevent="launchRun">
+            <label>
+              Site
+              <select v-model="runForm.site" required>
+                <option v-for="site in sites" :key="site" :value="site">{{ site }}</option>
+              </select>
+            </label>
+            <label>
+              Model
+              <select v-model="runForm.model" required>
+                <option value="simple_copy">Simple Copy</option>
+                <option value="median_copy">Median Copy</option>
+                <option value="linear_regression">Linear Regression</option>
+                <option value="arima">ARIMA</option>
+                <option value="lstm">LSTM</option>
+                <option value="all_models">All Models (RMSE ranking)</option>
+              </select>
+            </label>
+            <label>
+              n_splits
+              <input v-model.number="runForm.n_splits" type="number" min="2" required />
+            </label>
+            <label>
+              gap
+              <input v-model.number="runForm.gap" type="number" min="0" required />
+            </label>
+            <label>
+              test_size
+              <input v-model.number="runForm.test_size" type="number" min="1" required />
+            </label>
+            <button class="btn" :disabled="isLaunching">
+              {{ isLaunching ? "Submitting..." : "Launch Async Run" }}
+            </button>
+          </form>
+          <p class="small">Only one active run per site. New ones are queued automatically.</p>
+        </section>
+
+        <section class="panel">
+          <h2>Daily Schedule</h2>
+          <p class="small">Runs daily at 09:00 Europe/Paris.</p>
+          <form class="form-grid" @submit.prevent="saveSchedule">
+            <label>
+              Site
+              <select v-model="scheduleForm.site" required>
+                <option v-for="site in sites" :key="'sched-' + site" :value="site">{{ site }}</option>
+              </select>
+            </label>
+            <label>
+              Model
+              <select v-model="scheduleForm.model" required>
+                <option value="simple_copy">Simple Copy</option>
+                <option value="median_copy">Median Copy</option>
+                <option value="linear_regression">Linear Regression</option>
+                <option value="arima">ARIMA</option>
+                <option value="lstm">LSTM</option>
+                <option value="all_models">All Models</option>
+              </select>
+            </label>
+            <label>
+              n_splits
+              <input v-model.number="scheduleForm.n_splits" type="number" min="2" required />
+            </label>
+            <label>
+              gap
+              <input v-model.number="scheduleForm.gap" type="number" min="0" required />
+            </label>
+            <label>
+              test_size
+              <input v-model.number="scheduleForm.test_size" type="number" min="1" required />
+            </label>
+            <label class="switch">
+              <input v-model="scheduleForm.active" type="checkbox" />
+              Active
+            </label>
+            <button class="btn btn-alt" :disabled="isSavingSchedule">
+              {{
+                isSavingSchedule
+                  ? "Saving..."
+                  : (isEditingSchedule ? "Update Schedule" : "Create Schedule")
+              }}
+            </button>
+            <button
+              v-if="isEditingSchedule"
+              type="button"
+              class="btn btn-ghost"
+              @click="resetScheduleForm"
+            >
+              Cancel Edit
+            </button>
+          </form>
+          <ul class="schedule-list">
+            <li v-for="s in schedules" :key="s.schedule_id">
+              <div class="row">
+                <span>
+                  <strong>{{ s.site }}</strong> · {{ s.model }} · {{ s.trigger_time }} {{ s.timezone }}
+                  <span class="pill" :class="s.active ? 'ok' : 'muted'">{{ s.active ? "active" : "inactive" }}</span>
+                </span>
+                <span class="row">
+                  <button class="btn btn-ghost" @click="editSchedule(s)">Edit</button>
+                  <button
+                    class="btn btn-ghost"
+                    @click="toggleScheduleActive(s, !s.active)"
+                  >
+                    {{ s.active ? "Deactivate" : "Activate" }}
+                  </button>
+                  <button class="btn btn-ghost" @click="deleteSchedule(s)">Delete</button>
+                </span>
+              </div>
+            </li>
+          </ul>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="row">
+            <h2>Run History</h2>
+            <button class="btn btn-ghost" @click="refreshRuns">Refresh</button>
+          </div>
+          <div class="filters">
+            <label>
+              Site
+              <select v-model="filters.site">
+                <option value="">All</option>
+                <option v-for="site in sites" :key="'filter-' + site" :value="site">{{ site }}</option>
+              </select>
+            </label>
+            <label>
+              Status
+              <select v-model="filters.status">
+                <option value="">All</option>
+                <option value="queued">queued</option>
+                <option value="running">running</option>
+                <option value="done">done</option>
+                <option value="failed">failed</option>
+              </select>
+            </label>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Created</th>
+                  <th>Site</th>
+                  <th>Model</th>
+                  <th>Status</th>
+                  <th>Queue</th>
+                  <th>Source</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="run in filteredRuns" :key="run.run_id">
+                  <td>{{ formatTs(run.created_at) }}</td>
+                  <td>{{ run.site }}</td>
+                  <td>{{ run.model }}</td>
+                  <td><span class="pill" :class="run.status">{{ run.status }}</span></td>
+                  <td>{{ run.queue_position || "-" }}</td>
+                  <td>{{ run.trigger_source }}</td>
+                  <td><button class="btn btn-ghost" @click="openRun(run.run_id)">Open</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel panel-wide" v-if="selectedRun && selectedRun.scoring_details && selectedRun.scoring_details.length">
+          <details>
+            <summary><strong>Scoring Details</strong> (per TimeSeriesSplit fold)</summary>
+            <p class="small">
+              Comparing fold RMSE with test-split standard deviation helps contextualize model error vs. natural variability.
+            </p>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Fold</th>
+                    <th>Train Start</th>
+                    <th>Train End</th>
+                    <th>Test Start</th>
+                    <th>Test End</th>
+                    <th>Test Std</th>
+                    <th v-for="modelName in scoringModelColumns" :key="'hdr-' + modelName">
+                      RMSE {{ modelName }}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="row in selectedRun.scoring_details" :key="'fold-' + row.fold">
+                    <td>{{ row.fold }}</td>
+                    <td>{{ formatTs(row.train_start) }}</td>
+                    <td>{{ formatTs(row.train_end) }}</td>
+                    <td>{{ formatTs(row.test_start) }}</td>
+                    <td>{{ formatTs(row.test_end) }}</td>
+                    <td>{{ formatNum(row.test_std) }}</td>
+                    <td v-for="modelName in scoringModelColumns" :key="'rmse-' + row.fold + '-' + modelName">
+                      {{ formatNum(row.model_rmse ? row.model_rmse[modelName] : null) }}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><strong>Average</strong></td>
+                    <td>-</td>
+                    <td>-</td>
+                    <td>-</td>
+                    <td>-</td>
+                    <td><strong>{{ formatNum(scoringAverages.testStd) }}</strong></td>
+                    <td v-for="modelName in scoringModelColumns" :key="'avg-' + modelName">
+                      <strong>{{ formatNum(scoringAverages.modelRmse[modelName]) }}</strong>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </details>
+        </section>
+
+        <section class="panel panel-wide" v-if="selectedRun">
+          <div class="row">
+            <h2>Run Details</h2>
+            <div class="row">
+              <span class="pill" :class="selectedRun.status">{{ selectedRun.status }}</span>
+              <a
+                v-if="selectedRun.status === 'done'"
+                :href="`/forecasts/runs/${selectedRun.run_id}/export`"
+                class="btn btn-ghost"
+              >
+                Export CSV
+              </a>
+            </div>
+          </div>
+
+          <p class="small">
+            {{ selectedRun.site }} · {{ selectedRun.model }} · created {{ formatTs(selectedRun.created_at) }}
+          </p>
+
+          <div class="metric-grid" v-if="selectedRun.metrics">
+            <div class="metric"><span>MAE</span><strong>{{ formatNum(selectedRun.metrics.mae) }}</strong></div>
+            <div class="metric"><span>RMSE</span><strong>{{ formatNum(selectedRun.metrics.rmse) }}</strong></div>
+            <div class="metric"><span>MAPE</span><strong>{{ formatNum(selectedRun.metrics.mape) }}</strong></div>
+            <div class="metric"><span>R2</span><strong>{{ formatNum(selectedRun.metrics.r2) }}</strong></div>
+            <div class="metric">
+              <span>Train Time (s)</span><strong>{{ formatNum(selectedRun.metrics.train_time_seconds) }}</strong>
+            </div>
+          </div>
+
+          <div v-if="selectedRun.ranking && selectedRun.ranking.length">
+            <h3>Ranking (RMSE)</h3>
+            <table>
+              <thead>
+                <tr><th>Rank</th><th>Model</th><th>RMSE</th></tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, idx) in selectedRun.ranking" :key="row.model">
+                  <td>{{ idx + 1 }}</td>
+                  <td>{{ row.model }}</td>
+                  <td>{{ formatNum(row.rmse) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="chart-grid" v-if="selectedRun.status === 'done'">
+            <div class="chart-card">
+              <div class="row">
+                <h3>In-Sample + Out-of-Sample</h3>
+                <button class="btn btn-ghost" @click="resetZoom">Reset Zoom</button>
+              </div>
+              <canvas id="combinedChart"></canvas>
+            </div>
+            <div class="chart-card">
+              <h3>Residuals</h3>
+              <canvas id="residualChart"></canvas>
+            </div>
+          </div>
+
+          <div v-if="selectedRun.error" class="error-box">
+            <h3>Error</h3>
+            <pre>{{ selectedRun.error }}</pre>
+          </div>
+          <div v-if="selectedRun.logs" class="log-box">
+            <h3>Technical Logs / Trace</h3>
+            <pre>{{ selectedRun.logs }}</pre>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
