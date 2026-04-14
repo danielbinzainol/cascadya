@@ -7,6 +7,7 @@ import pandas as pd
 from fastapi.testclient import TestClient
 
 import src.connection_aeolus_api
+from src.backoffice.api.main import app
 
 
 def _write_market_orders_csv(path: Path, *, power_kw_sell: list[float]) -> None:
@@ -55,14 +56,15 @@ def test_publish_market_orders_endpoint_publishes_transactions(
     )
     monkeypatch.setattr(src.connection_aeolus_api, "AeolusClient", FakeAeolusClient)
 
-    client = TestClient(src.connection_aeolus_api.app)
-    response = client.post(
-        "/aeolus/publish-market-orders/inariz",
-        json={
-            "farm_id": 777,
-            "auth": {"access_token": "token-value"},
-        },
-    )
+    client = TestClient(app)
+    with client:
+        response = client.post(
+            "/aeolus/publish-market-orders/inariz",
+            json={
+                "farm_id": 777,
+                "auth": {"access_token": "token-value"},
+            },
+        )
 
     assert response.status_code == 200
     payload = response.json()
@@ -86,14 +88,15 @@ def test_publish_market_orders_endpoint_rejects_empty_publish(
         lambda _project, _file_ids: [csv_path],
     )
 
-    client = TestClient(src.connection_aeolus_api.app)
-    response = client.post(
-        "/aeolus/publish-market-orders/inariz",
-        json={
-            "farm_id": 777,
-            "auth": {"access_token": "token-value"},
-        },
-    )
+    client = TestClient(app)
+    with client:
+        response = client.post(
+            "/aeolus/publish-market-orders/inariz",
+            json={
+                "farm_id": 777,
+                "auth": {"access_token": "token-value"},
+            },
+        )
 
     assert response.status_code == 400
     assert "No publishable market orders found" in response.json()["detail"]
