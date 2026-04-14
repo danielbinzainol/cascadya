@@ -1,0 +1,14 @@
+services:
+  backoffice:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: c-market-backoffice:latest
+    container_name: c-market-backoffice
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      PYTHONUNBUFFERED: "1"
