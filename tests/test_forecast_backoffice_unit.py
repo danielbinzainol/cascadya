@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-import src.forecast_backoffice as fb
+import src.ml_models.forecasts.models as fb
 
 
 def _make_series(periods: int = 320) -> pd.DataFrame:

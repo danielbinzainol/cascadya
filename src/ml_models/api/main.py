@@ -6,7 +6,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.connection_aeolus_api import router as aeolus_router
-from src.forecast_backoffice import ForecastManager, build_forecast_router
+from src.ml_models.forecasts.manager import ForecastManager
+from src.ml_models.forecasts.router import build_forecast_router
 from src.ml_models.api.routers.market_orders import router as market_orders_router
 
 app = FastAPI()

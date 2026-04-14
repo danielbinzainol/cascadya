@@ -40,11 +40,11 @@ class ForecastManager:
         self,
         data_root: Path,
         *,
-        now_utc_fn=_now_utc,
-        discover_sites_fn=_discover_sites,
-        load_site_timeseries_from_workflow_fn=_load_site_timeseries_from_workflow,
-        compute_single_model_fn=_compute_single_model,
-        json_safe_fn=_json_safe,
+        now_utc_fn=None,
+        discover_sites_fn=None,
+        load_site_timeseries_from_workflow_fn=None,
+        compute_single_model_fn=None,
+        json_safe_fn=None,
     ) -> None:
         self._data_root = data_root
         self._runs: dict[str, ForecastRun] = {}
@@ -55,11 +55,13 @@ class ForecastManager:
         self._dispatcher_task: asyncio.Task | None = None
         self._scheduler_task: asyncio.Task | None = None
         self._stop = asyncio.Event()
-        self._now_utc = now_utc_fn
-        self._discover_sites = discover_sites_fn
-        self._load_site_timeseries_from_workflow = load_site_timeseries_from_workflow_fn
-        self._compute_single_model = compute_single_model_fn
-        self._json_safe = json_safe_fn
+        self._now_utc = now_utc_fn or _now_utc
+        self._discover_sites = discover_sites_fn or _discover_sites
+        self._load_site_timeseries_from_workflow = (
+            load_site_timeseries_from_workflow_fn or _load_site_timeseries_from_workflow
+        )
+        self._compute_single_model = compute_single_model_fn or _compute_single_model
+        self._json_safe = json_safe_fn or _json_safe
 
     async def start(self) -> None:
         self._stop.clear()

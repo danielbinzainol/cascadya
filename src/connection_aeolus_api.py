@@ -1,4 +1,4 @@
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter
 from pydantic import BaseModel, Field, SecretStr
 
 from src.aeolus_client import AeolusAuthConfig, AeolusClient
@@ -76,7 +76,3 @@ async def publish_market_orders(project: str, payload: PublishMarketOrdersReques
         transaction_ids=result.transaction_ids,
         aeolus_base_url=result.aeolus_base_url,
     )
-
-
-app = FastAPI()
-app.include_router(router)

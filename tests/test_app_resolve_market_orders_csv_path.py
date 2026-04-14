@@ -1,7 +1,7 @@
 import pytest
 from fastapi import HTTPException
 
-from app import resolve_market_orders_csv_path
+from src.market_orders_paths import resolve_market_orders_csv_path
 
 
 @pytest.mark.parametrize(

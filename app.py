@@ -1,9 +1,8 @@
 import uvicorn
 
-from src.market_orders_paths import resolve_market_orders_csv_path
 from src.ml_models.api.main import app
 
-__all__ = ["app", "resolve_market_orders_csv_path"]
+__all__ = ["app"]
 
 
 if __name__ == "__main__":
