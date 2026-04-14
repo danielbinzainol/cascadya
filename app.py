@@ -1,10 +1,13 @@
 import uvicorn
-import re
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from src.ingest import data_workflow
 from src.market_orders import complex_market_orders_data_workflow
+from src.market_orders_paths import resolve_market_orders_csv_path
+from src.forecast_backoffice import ForecastManager, build_forecast_router
+from src.connection_aeolus_api import router as aeolus_router
 from plots import plot_market_orders
 
 """
@@ -13,32 +16,9 @@ Go to the local url, with "/docs": http://127.0.0.1:8000/docs
 """
 
 app = FastAPI()
-MARKET_ORDERS_DIR = (Path("data/market_orders")).resolve()
-PROJECT_RE = re.compile(r"^[A-Za-z0-9_-]+$")
-FILE_ID_RE = re.compile(r"^\d{8}_\d{8}_\d{4}$")
-
-
-def resolve_market_orders_csv_path(project: str, file_id: str) -> Path:
-    if not PROJECT_RE.fullmatch(project):
-        raise HTTPException(status_code=400, detail="Invalid project format.")
-    if not FILE_ID_RE.fullmatch(file_id):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid file_id format. Expected YYYYMMDD_YYYYMMDD_HHMM.",
-        )
-
-    csv_filename = f"{project}_{file_id}.csv"
-    csv_path = (MARKET_ORDERS_DIR / csv_filename).resolve()
-    if csv_path.parent != MARKET_ORDERS_DIR:
-        raise HTTPException(
-            status_code=400, detail="Resolved path is outside allowed directory."
-        )
-    if not csv_path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"CSV file not found for project={project}, file_id={file_id}.",
-        )
-    return csv_path
+STATIC_DIR = (Path(__file__).resolve().parent / "static").resolve()
+BACKOFFICE_HOME = STATIC_DIR / "backoffice" / "index.html"
+FORECAST_MANAGER = ForecastManager(data_root=Path(__file__).resolve().parent)
 
 
 # Route to input data and get data to plot, with a project given in input
@@ -71,6 +51,29 @@ def plot_mo(project: str, file_id: str):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return StreamingResponse(image_buffer, media_type="image/png")
+
+
+@app.on_event("startup")
+async def startup_forecasts() -> None:
+    await FORECAST_MANAGER.start()
+
+
+@app.on_event("shutdown")
+async def shutdown_forecasts() -> None:
+    await FORECAST_MANAGER.stop()
+
+
+app.include_router(build_forecast_router(FORECAST_MANAGER))
+app.include_router(aeolus_router)
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.get("/backoffice")
+def backoffice_home() -> FileResponse:
+    if not BACKOFFICE_HOME.exists():
+        raise HTTPException(status_code=500, detail="Backoffice home UI is missing.")
+    return FileResponse(BACKOFFICE_HOME)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from fastapi import FastAPI, HTTPException
+from fastapi import APIRouter, FastAPI, HTTPException
 from pydantic import BaseModel, Field, SecretStr
 
 from src.aeolus_client import (
@@ -18,9 +18,9 @@ from src.aeolus_models import (
 )
 
 from src.market_orders import complex_market_orders_data_workflow
-from app import resolve_market_orders_csv_path
+from src.market_orders_paths import resolve_market_orders_csv_path
 
-app = FastAPI()
+router = APIRouter(prefix="/aeolus", tags=["aeolus"])
 
 DEFAULT_AEOLUS_BASE_URL = "https://e6.aeolus.main.e6-group.com/api/v2"
 DEFAULT_AEOLUS_TOKEN_URL = (
@@ -122,8 +122,8 @@ def _resolve_publish_csv_paths(project: str, file_ids: list[str] | None) -> list
     return [resolve_market_orders_csv_path(project, file_id) for file_id in file_ids]
 
 
-@app.post(
-    "/aeolus/publish-market-orders/{project}",
+@router.post(
+    "/publish-market-orders/{project}",
     response_model=PublishMarketOrdersResponse,
 )
 async def publish_market_orders(project: str, payload: PublishMarketOrdersRequest):
@@ -163,3 +163,7 @@ async def publish_market_orders(project: str, payload: PublishMarketOrdersReques
         transaction_ids=create_response.transaction_ids,
         aeolus_base_url=payload.aeolus_base_url,
     )
+
+
+app = FastAPI()
+app.include_router(router)
