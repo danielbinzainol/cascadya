@@ -7,8 +7,8 @@ import pandas as pd
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-import src.ml_models.forecasts.manager as forecast_manager
-from src.ml_models.forecasts.router import build_forecast_router
+import src.backoffice.forecasts.manager as forecast_manager
+from src.backoffice.forecasts.router import build_forecast_router
 
 
 def _build_test_client(

@@ -1,6 +1,6 @@
 import uvicorn
 
-from src.ml_models.api.main import app
+from src.backoffice.api.main import app
 
 __all__ = ["app"]
 

@@ -7,7 +7,7 @@ import pandas as pd
 from fastapi.testclient import TestClient
 
 import src.connection_aeolus_api as aeolus_api
-from src.ml_models.api.main import app
+from src.backoffice.api.main import app
 
 
 def _write_market_orders_csv(path: Path) -> None:
