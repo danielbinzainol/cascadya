@@ -232,8 +232,14 @@ def _load_site_timeseries_from_workflow(data_root: Path, site: str) -> pd.DataFr
 
     raw_dir = data_root / "data" / site / "raw"
     preferred_filenames = [
+        "inariz_steam_prod_2026-03-01_to_2026-03-04.csv",
+        "inariz_steam_prod_2026-03-05_to_2026-03-08.csv",
         "inariz_steam_prod_2026-03-09_to_2026-03-12.csv",
         "inariz_steam_prod_2026-03-13_to_2026-03-16.csv",
+        "inariz_steam_prod_2026-03-17_to_2026-03-20.csv",
+        "inariz_steam_prod_2026-03-21_to_2026-03-24.csv",
+        "inariz_steam_prod_2026-03-25_to_2026-03-28.csv",
+        "inariz_steam_prod_2026-03-29_to_2026-03-31.csv",
     ]
     existing_preferred = [
         name for name in preferred_filenames if (raw_dir / name).exists()
