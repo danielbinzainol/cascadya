@@ -1,7 +1,7 @@
 france_champignon:
   data: 
     gas_cons:
-      dirpath: 'data\france_champignon\' # filename = data_bonduelle.csv
+      dirpath: 'data/france_champignon/' # filename = data_bonduelle.csv
       frequency: 'h'
       timezone: 'CET' # ou CEST, je ne sais pas, pas 'Europe/Paris'
       timestamp_col: 'date/heure 2024'
@@ -11,7 +11,7 @@ france_champignon:
 inariz:
   data:
     steam_prod: 
-      dirpath: 'data\inariz\raw\'
+      dirpath: 'data/inariz/raw/'
       skiprows: 4
       usecols: ["Horodatage","Valeur","Unité"]
       timezone: 'Europe/Paris'
@@ -26,7 +26,7 @@ inariz:
 tarkett:
   data:
     gas_cons:
-      dirpath: 'D:\Cascadya\Cascadya - Documents\08. COMPTE CLIENT\Tarkett_Sedan\2. Données sous NDA\' # filename = Données de Consommation gaz 2025
+      dirpath: 'data/tarkett/raw/' # filename = Données de Consommation gaz 2025
       timezone: 'Europe/Paris'
       timestamp_col: 'Valeur mesurée le'
       timestamp_format: '%d/%m/%Y %H:%M:%S'
