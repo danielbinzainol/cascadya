@@ -49,8 +49,8 @@ USER appuser
 
 EXPOSE 8000
 
-# The app currently has no dedicated /health route; /docs is a lightweight fallback.
+# Use a dedicated health endpoint for container liveness checks.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/docs', timeout=3)" || exit 1
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)" || exit 1
 
 CMD ["uvicorn", "src.backoffice.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

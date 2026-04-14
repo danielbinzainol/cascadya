@@ -33,6 +33,11 @@ if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
 @app.get("/backoffice")
 def backoffice_home() -> FileResponse:
     if not BACKOFFICE_HOME.exists():
