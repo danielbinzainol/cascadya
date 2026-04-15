@@ -1,18 +1,64 @@
-from pathlib import Path
+import os
+from pathlib import Path, PureWindowsPath
 import pandas as pd
 
 #
 from src.utils import load_config
 
 
+def _normalize_config_dirpath(dirpath_value: str) -> Path:
+    """Normalize config dir paths across Windows/Linux separators."""
+    raw = dirpath_value.strip()
+    if "\\" not in raw:
+        return Path(raw)
+
+    windows_parts = PureWindowsPath(raw).parts
+    # Keep drive-based absolute Windows paths as-is (with normalized separators).
+    if windows_parts and windows_parts[0].endswith(":\\"):
+        return Path(raw.replace("\\", "/"))
+    # Convert relative Windows-style paths into native Path segments.
+    return Path(*windows_parts)
+
+
+def _strip_data_prefix(path_obj: Path) -> Path:
+    """Return path without a leading `data/` segment."""
+    parts = path_obj.parts
+    if parts and parts[0].lower() == "data":
+        return Path(*parts[1:]) if len(parts) > 1 else Path(".")
+    return path_obj
+
+
+def _resolve_data_dir(project: str, configured_dir: Path) -> Path:
+    """
+    Resolve data directory with optional environment overrides.
+
+    Supported env vars:
+    - C_MARKET_DATA_ROOT: global data root (example: /app/data)
+    - <PROJECT>_DATA_ROOT: project-specific data root (example: /mnt/inariz_data)
+      where <PROJECT> is uppercase, e.g. INARIZ_DATA_ROOT.
+    """
+    project_root_override = os.getenv(f"{project.upper()}_DATA_ROOT")
+    global_root_override = os.getenv("C_MARKET_DATA_ROOT")
+
+    if project_root_override:
+        return Path(project_root_override) / _strip_data_prefix(configured_dir)
+    if global_root_override:
+        return Path(global_root_override) / _strip_data_prefix(configured_dir)
+    return configured_dir
+
+
 def input_csv(project: str, data_type: str = None, filename: str = None, **kwargs):
     config = load_config()
-
-    path = (
-        Path(__file__).resolve().parent.parent
-        / Path(config[project]["data"][data_type]["dirpath"])
-        / Path(filename)
+    configured_dir = _normalize_config_dirpath(
+        config[project]["data"][data_type]["dirpath"]
     )
+    configured_dir = _resolve_data_dir(project, configured_dir)
+    repo_root = Path(__file__).resolve().parent.parent
+
+    if configured_dir.is_absolute():
+        path = configured_dir / Path(filename)
+    else:
+        path = repo_root / configured_dir / Path(filename)
     if not path.exists():
         raise FileNotFoundError(path)
 
