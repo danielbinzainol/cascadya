@@ -8,7 +8,12 @@ on:
 
 jobs:
   test:
-    runs-on: windows-latest
+    name: pytest (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
 
     steps:
       - uses: actions/checkout@v4
