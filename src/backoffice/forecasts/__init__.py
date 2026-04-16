@@ -1,7 +1,8 @@
 """Forecast backoffice package."""
 
 from .manager import ForecastManager
-from .router import build_forecast_router
+
+# from .router import build_forecast_router # commented out to keep this import minimal, to avoid circular imports
 from .schemas import (
     MODEL_NAME,
     RUN_STATUSES,
@@ -25,5 +26,5 @@ __all__ = [
     "ScheduleCreateRequest",
     "ScheduleResponse",
     "ScheduleUpdateRequest",
-    "build_forecast_router",
+    # "build_forecast_router", # commented out to keep this import minimal, to avoid circular imports
 ]

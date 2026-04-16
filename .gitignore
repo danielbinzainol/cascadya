@@ -26,3 +26,6 @@ wheels/
 
 # tests coverage
 coverage.xml
+
+# DB info
+.env
