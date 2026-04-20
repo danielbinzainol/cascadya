@@ -14,8 +14,12 @@ services:
       - ./data:/app/data
     environment:
       PYTHONUNBUFFERED: "1"
-      DATABASE_URL = "postgresql+psycopg://postgres:${POSTGRES_PASSWORD}@db:5432/forecast_database"
-
+      APP_CONTEXT: "container"
+      DATABASE_USERNAME: "postgres"
+      DATABASE_PORT: "5432"
+      DATABASE_NAME: "forecast_database"
+      DATABASE_HOST: "db"
+      POSTGRES_PASSWORD:${POSTGRES_PASSWORD}
 
 
   db:
