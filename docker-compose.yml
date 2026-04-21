@@ -19,7 +19,7 @@ services:
       DATABASE_PORT: "5432"
       DATABASE_NAME: "forecast_database"
       DATABASE_HOST: "db"
-      POSTGRES_PASSWORD:${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
 
 
   db:

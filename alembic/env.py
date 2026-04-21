@@ -40,7 +40,9 @@ target_metadata = Base.metadata
 database_url = build_database_url()
 
 if database_url:
-    config.set_main_option("sqlalchemy.url", database_url)
+    config.set_main_option(
+        "sqlalchemy.url", database_url.replace("%", "%%")
+    )  # required as special characters are encoded using "%", which is treated as interpolation syntax
 
 
 def run_migrations_offline() -> None:
