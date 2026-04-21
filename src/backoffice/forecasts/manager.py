@@ -13,6 +13,7 @@ from typing import Literal
 import pandas as pd
 from fastapi import HTTPException
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from src.backoffice.forecasts.models import (
     PARIS_TZ,
@@ -36,7 +37,7 @@ from src.backoffice.forecasts.schemas import (
     ScheduleUpdateRequest,
 )
 from src.backoffice.persistence.database import SessionLocal
-from src.backoffice.persistence.models import InarizSteamProd
+from src.backoffice.persistence.models import InarizSteamForecast, InarizSteamProd
 
 
 class ForecastManager:
@@ -281,6 +282,11 @@ class ForecastManager:
                 ranking[0]["model"] if run.model == "all_models" else run.model
             )
             best = per_model[selected_model]
+            await asyncio.to_thread(
+                self._persist_forecast_series,
+                site,
+                best["export_rows"],
+            )
             scoring_details_map: dict[int, dict[str, object]] = {}
             for model_name, model_result in per_model.items():
                 fold_details = model_result.get("fold_details", [])
@@ -431,3 +437,47 @@ class ForecastManager:
         if len(out) < 200:
             raise ValueError("Not enough history points to run cross-validation.")
         return out
+
+    def _persist_forecast_series(
+        self, site: str, export_rows: list[dict[str, object]]
+    ) -> None:
+        """Persist non-zero prediction rows used by In-Sample + Out-of-Sample chart."""
+        if site != "inariz":
+            return
+
+        rows: list[dict[str, object]] = []
+        for row in export_rows:
+            segment = str(row.get("segment", ""))
+            if segment not in {"in_sample_window", "out_of_sample"}:
+                continue
+            predicted = row.get("predicted")
+            if predicted is None:
+                continue
+            predicted_value = float(predicted)
+            ts = pd.to_datetime(row.get("timestamp"), errors="coerce", utc=True)
+            if pd.isna(ts):
+                continue
+            rows.append(
+                {
+                    "measured_at_utc": ts.to_pydatetime(),
+                    "steam_production_m3_h": predicted_value,
+                    "unit": "m3/h",
+                }
+            )
+
+        if not rows:
+            logger.info("no forecast rows to persist for site=%s", site)
+            return
+
+        with SessionLocal() as db:
+            stmt = pg_insert(InarizSteamForecast).values(rows)
+            upsert = stmt.on_conflict_do_update(
+                index_elements=[InarizSteamForecast.measured_at_utc],
+                set_={
+                    "steam_production_m3_h": stmt.excluded.steam_production_m3_h,
+                    "unit": stmt.excluded.unit,
+                },
+            )
+            db.execute(upsert)
+            db.commit()
+        logger.info("persisted forecast rows=%s site=%s", len(rows), site)
