@@ -29,3 +29,6 @@ coverage.xml
 
 # DB info
 .env
+
+# Vault info
+etc/
