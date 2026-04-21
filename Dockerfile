@@ -18,6 +18,8 @@ COPY static ./static
 COPY app.py ./app.py
 COPY plots.py ./plots.py
 COPY config.yml ./config.yml
+COPY alembic.ini ./alembic.ini
+COPY alembic ./alembic
 
 # Install project into the virtual environment.
 RUN uv sync --locked --no-dev
@@ -41,6 +43,8 @@ COPY --from=builder /app/static /app/static
 COPY --from=builder /app/app.py /app/app.py
 COPY --from=builder /app/plots.py /app/plots.py
 COPY --from=builder /app/config.yml /app/config.yml
+COPY --from=builder /app/alembic.ini /app/alembic.ini
+COPY --from=builder /app/alembic /app/alembic
 
 # Ensure runtime writable directories exist.
 RUN mkdir -p /app/data /app/reports && chown -R appuser:appuser /app
