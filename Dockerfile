@@ -45,8 +45,6 @@ COPY --from=builder /app/config.yml /app/config.yml
 # Ensure runtime writable directories exist.
 RUN mkdir -p /app/data /app/reports && chown -R appuser:appuser /app
 
-USER appuser
-
 EXPOSE 8000
 
 # Use a dedicated health endpoint for container liveness checks.
@@ -57,4 +55,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
 # and start the API
 COPY docker/entrypoint.sh /app/docker/entrypoint.sh
 RUN chmod +x /app/docker/entrypoint.sh
+
+USER appuser
 ENTRYPOINT ["/app/docker/entrypoint.sh"]
