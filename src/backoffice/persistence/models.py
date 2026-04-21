@@ -1,7 +1,10 @@
 from src.backoffice.persistence.database import Base
 from sqlalchemy import Column, Integer, Float, String, TIMESTAMP, Boolean, Time
 
-from src.backoffice.forecasts.models import ForecastSchedule
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.backoffice.forecasts.models import ForecastSchedule
 
 
 class InarizSteamProd(Base):
@@ -37,7 +40,9 @@ class ForecastScheduleORM(
     last_triggered_at = Column(TIMESTAMP, nullable=True)
 
     # mapper function
-    def to_domain_schedule(self) -> ForecastSchedule:
+    def to_domain_schedule(self) -> "ForecastSchedule":
+        from src.backoffice.forecasts.models import ForecastSchedule
+
         return ForecastSchedule(
             schedule_id=self.schedule_id,
             site=self.site,
@@ -53,7 +58,7 @@ class ForecastScheduleORM(
 
 
 # mapper function
-def to_orm_schedule(domain_schedule: ForecastSchedule) -> ForecastScheduleORM:
+def to_orm_schedule(domain_schedule: "ForecastSchedule") -> ForecastScheduleORM:
     return ForecastScheduleORM(
         schedule_id=domain_schedule.schedule_id,
         site=domain_schedule.site,
