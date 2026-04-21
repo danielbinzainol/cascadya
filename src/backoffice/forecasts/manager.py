@@ -10,7 +10,9 @@ from datetime import datetime, time
 from pathlib import Path
 from typing import Literal
 
+import pandas as pd
 from fastapi import HTTPException
+from sqlalchemy import select
 
 from src.backoffice.forecasts.models import (
     PARIS_TZ,
@@ -33,6 +35,8 @@ from src.backoffice.forecasts.schemas import (
     ScheduleCreateRequest,
     ScheduleUpdateRequest,
 )
+from src.backoffice.persistence.database import SessionLocal
+from src.backoffice.persistence.models import InarizSteamProd
 
 
 class ForecastManager:
@@ -65,6 +69,7 @@ class ForecastManager:
 
     async def start(self) -> None:
         self._stop.clear()
+        await asyncio.to_thread(self._bootstrap_timeseries_tables)
         if self._dispatcher_task is None:
             self._dispatcher_task = asyncio.create_task(self._dispatcher_loop())
         if self._scheduler_task is None:
@@ -244,9 +249,7 @@ class ForecastManager:
             async with self._lock:
                 run = self._runs[run_id]
             logger.info("_execute_run run_id=%s step=load_series", run_id)
-            series = await asyncio.to_thread(
-                self._load_site_timeseries_from_workflow, self._data_root, site
-            )
+            series = await asyncio.to_thread(self._load_site_timeseries, site)
             model_names = (
                 ["simple_copy", "median_copy", "linear_regression"]
                 if run.model == "all_models"
@@ -374,3 +377,57 @@ class ForecastManager:
         queue = self._site_queue[site]
         for idx, run_id in enumerate(queue, start=1):
             self._runs[run_id].queue_position = idx
+
+    def _bootstrap_timeseries_tables(self) -> None:
+        """Populate raw timeseries tables at startup if they are empty."""
+        with SessionLocal() as db:
+            existing = db.scalar(select(InarizSteamProd.measured_at_utc).limit(1))
+            if existing is not None:
+                return
+
+            logger.info(
+                "bootstrap inariz_steam_prod from workflow because table is empty"
+            )
+            frame = self._load_site_timeseries_from_workflow(self._data_root, "inariz")
+            rows = [
+                InarizSteamProd(
+                    measured_at_utc=row.measured_at_utc.to_pydatetime()
+                    if hasattr(row.measured_at_utc, "to_pydatetime")
+                    else row.measured_at_utc,
+                    steam_production_m3_h=float(row.target),
+                )
+                for row in frame.itertuples(index=False)
+            ]
+            if not rows:
+                raise ValueError("Workflow produced no rows for inariz_steam_prod.")
+            db.bulk_save_objects(rows)
+            db.commit()
+            logger.info("bootstrapped inariz_steam_prod rows=%s", len(rows))
+
+    def _load_site_timeseries(self, site: str) -> pd.DataFrame:
+        """Load run input series from database, with workflow fallback."""
+        if site != "inariz":
+            return self._load_site_timeseries_from_workflow(self._data_root, site)
+
+        with SessionLocal() as db:
+            records = db.scalars(
+                select(InarizSteamProd).order_by(InarizSteamProd.measured_at_utc.asc())
+            ).all()
+
+        if not records:
+            logger.info(
+                "inariz_steam_prod empty, fallback to workflow for site=%s", site
+            )
+            return self._load_site_timeseries_from_workflow(self._data_root, site)
+
+        out = pd.DataFrame(
+            {
+                "measured_at_utc": [r.measured_at_utc for r in records],
+                "target": [float(r.steam_production_m3_h) for r in records],
+            }
+        )
+        out["measured_at_utc"] = pd.to_datetime(out["measured_at_utc"], utc=True)
+        out = out.sort_values("measured_at_utc").reset_index(drop=True)
+        if len(out) < 200:
+            raise ValueError("Not enough history points to run cross-validation.")
+        return out
