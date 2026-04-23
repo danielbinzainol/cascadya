@@ -296,6 +296,22 @@ th {
   background: #fff;
 }
 
+.sql-console summary {
+  cursor: pointer;
+}
+
+.query-frame {
+  width: 100%;
+  min-height: 420px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.sql-console[open] .query-frame {
+  min-height: 760px;
+}
+
 pre {
   margin: 0;
   white-space: pre-wrap;

@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Backoffice Query</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: "Segoe UI", sans-serif;
+        background: #f6f4ef;
+        color: #201e1c;
+      }
+      main {
+        max-width: none;
+        width: 100%;
+        margin: 0;
+        padding: 1.2rem;
+      }
+      h1 {
+        margin: 0 0 0.5rem;
+      }
+      .hint {
+        color: #5b564f;
+      }
+      textarea {
+        width: 100%;
+        min-height: 160px;
+        font-family: Consolas, "Courier New", monospace;
+        border-radius: 8px;
+        border: 1px solid #c9c0b1;
+        padding: 0.75rem;
+        box-sizing: border-box;
+        background: #fffefb;
+      }
+      .controls {
+        margin-top: 0.75rem;
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+      }
+      input[type="number"] {
+        width: 100px;
+      }
+      button {
+        border: none;
+        background: #1f6feb;
+        color: #ffffff;
+        border-radius: 8px;
+        padding: 0.55rem 0.9rem;
+        cursor: pointer;
+      }
+      pre#error {
+        white-space: pre-wrap;
+        color: #9f2d2d;
+      }
+      .table-wrap {
+        margin-top: 1rem;
+        overflow: auto;
+        border: 1px solid #d4cab9;
+        border-radius: 10px;
+        background: #fffefb;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 0.45rem 0.55rem;
+        border-bottom: 1px solid #ebe4d9;
+        font-size: 0.9rem;
+      }
+      th {
+        background: #f4efe6;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Query Console (Read-Only)</h1>
+      <p class="hint">
+        Allowed: single <code>SELECT</code>/<code>WITH</code> query only. Write/delete
+        statements are blocked.
+      </p>
+      <textarea id="sql">
+SELECT *
+FROM inariz_steam_prod
+ORDER BY measured_at_utc DESC
+LIMIT 10
+      </textarea>
+      <div class="controls">
+        <label for="limit">API limit</label>
+        <input id="limit" type="number" min="1" max="1000" value="200" />
+        <button id="run-btn">Run Query</button>
+      </div>
+      <pre id="error"></pre>
+      <p id="meta" class="hint"></p>
+      <div class="table-wrap">
+        <table id="results">
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </main>
+
+    <script>
+      const btn = document.getElementById("run-btn");
+      const sqlInput = document.getElementById("sql");
+      const limitInput = document.getElementById("limit");
+      const errorEl = document.getElementById("error");
+      const metaEl = document.getElementById("meta");
+      const table = document.getElementById("results");
+      const thead = table.querySelector("thead");
+      const tbody = table.querySelector("tbody");
+
+      function clearTable() {
+        thead.innerHTML = "";
+        tbody.innerHTML = "";
+      }
+
+      function renderTable(columns, rows) {
+        clearTable();
+        const headRow = document.createElement("tr");
+        columns.forEach((col) => {
+          const th = document.createElement("th");
+          th.textContent = col;
+          headRow.appendChild(th);
+        });
+        thead.appendChild(headRow);
+
+        rows.forEach((row) => {
+          const tr = document.createElement("tr");
+          columns.forEach((col) => {
+            const td = document.createElement("td");
+            const value = row[col];
+            td.textContent = value === null || value === undefined ? "" : String(value);
+            tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
+        });
+      }
+
+      async function runQuery() {
+        errorEl.textContent = "";
+        metaEl.textContent = "";
+        clearTable();
+        const payload = {
+          sql: sqlInput.value,
+          limit: Number(limitInput.value || 200),
+        };
+        try {
+          const response = await fetch("/admin/query/run", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const body = await response.json();
+          if (!response.ok) {
+            throw new Error(body.detail || "Query failed.");
+          }
+          renderTable(body.columns, body.rows);
+          metaEl.textContent = `Rows: ${body.row_count} | Limit: ${body.limit} | Truncated: ${body.truncated}`;
+        } catch (err) {
+          errorEl.textContent = String(err.message || err);
+        }
+      }
+
+      btn.addEventListener("click", runQuery);
+    </script>
+  </body>
+</html>

@@ -4,6 +4,7 @@ from urllib.parse import quote_plus
 import hvac
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 load_dotenv()
@@ -108,6 +109,7 @@ def build_database_url() -> str:
 
 
 engine = create_engine(build_database_url())
+_query_engine: Engine | None = None
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -120,3 +122,16 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def get_query_engine() -> Engine:
+    """Return engine used by read-only query API."""
+    global _query_engine
+    if _query_engine is not None:
+        return _query_engine
+    query_url = os.getenv("DATABASE_QUERY_URL") or os.getenv("DATABASE_URL")
+    if query_url:
+        _query_engine = create_engine(query_url)
+        return _query_engine
+    _query_engine = create_engine(build_database_url())
+    return _query_engine
