@@ -1,0 +1,8 @@
+[Interface]
+Address = {{ remote_unlock_broker_wireguard_address }}
+ListenPort = {{ remote_unlock_broker_wireguard_listen_port }}
+PrivateKey = {{ remote_unlock_broker_wireguard_private_key_material }}
+
+[Peer]
+PublicKey = {{ remote_unlock_broker_wireguard_peer_public_key }}
+AllowedIPs = {{ remote_unlock_broker_wireguard_peer_allowed_ips_normalized | join(', ') }}

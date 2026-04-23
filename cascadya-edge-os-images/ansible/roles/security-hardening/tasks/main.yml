@@ -1,0 +1,79 @@
+---
+- name: Resolve effective CIS-aligned sysctl settings
+  ansible.builtin.set_fact:
+    security_hardening_effective_sysctl: >-
+      {{
+        security_hardening_sysctl_defaults
+        | combine(security_hardening_sysctl_overrides, recursive=True)
+      }}
+
+- name: Harden SSH daemon configuration
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: present
+    validate: /usr/sbin/sshd -T -f %s
+  loop: "{{ security_hardening_sshd_settings }}"
+  when: security_hardening_manage_sshd | bool
+  notify: Restart SSH
+
+- name: Apply CIS-aligned sysctl settings
+  ansible.builtin.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_set: true
+    state: present
+    reload: true
+  loop: "{{ security_hardening_effective_sysctl | dict2items }}"
+
+- name: Disable core dumps through security limits
+  ansible.builtin.copy:
+    dest: "{{ security_hardening_core_dump_limits_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      {% for entry in security_hardening_core_dump_limits %}
+      {{ entry }}
+      {% endfor %}
+
+- name: Ensure persistent Cascadya data directory ownership
+  ansible.builtin.file:
+    path: "{{ security_hardening_data_dir }}"
+    state: directory
+    owner: "{{ security_hardening_service_user }}"
+    group: "{{ security_hardening_service_user }}"
+    mode: "0750"
+
+- name: Ensure edge-agent directory ownership
+  ansible.builtin.file:
+    path: "{{ security_hardening_agent_dir }}"
+    state: directory
+    owner: "{{ security_hardening_service_user }}"
+    group: "{{ security_hardening_service_user }}"
+    mode: "0750"
+
+- name: Ensure certificate directory is private
+  ansible.builtin.file:
+    path: "{{ security_hardening_cert_dir }}"
+    state: directory
+    owner: "{{ security_hardening_service_user }}"
+    group: "{{ security_hardening_service_user }}"
+    mode: "0700"
+
+- name: Collect deployed certificate files
+  ansible.builtin.find:
+    paths: "{{ security_hardening_cert_dir }}"
+    file_type: file
+  register: security_hardening_cert_files
+
+- name: Restrict access to deployed certificates
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    owner: "{{ security_hardening_service_user }}"
+    group: "{{ security_hardening_service_user }}"
+    mode: "0600"
+  loop: "{{ security_hardening_cert_files.files }}"
+  loop_control:
+    label: "{{ item.path }}"

@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+ENV_FILE="{{ remote_unlock_env_path }}"
+
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "[remote-unlock] Missing environment file: $ENV_FILE" >&2
+  exit 1
+fi
+
+# shellcheck disable=SC1090
+set -a
+source "$ENV_FILE"
+set +a
+
+mkdir -p "$REMOTE_UNLOCK_MOUNTPOINT"
+
+if findmnt -rn "$REMOTE_UNLOCK_MOUNTPOINT" >/dev/null 2>&1; then
+  echo "[remote-unlock] $REMOTE_UNLOCK_MOUNTPOINT is already mounted."
+  exit 0
+fi
+
+if [[ ! -e "/dev/mapper/${REMOTE_UNLOCK_MAPPER_NAME}" ]]; then
+  if [[ -n "${REMOTE_UNLOCK_MANUAL_PASSPHRASE:-}" ]]; then
+    printf '%s' "$REMOTE_UNLOCK_MANUAL_PASSPHRASE" | \
+      cryptsetup open "$REMOTE_UNLOCK_LUKS_DEVICE" "$REMOTE_UNLOCK_MAPPER_NAME" --key-file=-
+  else
+    read -r -s -p "LUKS passphrase for ${REMOTE_UNLOCK_LUKS_DEVICE}: " MANUAL_PASSPHRASE
+    printf '\n'
+    printf '%s' "$MANUAL_PASSPHRASE" | \
+      cryptsetup open "$REMOTE_UNLOCK_LUKS_DEVICE" "$REMOTE_UNLOCK_MAPPER_NAME" --key-file=-
+    unset MANUAL_PASSPHRASE
+  fi
+fi
+
+mount "$REMOTE_UNLOCK_MOUNTPOINT"
+echo "[remote-unlock] Mounted $REMOTE_UNLOCK_MOUNTPOINT via manual fallback."

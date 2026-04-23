@@ -1,0 +1,160 @@
+---
+- name: Assert the Mimir remote_write endpoint is configured
+  ansible.builtin.assert:
+    that:
+      - (ipc_alloy_mimir_remote_write_url | default('', true) | trim) | length > 0
+    fail_msg: "Renseigne ipc_alloy_mimir_remote_write_url avant de deployer IPC Alloy."
+
+- name: Assert the Mimir tenant mapping is coherent
+  ansible.builtin.assert:
+    that:
+      - (ipc_alloy_mimir_tenant | default('', true) | trim) | length > 0
+      - ipc_alloy_mimir_tenant in (ipc_alloy_allowed_tenants | default(['classic', 'lts-1y', 'lts-5y']))
+      - ipc_alloy_mimir_tenant_label == ipc_alloy_mimir_tenant
+      - ipc_alloy_retention_profile == ipc_alloy_mimir_tenant
+      - ipc_metrics_tenant_label == ipc_alloy_mimir_tenant
+      - ipc_metrics_retention_profile == ipc_alloy_mimir_tenant
+      - (ipc_metrics_node | default('', true) | trim) | length > 0
+      - (ipc_metrics_instance | default('', true) | trim) | length > 0
+    fail_msg: >-
+      IPC Alloy doit cibler un tenant Mimir supporte (`classic`, `lts-1y`, `lts-5y`)
+      et conserver tenant / tenant_label / retention_profile / labels metrics alignes.
+
+- name: Install node_exporter and Alloy OS dependencies
+  ansible.builtin.apt:
+    name: "{{ ipc_alloy_apt_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Ensure the APT keyrings directory exists
+  ansible.builtin.file:
+    path: "/etc/apt/keyrings"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: ipc_alloy_manage_repo | bool
+
+- name: Install the Grafana APT repository key
+  ansible.builtin.get_url:
+    url: "{{ ipc_alloy_repo_key_url }}"
+    dest: "{{ ipc_alloy_repo_key_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: ipc_alloy_manage_repo | bool
+
+- name: Configure the Grafana APT repository
+  ansible.builtin.apt_repository:
+    repo: "{{ ipc_alloy_repo }}"
+    filename: "{{ ipc_alloy_repo_filename }}"
+    state: present
+    update_cache: true
+  when: ipc_alloy_manage_repo | bool
+
+- name: Install node_exporter and Alloy packages
+  ansible.builtin.apt:
+    name:
+      - "{{ ipc_alloy_node_exporter_package_name }}"
+      - "{{ ipc_alloy_package_name }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  register: ipc_alloy_package_install
+
+- name: Ensure the Alloy runtime directories exist
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ ipc_alloy_config_dir }}", mode: "0755" }
+    - { path: "{{ ipc_alloy_cert_dir }}", mode: "0755" }
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Check optional Mimir CA certificate on the controller
+  ansible.builtin.stat:
+    path: "{{ ipc_alloy_mimir_ca_source_path }}"
+  delegate_to: localhost
+  become: false
+  register: ipc_alloy_mimir_ca_source_stat
+  when: (ipc_alloy_mimir_ca_source_path | default('', true) | trim) | length > 0
+
+- name: Assert the optional Mimir CA certificate exists on the controller
+  ansible.builtin.assert:
+    that:
+      - ipc_alloy_mimir_ca_source_stat.stat.exists
+      - ipc_alloy_mimir_ca_source_stat.stat.isreg
+    fail_msg: >-
+      Missing Mimir CA certificate at {{ ipc_alloy_mimir_ca_source_path }} on the
+      Ansible controller.
+  when: (ipc_alloy_mimir_ca_source_path | default('', true) | trim) | length > 0
+
+- name: Deploy the optional Mimir CA certificate
+  ansible.builtin.copy:
+    src: "{{ ipc_alloy_mimir_ca_source_path }}"
+    dest: "{{ ipc_alloy_mimir_ca_dest_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  register: ipc_alloy_mimir_ca_copy
+  when: (ipc_alloy_mimir_ca_source_path | default('', true) | trim) | length > 0
+
+- name: Deploy the IPC Alloy configuration
+  ansible.builtin.template:
+    src: "config.alloy.j2"
+    dest: "{{ ipc_alloy_config_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  register: ipc_alloy_config_template
+
+- name: Validate the IPC Alloy configuration
+  ansible.builtin.command:
+    cmd: "{{ ipc_alloy_validate_command }} {{ ipc_alloy_config_path }}"
+  changed_when: false
+
+- name: Ensure node_exporter is enabled and started
+  ansible.builtin.systemd:
+    name: "{{ ipc_alloy_node_exporter_service_name }}"
+    enabled: true
+    state: started
+
+- name: Ensure Alloy is enabled and started
+  ansible.builtin.systemd:
+    name: "{{ ipc_alloy_service_name }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Restart Alloy when the deployment changes
+  ansible.builtin.systemd:
+    name: "{{ ipc_alloy_service_name }}"
+    state: restarted
+    daemon_reload: true
+  when: >-
+    ipc_alloy_package_install is changed or
+    ipc_alloy_config_template is changed or
+    (ipc_alloy_mimir_ca_copy is defined and ipc_alloy_mimir_ca_copy is changed)
+
+- name: Wait for the node_exporter HTTP port locally
+  ansible.builtin.wait_for:
+    host: "127.0.0.1"
+    port: "{{ ipc_alloy_node_exporter_port | int }}"
+    timeout: 30
+    connect_timeout: 5
+  changed_when: false
+
+- name: Wait for the Mimir remote_write endpoint from the IPC
+  ansible.builtin.wait_for:
+    host: "{{ ipc_alloy_mimir_remote_write_host }}"
+    port: "{{ ipc_alloy_mimir_remote_write_port | int }}"
+    timeout: 30
+    connect_timeout: 5
+  changed_when: false
+  when:
+    - (ipc_alloy_mimir_remote_write_host | default('', true) | trim) | length > 0

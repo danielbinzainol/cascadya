@@ -1,0 +1,26 @@
+---
+- name: Wait for the local Keycloak TCP listener
+  ansible.builtin.wait_for:
+    host: "{{ vault_vm_keycloak_http_bind }}"
+    port: "{{ vault_vm_keycloak_http_port }}"
+    state: started
+    delay: 0
+    timeout: "{{ vault_vm_keycloak_health_retries * vault_vm_keycloak_health_delay }}"
+
+- name: Wait for the published HTTPS discovery endpoint through nginx
+  ansible.builtin.uri:
+    url: "https://127.0.0.1/realms/{{ vault_vm_keycloak_health_realm_name }}/.well-known/openid-configuration"
+    method: GET
+    status_code: 200
+    validate_certs: false
+    headers:
+      Host: "{{ vault_vm_keycloak_domain }}"
+  vars:
+    vault_vm_keycloak_health_realm_name: "{{ vault_vm_keycloak_realm_name if (vault_vm_keycloak_realm_import_enabled | bool) else 'master' }}"
+  register: vault_vm_keycloak_public_health
+  retries: "{{ vault_vm_keycloak_health_retries }}"
+  delay: "{{ vault_vm_keycloak_health_delay }}"
+  until: vault_vm_keycloak_public_health.status == 200
+  when:
+    - vault_vm_keycloak_manage_proxy | bool
+    - vault_vm_keycloak_proxy_mode == 'nginx'

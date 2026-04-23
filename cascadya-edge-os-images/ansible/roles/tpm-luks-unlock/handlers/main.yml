@@ -1,0 +1,12 @@
+---
+- name: Reload systemd manager
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - daemon-reload
+
+- name: Update initramfs
+  ansible.builtin.command:
+    argv:
+      - update-initramfs
+      - -u

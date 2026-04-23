@@ -1,0 +1,14 @@
+[Unit]
+Description=Modbus TCP simulator service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/cascadya/simulator_sbc
+ExecStart=/usr/bin/python3 /home/cascadya/simulator_sbc/main_sim.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

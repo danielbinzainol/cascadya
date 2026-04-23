@@ -1,0 +1,25 @@
+<client>
+  <server>
+    <address>{{ wazuh_agent_manager_address }}</address>
+    <port>{{ wazuh_agent_manager_port }}</port>
+    <protocol>{{ wazuh_agent_protocol }}</protocol>
+  </server>
+{% if wazuh_agent_registration_enabled | bool %}
+  <enrollment>
+    <enabled>yes</enabled>
+    <manager_address>{{ wazuh_agent_registration_server_effective }}</manager_address>
+    <port>{{ wazuh_agent_registration_port }}</port>
+    <agent_name>{{ wazuh_agent_name }}</agent_name>
+{% if wazuh_agent_group | default('', true) | trim %}
+    <groups>{{ wazuh_agent_group }}</groups>
+{% endif %}
+{% if wazuh_agent_registration_password | default('', true) | trim %}
+    <authorization_pass_path>{{ wazuh_agent_registration_password_path }}</authorization_pass_path>
+{% endif %}
+{% if wazuh_agent_registration_ca_effective | default('', true) | trim %}
+    <server_ca_path>{{ wazuh_agent_registration_ca_effective }}</server_ca_path>
+{% endif %}
+    <delay_after_enrollment>{{ wazuh_agent_delay_after_enrollment }}</delay_after_enrollment>
+  </enrollment>
+{% endif %}
+</client>

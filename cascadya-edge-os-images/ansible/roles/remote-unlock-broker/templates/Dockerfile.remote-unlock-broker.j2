@@ -1,0 +1,6 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+COPY remote_unlock_broker.py /app/remote_unlock_broker.py
+
+ENTRYPOINT ["python3", "/app/remote_unlock_broker.py"]

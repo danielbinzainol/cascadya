@@ -1,0 +1,57 @@
+# Cascadya custom configuration for converting the validated Debian base image
+# into a GRUB/UEFI Mender image on generic x86-64 IPC hardware.
+
+MENDER_STORAGE_DEVICE_BASE=/dev/sda
+MENDER_DEVICE_TYPE="${MENDER_DEVICE_TYPE:-cascadya-ipc}"
+
+# Lock the converted image layout to the validated Cascadya target geometry.
+MENDER_STORAGE_TOTAL_SIZE_MB="24912"
+MENDER_BOOT_PART_SIZE_MB="300"
+MENDER_DATA_PART_SIZE_MB="4096"
+
+# Keep the rootfs slots close to the validated 10 GiB layout.
+IMAGE_ROOTFS_SIZE="10485760"
+IMAGE_ROOTFS_EXTRA_SPACE="0"
+IMAGE_OVERHEAD_FACTOR="1.0"
+
+MENDER_COPY_BOOT_GAP="n"
+MENDER_PARTITION_SCHEME="gpt"
+MENDER_ENABLE_PARTUUID="n"
+MENDER_COMPRESS_DISK_IMAGE="none"
+MENDER_SPARSE_IMAGE="y"
+MENDER_GRUB_KERNEL_BOOT_ARGS="quiet nomodeset console=tty0 systemd.gpt_auto=0 rd.systemd.gpt_auto=0"
+
+# Zero-Touch already grows and, if enabled, encrypts the target /data partition.
+MENDER_DATA_PART_GROWFS="n"
+MENDER_ENABLE_SYSTEMD="n"
+
+MENDER_ADDON_CONNECT_INSTALL="${MENDER_ADDON_CONNECT_INSTALL:-n}"
+MENDER_ADDON_CONFIGURE_INSTALL="${MENDER_ADDON_CONFIGURE_INSTALL:-n}"
+MENDER_SETUP_INSTALL="${MENDER_SETUP_INSTALL:-auto}"
+MENDER_SNAPSHOT_INSTALL="${MENDER_SNAPSHOT_INSTALL:-auto}"
+
+DEPLOY_IMAGE_NAME="${DEPLOY_IMAGE_NAME:-cascadya-mender-base}"
+
+function platform_modify() {
+    function install_data_encryption_runtime() {
+        log_info "Installing cryptsetup and TPM2 runtime in the Mender rootfs..."
+        run_in_chroot_and_log_cmd work/rootfs "apt-get update"
+        run_in_chroot_and_log_cmd work/rootfs "env DEBIAN_FRONTEND=noninteractive apt-get install -y cryptsetup tpm2-tools"
+        run_in_chroot_and_log_cmd work/rootfs "apt-get clean"
+        run_in_chroot_and_log_cmd work/rootfs "rm -rf /var/lib/apt/lists/*"
+    }
+
+    if [ ! -e work/rootfs/lib64 ]; then
+        run_and_log_cmd "ln -s /lib work/rootfs/lib64"
+    fi
+
+    run_with_chroot_setup work/rootfs install_data_encryption_runtime
+
+    run_and_log_cmd "sudo mkdir -p work/rootfs/data"
+    run_and_log_cmd "sudo touch work/rootfs/etc/crypttab"
+    run_and_log_cmd "sudo sed -i '\| /srv/rootfs-b |d' work/rootfs/etc/fstab"
+    run_and_log_cmd "sudo sed -i '\| /data |d' work/rootfs/etc/fstab"
+    run_and_log_cmd "sudo sed -i '/^cascadya_data[[:space:]]/d' work/rootfs/etc/crypttab"
+    run_and_log_cmd "printf 'cascadya_data /dev/sda4 none luks,nofail,tpm2-device=auto,tpm2-pcrs=7\n' | sudo tee -a work/rootfs/etc/crypttab >/dev/null"
+    run_and_log_cmd "printf '/dev/mapper/cascadya_data /data ext4 defaults,nofail,x-systemd.device-timeout=10s 0 2\n' | sudo tee -a work/rootfs/etc/fstab >/dev/null"
+}

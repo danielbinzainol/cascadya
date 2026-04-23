@@ -1,0 +1,45 @@
+- name: Install dnsmasq
+  ansible.builtin.apt:
+    name: dnsmasq
+    state: present
+    update_cache: true
+
+- name: Ensure dnsmasq config directory exists
+  ansible.builtin.file:
+    path: /etc/dnsmasq.d
+    state: directory
+    mode: "0755"
+
+- name: Deploy internal DNS record for Cascadya Features
+  ansible.builtin.template:
+    src: cascadya-features.conf.j2
+    dest: /etc/dnsmasq.d/cascadya-features.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart dnsmasq
+
+- name: Ensure dnsmasq is enabled and running
+  ansible.builtin.systemd:
+    name: dnsmasq
+    enabled: true
+    state: started
+  when: not ansible_check_mode
+
+- name: Flush DNS handler before verification
+  ansible.builtin.meta: flush_handlers
+  when: not ansible_check_mode
+
+- name: Verify internal DNS record for Features
+  ansible.builtin.command: "nslookup {{ features_domain }} {{ wireguard_dns_ip }}"
+  register: wireguard_dns_features_lookup
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Assert dnsmasq returns expected private IP
+  ansible.builtin.assert:
+    that:
+      - "features_private_ip in wireguard_dns_features_lookup.stdout"
+    fail_msg: "dnsmasq ne renvoie pas l'IP privee attendue pour {{ features_domain }}."
+  when: not ansible_check_mode
+

@@ -1,0 +1,26 @@
+---
+- name: Authenticate kcadm against the local Keycloak admin API
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - "{{ vault_vm_keycloak_container_name }}"
+      - /opt/keycloak/bin/kcadm.sh
+      - config
+      - credentials
+      - --server
+      - "{{ vault_vm_keycloak_kcadm_server_url }}"
+      - --realm
+      - master
+      - --user
+      - "{{ vault_vm_keycloak_admin_username }}"
+      - --password
+      - "{{ vault_vm_keycloak_admin_password }}"
+  register: vault_vm_keycloak_kcadm_login
+  changed_when: false
+
+- name: Sync configured OIDC clients into the target realm
+  ansible.builtin.include_tasks: sync_single_client.yml
+  loop: "{{ vault_vm_keycloak_clients }}"
+  loop_control:
+    loop_var: vault_vm_keycloak_client

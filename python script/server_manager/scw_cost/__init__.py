@@ -1,0 +1,1 @@
+"""Scaleway monthly cost scanner."""

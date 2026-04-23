@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Scaleway Cost Observatory</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/styles.css">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  </head>
+  <body>
+    <div id="app" v-cloak>
+      <div class="page-shell">
+        <header class="hero panel">
+          <div class="hero-copy">
+            <p class="eyebrow">Scaleway Cost Observatory</p>
+            <h1>Live monthly estimate for your current project footprint.</h1>
+            <p class="hero-text">
+              Refresh the infrastructure scan on demand, inspect cost drivers,
+              and keep a clear view of compute, storage, IPs, buckets, and security groups on one local page.
+            </p>
+            <div class="hero-tags">
+              <span class="tag">Project {{ status.project_id || 'not configured' }}</span>
+              <span class="tag">Organization {{ compactId(status.organization_id) }}</span>
+              <span class="tag">Host {{ appUrl }}</span>
+            </div>
+          </div>
+
+          <aside class="control-card">
+            <div class="control-header">
+              <p class="control-label">Refresh engine</p>
+              <p class="control-state" :class="{ loading: loading }">
+                {{ loading ? 'Scanning live resources...' : 'Ready to refresh' }}
+              </p>
+            </div>
+
+            <button class="refresh-button" @click="refreshNow" :disabled="loading">
+              {{ loading ? 'Refreshing...' : 'Refresh monthly estimate' }}
+            </button>
+
+            <div class="control-meta">
+              <div>
+                <span class="meta-label">Last report</span>
+                <strong>{{ report ? formatDate(report.generated_at) : 'No report yet' }}</strong>
+              </div>
+              <div>
+                <span class="meta-label">Boto3</span>
+                <strong>{{ status.boto3_installed ? 'Installed' : 'Missing' }}</strong>
+              </div>
+            </div>
+
+            <ul class="status-list">
+              <li :class="badgeClass(status.env_present)">.env loaded</li>
+              <li :class="badgeClass(status.secret_key_present)">Secret key</li>
+              <li :class="badgeClass(status.access_key_present)">Access key</li>
+              <li :class="badgeClass(status.config_ready)">Config ready</li>
+            </ul>
+          </aside>
+        </header>
+
+        <nav class="panel main-toolbar">
+          <div class="main-toolbar-copy">
+            <p class="eyebrow">Workspace</p>
+            <h2>Main panels</h2>
+          </div>
+          <div class="main-toolbar-tabs">
+            <button
+              v-for="panel in mainPanels"
+              :key="panel.key"
+              class="main-nav-button"
+              :class="{ active: mainPanel === panel.key }"
+              @click="mainPanel = panel.key"
+            >
+              <span class="main-nav-label">{{ panel.label }}</span>
+              <span class="main-nav-caption">{{ panel.caption }}</span>
+            </button>
+          </div>
+        </nav>
+
+        <main v-if="mainPanel === 'cost'" class="view-stack">
+          <section class="metric-grid">
+            <article v-for="card in metricCards" :key="card.key" class="metric-card panel">
+              <p class="metric-label">{{ card.label }}</p>
+              <h2>{{ money(card.value) }}</h2>
+              <p class="metric-detail">{{ card.detail }}</p>
+              <div class="metric-bar">
+                <span :style="{ width: percentage(card.value) + '%' }"></span>
+              </div>
+            </article>
+          </section>
+
+          <section class="story-grid">
+            <article class="panel section-card">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Cost Pulse</p>
+                  <h3>Top monthly cost drivers</h3>
+                </div>
+                <p class="section-note">{{ topDrivers.length }} resource(s)</p>
+              </div>
+
+              <div v-if="topDrivers.length" class="driver-list">
+                <div v-for="driver in topDrivers" :key="driver.key" class="driver-row">
+                  <div class="driver-main">
+                    <p class="driver-name">{{ driver.name }}</p>
+                    <p class="driver-meta">{{ driver.kind }} / {{ driver.zone || driver.region || 'n/a' }}</p>
+                  </div>
+                  <div class="driver-cost">
+                    <strong>{{ money(driver.monthly_eur) }}</strong>
+                    <span class="driver-bar">
+                      <span :style="{ width: driver.percent + '%' }"></span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div v-else class="empty-state">
+                No billable resources visible yet. Run a refresh to populate the dashboard.
+              </div>
+            </article>
+
+            <article class="panel section-card">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Runtime Notes</p>
+                  <h3>Warnings and backend status</h3>
+                </div>
+                <p class="section-note">{{ warnings.length }} item(s)</p>
+              </div>
+
+              <div class="warning-list" v-if="warnings.length">
+                <div v-for="(warning, index) in warnings" :key="index" class="warning-item">
+                  {{ warning }}
+                </div>
+              </div>
+              <div v-else class="empty-state">
+                No warnings at the moment.
+              </div>
+            </article>
+          </section>
+
+          <section class="panel inventory-panel">
+            <div class="inventory-topbar">
+              <div>
+                <p class="eyebrow">Inventory Atlas</p>
+                <h3>Browse the scanned resources</h3>
+              </div>
+              <div class="toolbar">
+                <input
+                  v-model.trim="search"
+                  class="search-input"
+                  type="search"
+                  placeholder="Filter by name, zone, type or ID"
+                >
+              </div>
+            </div>
+
+            <div class="tab-strip">
+              <button
+                v-for="tab in tabs"
+                :key="tab.key"
+                class="tab-button"
+                :class="{ active: activeTab === tab.key }"
+                @click="activeTab = tab.key"
+              >
+                {{ tab.label }} ({{ tab.count }})
+              </button>
+            </div>
+
+            <div class="table-wrap" v-if="activeTab === 'instances'">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Zone</th>
+                    <th>RAM</th>
+                    <th>vCPU</th>
+                    <th>State</th>
+                    <th>Public IP</th>
+                    <th>Monthly</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="item in filteredInstances" :key="item.id">
+                    <td>{{ item.name }}</td>
+                    <td>{{ item.commercial_type || 'n/a' }}</td>
+                    <td>{{ item.zone }}</td>
+                    <td>{{ number(item.ram_gib, 2) }} GiB</td>
+                    <td>{{ item.vcpus ?? 'n/a' }}</td>
+                    <td>{{ item.state || 'n/a' }}</td>
+                    <td>{{ item.public_ip || 'n/a' }}</td>
+                    <td>{{ money(item.monthly_eur) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="table-wrap" v-else-if="activeTab === 'volumes'">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Role</th>
+                    <th>Type</th>
+                    <th>Zone</th>
+                    <th>Size</th>
+                    <th>Attached to</th>
+                    <th>Source</th>
+                    <th>Monthly</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="item in filteredVolumes" :key="item.id">
+                    <td>{{ item.name }}</td>
+                    <td>{{ item.role }}</td>
+                    <td>{{ item.volume_type || 'n/a' }}</td>
+                    <td>{{ item.zone }}</td>
+                    <td>{{ number(item.size_gb, 3) }} GB</td>
+                    <td>{{ item.attached_server_name || item.attached_server_id || 'detached' }}</td>
+                    <td>{{ item.source_api }}</td>
+                    <td>{{ money(item.monthly_eur) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="table-wrap" v-else-if="activeTab === 'ips'">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Address</th>
+                    <th>Zone</th>
+                    <th>Attached server</th>
+                    <th>Monthly</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="item in filteredIps" :key="item.id">
+                    <td>{{ item.address || item.id }}</td>
+                    <td>{{ item.zone }}</td>
+                    <td>{{ item.attached_server_id || 'unattached' }}</td>
+                    <td>{{ money(item.monthly_eur) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="table-wrap" v-else>
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Bucket</th>
+                    <th>Region</th>
+                    <th>Objects</th>
+                    <th>Stored</th>
+                    <th>Storage classes</th>
+                    <th>Monthly</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="item in filteredBuckets" :key="item.name">
+                    <td>{{ item.name }}</td>
+                    <td>{{ item.region || 'n/a' }}</td>
+                    <td>{{ item.object_count }}</td>
+                    <td>{{ number(item.total_size_gb, 3) }} GB</td>
+                    <td>{{ renderStorageClasses(item.storage_classes_gb) }}</td>
+                    <td>{{ money(item.monthly_eur) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="inventory-footer">
+              <p v-if="error" class="error-banner">{{ error }}</p>
+              <p v-else-if="!report" class="empty-state">No report loaded yet. Use the refresh button.</p>
+              <p v-else class="file-links">
+                JSON: <code>{{ files.json || 'n/a' }}</code>
+                CSV: <code>{{ files.csv || 'n/a' }}</code>
+                Markdown: <code>{{ files.markdown || 'n/a' }}</code>
+              </p>
+            </div>
+          </section>
+        </main>
+
+        <main v-else class="view-stack">
+          <section class="security-grid">
+            <article class="panel section-card security-panel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Security Intel</p>
+                  <h3>Security groups and attached VMs</h3>
+                </div>
+                <p class="section-note">{{ securityGroups.length }} group(s)</p>
+              </div>
+
+              <div v-if="securityGroups.length" class="security-layout">
+                <div class="copy-stack">
+                  <div class="copy-toolbar">
+                    <p class="section-note">
+                      Copy-ready summary of security groups, default policies, rules, and attached VMs.
+                    </p>
+                    <button class="copy-button" @click="copySecuritySummary">
+                      {{ copiedIntel ? 'Copied' : 'Copy intel' }}
+                    </button>
+                  </div>
+                  <textarea class="intel-textarea" readonly :value="securitySummaryText"></textarea>
+                </div>
+
+                <div class="sg-card-list">
+                  <article v-for="group in securityGroups" :key="group.id" class="sg-card">
+                    <div class="sg-head">
+                      <div>
+                        <p class="sg-name">{{ group.name }}</p>
+                        <p class="sg-meta">
+                          {{ group.zone }} / {{ group.state || 'n/a' }} / {{ group.rule_count }} rule(s)
+                        </p>
+                      </div>
+                      <div class="sg-count">{{ group.server_count }} VM(s)</div>
+                    </div>
+
+                    <p class="sg-description">{{ group.description || 'No description provided.' }}</p>
+
+                    <div class="sg-pill-row">
+                      <span class="sg-pill">Stateful: {{ yesNo(group.stateful) }}</span>
+                      <span class="sg-pill">Project default: {{ yesNo(group.project_default) }}</span>
+                      <span class="sg-pill">Inbound: {{ group.inbound_default_policy || 'n/a' }}</span>
+                      <span class="sg-pill">Outbound: {{ group.outbound_default_policy || 'n/a' }}</span>
+                      <span class="sg-pill">Default security: {{ yesNo(group.enable_default_security) }}</span>
+                    </div>
+
+                    <div class="sg-subsection">
+                      <strong>Attached VMs</strong>
+                      <ul v-if="group.servers.length" class="sg-list">
+                        <li v-for="vm in group.servers" :key="vm.id">
+                          {{ vm.name }} / {{ vm.commercial_type || 'n/a' }} / {{ vm.state || 'n/a' }} / {{ vm.public_ip || 'no-public-ip' }}
+                        </li>
+                      </ul>
+                      <p v-else class="empty-inline">No VM attached.</p>
+                    </div>
+
+                    <div class="sg-subsection">
+                      <strong>Rules preview</strong>
+                      <ul v-if="group.rules.length" class="sg-list">
+                        <li v-for="rule in group.rules.slice(0, 5)" :key="rule.id">
+                          {{ formatRule(rule) }}
+                        </li>
+                      </ul>
+                      <p v-else class="empty-inline">No rule found.</p>
+                      <p v-if="group.rule_count > 5" class="section-note">
+                        + {{ group.rule_count - 5 }} more rule(s)
+                      </p>
+                    </div>
+                  </article>
+                </div>
+              </div>
+
+              <div v-else class="empty-state">
+                No security groups found in the current report.
+              </div>
+            </article>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

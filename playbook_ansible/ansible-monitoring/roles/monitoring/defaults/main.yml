@@ -1,0 +1,161 @@
+---
+docker_compose_version: "2.29.2"
+docker_compose_command: "docker-compose"
+
+grafana_image: "grafana/grafana:latest"
+loki_image: "grafana/loki:2.9.3"
+promtail_image: "grafana/promtail:2.9.3"
+mimir_image: "grafana/mimir:latest"
+alloy_image: "grafana/alloy:latest"
+cadvisor_image: "gcr.io/cadvisor/cadvisor:v0.55.1"
+
+monitoring_dir: "/opt/monitoring"
+monitoring_data_root: "/mnt/data"
+monitoring_data_min_available_gb: 5
+monitoring_require_data_mount: true
+monitoring_force_recreate_stack: false
+monitoring_runtime_validation_scope: "core"
+monitoring_runtime_validate_only_when_changed: true
+
+monitoring_enable_alloy: true
+monitoring_enable_promtail: true
+monitoring_enable_cadvisor: true
+monitoring_enable_postgresql_datasource: true
+monitoring_enable_infinity_datasource: true
+monitoring_retention_profile: "classic"
+
+grafana_container_uid: "472"
+grafana_container_gid: "472"
+loki_container_uid: "10001"
+loki_container_gid: "10001"
+
+monitoring_ipv4: ""
+monitoring_private_ip: ""
+monitoring_metrics_instance_name: ""
+monitoring_grafana_domain: "grafana.cascadya.internal"
+monitoring_grafana_public_base_url: "https://{{ monitoring_grafana_domain }}"
+monitoring_grafana_tls_mode: "self_signed"
+monitoring_grafana_tls_cert_path: "/etc/ssl/cascadya/grafana.cascadya.internal.crt"
+monitoring_grafana_tls_key_path: "/etc/ssl/cascadya/grafana.cascadya.internal.key"
+monitoring_infracontrol_enabled: false
+monitoring_infracontrol_domain: "infracontrol.cascadya.internal"
+monitoring_infracontrol_tls_mode: "self_signed"
+monitoring_infracontrol_tls_cert_path: "/etc/ssl/cascadya/infracontrol.cascadya.internal.crt"
+monitoring_infracontrol_tls_key_path: "/etc/ssl/cascadya/infracontrol.cascadya.internal.key"
+# Root web entrypoint for infracontrol. In production this should point to the
+# dedicated frontend service, while the API stays on the backend service.
+monitoring_infracontrol_frontend_proxy_pass: "http://127.0.0.1:5173"
+monitoring_infracontrol_api_proxy_pass: "http://127.0.0.1:3001/api/"
+monitoring_infracontrol_health_proxy_pass: "http://127.0.0.1:3001/health"
+# Optional nginx-side redirect for the bare domain when the upstream backend
+# does not implement GET / directly.
+monitoring_infracontrol_root_redirect_path: ""
+monitoring_infracontrol_validate_proxy: true
+monitoring_infracontrol_health_retries: 20
+monitoring_infracontrol_health_delay: 3
+monitoring_nginx_legacy_sites:
+  - "mimir.cascadya.internal"
+broker_private_ip: ""
+mimir_bucket_name: ""
+mimir_bucket_endpoint: ""
+mimir_bucket_region: ""
+mimir_internal_url: ""
+loki_internal_url: ""
+grafana_default_home_dashboard_path: "/var/lib/grafana/dashboards/mimir/vm_mimir.json"
+
+grafana_prometheus_uid: "P1809F7CD0C75ACF3"
+grafana_postgresql_uid: "PC1B2D7F868F7692D"
+grafana_loki_uid: "loki"
+grafana_infinity_uid: "PD0067CAD9A63E081"
+
+grafana_postgresql_name: "Cascadya Telemetry VPC"
+grafana_postgresql_host: "10.42.2.2:5432"
+grafana_postgresql_user: "cascadya"
+grafana_postgresql_database: "cascadya_telemetry"
+grafana_postgresql_password: "{{ lookup('ansible.builtin.env', 'MONITORING_POSTGRES_PASSWORD') }}"
+
+grafana_prometheus_name: "prometheus"
+grafana_mimir_datasource_url: >-
+  {{ ((mimir_internal_url | default('', true) | trim | regex_replace('/+$', '')) ~ '/prometheus')
+     if (mimir_internal_url | default('', true) | trim | length > 0)
+     else 'http://mimir:9009/prometheus' }}
+
+grafana_loki_name: "loki"
+grafana_loki_datasource_url: >-
+  {{ loki_internal_url | default('http://loki:3100', true) | trim | regex_replace('/+$', '') }}
+
+grafana_infinity_name: "Infinity"
+grafana_infinity_url: >-
+  {{ ('http://' ~ broker_private_ip ~ ':8222')
+     if (broker_private_ip | default('', true) | trim | length > 0)
+     else 'http://10.42.1.6:8222' }}
+grafana_mimir_tenant_header_name: "X-Scope-OrgID"
+grafana_enable_mimir_tenant_datasources: true
+grafana_preinstall_plugins:
+  - "yesoreyeram-infinity-datasource"
+
+grafana_admin_user: "{{ lookup('ansible.builtin.env', 'GRAFANA_ADMIN_USER') }}"
+grafana_admin_password: "{{ lookup('ansible.builtin.env', 'GRAFANA_ADMIN_PASSWORD') }}"
+
+mimir_enable_multitenancy: true
+mimir_default_tenant: "classic"
+mimir_default_retention_period: "30d"
+mimir_runtime_config_reload_period: "10s"
+mimir_enable_runtime_overrides: true
+mimir_enable_rule_provisioning: true
+mimir_runtime_config_path: "{{ monitoring_dir }}/mimir/runtime.yml"
+mimir_rules_root: "{{ monitoring_dir }}/mimir/rules"
+mimir_ruler_poll_interval: "1m"
+mimir_ruler_rule_path: "/data/ruler-tmp"
+mimir_readiness_uri_timeout: 5
+mimir_readiness_retries: 60
+mimir_readiness_delay: 5
+mimir_tenants:
+  - id: "classic"
+    retention_period: "30d"
+    grafana_datasource_name: "{{ grafana_prometheus_name }}"
+    grafana_datasource_uid: "{{ grafana_prometheus_uid }}"
+  - id: "lts-1y"
+    retention_period: "365d"
+    grafana_datasource_name: "mimir-lts-1y"
+    grafana_datasource_uid: "mimir-lts-1y"
+  - id: "lts-5y"
+    retention_period: "1825d"
+    grafana_datasource_name: "mimir-lts-5y"
+    grafana_datasource_uid: "mimir-lts-5y"
+
+mimir_s3_endpoint: "{{ mimir_bucket_endpoint | default('', true) | regex_replace('^https?://', '') | regex_replace('/+$', '') }}"
+mimir_s3_access_key_id: "{{ lookup('ansible.builtin.env', 'MIMIR_S3_ACCESS_KEY_ID') | default(lookup('ansible.builtin.env', 'SCW_ACCESS_KEY'), true) }}"
+mimir_s3_secret_access_key: "{{ lookup('ansible.builtin.env', 'MIMIR_S3_SECRET_ACCESS_KEY') | default(lookup('ansible.builtin.env', 'SCW_SECRET_KEY'), true) }}"
+mimir_s3_insecure: false
+
+alloy_enable_http_ui: true
+alloy_http_listen_port: 12345
+alloy_http_host_bind_address: "127.0.0.1"
+alloy_storage_path: "/var/lib/alloy/data"
+alloy_remote_write_url: "http://mimir:9009/api/v1/push"
+alloy_remote_write_tenant: "{{ mimir_default_tenant if mimir_enable_multitenancy else '' }}"
+alloy_scrape_interval: "15s"
+alloy_scrape_timeout: "10s"
+alloy_collect_local_system_metrics: true
+alloy_scrape_local_node_exporter: false
+alloy_local_node_exporter_target: "host.docker.internal:9100"
+alloy_scrape_local_cadvisor: true
+monitoring_metrics_tenant_label: "{{ alloy_remote_write_tenant if (alloy_remote_write_tenant | default('', true) | trim | length > 0) else 'single-tenant' }}"
+alloy_scrape_remote_node_exporters: false
+alloy_remote_node_exporter_port: 9100
+alloy_remote_metrics_source: "vm"
+alloy_remote_metrics_role: "vm"
+alloy_remote_metrics_site: "ams1"
+alloy_remote_node_exporter_targets: []
+
+monitoring_compose_env:
+  GRAFANA_POSTGRES_PASSWORD: "{{ grafana_postgresql_password }}"
+  GRAFANA_ADMIN_USER: "{{ grafana_admin_user }}"
+  GRAFANA_ADMIN_PASSWORD: "{{ grafana_admin_password }}"
+  MIMIR_S3_BUCKET_NAME: "{{ mimir_bucket_name }}"
+  MIMIR_S3_ENDPOINT: "{{ mimir_s3_endpoint }}"
+  MIMIR_S3_REGION: "{{ mimir_bucket_region }}"
+  MIMIR_S3_ACCESS_KEY_ID: "{{ mimir_s3_access_key_id }}"
+  MIMIR_S3_SECRET_ACCESS_KEY: "{{ mimir_s3_secret_access_key }}"
+  MIMIR_S3_INSECURE: "{{ mimir_s3_insecure | ternary('true', 'false') }}"

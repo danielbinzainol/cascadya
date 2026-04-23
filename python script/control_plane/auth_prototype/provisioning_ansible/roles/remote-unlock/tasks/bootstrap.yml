@@ -1,0 +1,206 @@
+---
+- name: Assert the remote unlock transport mode is supported
+  ansible.builtin.assert:
+    that:
+      - remote_unlock_transport_mode in ['wireguard', 'direct']
+    fail_msg: >-
+      Unsupported remote unlock transport mode: {{ remote_unlock_transport_mode }}.
+      Use `wireguard` for the canonical workflow or `direct` only for legacy diagnostics.
+
+- name: Gather installed package facts for remote unlock
+  ansible.builtin.package_facts:
+    manager: auto
+
+- name: Resolve missing remote unlock packages
+  ansible.builtin.set_fact:
+    remote_unlock_missing_packages: >-
+      {{
+        remote_unlock_required_packages
+        | reject('in', ansible_facts.packages.keys() | list)
+        | list
+      }}
+
+- name: Install remote unlock packages
+  ansible.builtin.apt:
+    name: "{{ remote_unlock_missing_packages }}"
+    state: present
+    update_cache: false
+    cache_valid_time: 3600
+  when: (remote_unlock_missing_packages | length) > 0
+
+- name: Ensure remote unlock directories exist
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ remote_unlock_cert_dir }}", mode: "0700" }
+    - { path: "{{ remote_unlock_tpm_dir }}", mode: "0700" }
+    - { path: "{{ remote_unlock_state_dir }}", mode: "0700" }
+    - { path: "{{ remote_unlock_script_path | dirname }}", mode: "0755" }
+    - { path: "{{ remote_unlock_manual_script_path | dirname }}", mode: "0755" }
+
+- name: Stage remote unlock certificates
+  ansible.builtin.include_tasks: stage_certs.yml
+
+- name: Check if persistent AK already exists
+  ansible.builtin.command:
+    argv:
+      - tpm2_readpublic
+      - -Q
+      - -c
+      - "{{ remote_unlock_tpm_ak_handle }}"
+  register: remote_unlock_ak_present
+  changed_when: false
+  failed_when: false
+
+- name: Create temporary EK context for AK provisioning
+  ansible.builtin.command:
+    argv:
+      - tpm2_createek
+      - -Q
+      - -c
+      - "{{ remote_unlock_tpm_dir }}/ek.ctx"
+      - -G
+      - rsa
+      - -u
+      - "{{ remote_unlock_tpm_dir }}/ek.pub"
+  args:
+    creates: "{{ remote_unlock_tpm_dir }}/ek.ctx"
+  when: remote_unlock_ak_present.rc != 0
+
+- name: Create and persist the remote unlock AK
+  ansible.builtin.shell: |
+    set -euo pipefail
+    tmp_ak_ctx="$(mktemp "{{ remote_unlock_tpm_dir }}/ak.XXXXXX.ctx")"
+    trap 'rm -f "$tmp_ak_ctx"' EXIT
+    tpm2_createak -Q \
+      -C "{{ remote_unlock_tpm_dir }}/ek.ctx" \
+      -c "$tmp_ak_ctx" \
+      -G "{{ remote_unlock_tpm_ak_alg }}" \
+      -g "{{ remote_unlock_tpm_ak_hash_alg }}" \
+      -s "{{ remote_unlock_tpm_ak_sign_alg }}" \
+      -u "{{ remote_unlock_tpm_dir }}/ak.pub" \
+      -n "{{ remote_unlock_tpm_dir }}/ak.name"
+    tpm2_evictcontrol -Q -C o -c "$tmp_ak_ctx" "{{ remote_unlock_tpm_ak_handle }}"
+  args:
+    executable: /bin/bash
+  when: remote_unlock_ak_present.rc != 0
+
+- name: Export AK public material from the persistent handle
+  ansible.builtin.command:
+    argv:
+      - tpm2_readpublic
+      - -Q
+      - -c
+      - "{{ remote_unlock_tpm_ak_handle }}"
+      - -o
+      - "{{ remote_unlock_tpm_dir }}/ak.pub.pem"
+      - -n
+      - "{{ remote_unlock_tpm_dir }}/ak.name"
+      - -f
+      - pem
+  changed_when: false
+
+- name: Check if crypttab exists for remote unlock bootstrap device discovery
+  ansible.builtin.stat:
+    path: /etc/crypttab
+  register: remote_unlock_bootstrap_crypttab_stat
+
+- name: Read current crypttab for remote unlock bootstrap device discovery
+  ansible.builtin.slurp:
+    src: /etc/crypttab
+  register: remote_unlock_bootstrap_crypttab_raw
+  when: remote_unlock_bootstrap_crypttab_stat.stat.exists
+
+- name: Extract current crypttab entry for the remote unlock mapper
+  ansible.builtin.set_fact:
+    remote_unlock_bootstrap_crypttab_line: >-
+      {{
+        (
+          (
+            remote_unlock_bootstrap_crypttab_raw.content | default('') | b64decode
+          )
+        ).splitlines()
+        | select('match', '^' ~ remote_unlock_mapper_name ~ '\\s')
+        | list
+        | first
+        | default('')
+      }}
+  when: remote_unlock_bootstrap_crypttab_stat.stat.exists
+
+- name: Split current crypttab fields for remote unlock bootstrap device discovery
+  ansible.builtin.set_fact:
+    remote_unlock_bootstrap_crypttab_fields: >-
+      {{ remote_unlock_bootstrap_crypttab_line.split() if remote_unlock_bootstrap_crypttab_line | default('') else [] }}
+
+- name: Resolve the effective remote unlock LUKS source
+  ansible.builtin.set_fact:
+    remote_unlock_luks_device_effective: >-
+      {%- set source = ((remote_unlock_bootstrap_crypttab_fields[1]) if (remote_unlock_bootstrap_crypttab_fields | length > 1) else remote_unlock_luks_device) | trim -%}
+      {%- if source is match('^UUID=.+') -%}
+      /dev/disk/by-uuid/{{ source | regex_replace('^UUID=', '') }}
+      {%- elif source is match('^PARTUUID=.+') -%}
+      /dev/disk/by-partuuid/{{ source | regex_replace('^PARTUUID=', '') }}
+      {%- elif source is match('^LABEL=.+') -%}
+      /dev/disk/by-label/{{ source | regex_replace('^LABEL=', '') }}
+      {%- elif source is match('^PARTLABEL=.+') -%}
+      /dev/disk/by-partlabel/{{ source | regex_replace('^PARTLABEL=', '') }}
+      {%- else -%}
+      {{ source }}
+      {%- endif -%}
+
+- name: Deploy remote unlock environment file
+  ansible.builtin.template:
+    src: unlock.env.j2
+    dest: "{{ remote_unlock_env_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart remote unlock service
+
+- name: Persist the active remote unlock transport mode
+  ansible.builtin.copy:
+    dest: "{{ remote_unlock_active_mode_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+    content: "{{ remote_unlock_transport_mode }}\n"
+
+- name: Deploy remote unlock boot script
+  ansible.builtin.template:
+    src: cascadya-unlock-data.sh.j2
+    dest: "{{ remote_unlock_script_path }}"
+    owner: root
+    group: root
+    mode: "0750"
+  notify: Restart remote unlock service
+
+- name: Deploy remote unlock manual helper
+  ansible.builtin.template:
+    src: unlock-data-manual.sh.j2
+    dest: "{{ remote_unlock_manual_script_path }}"
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Deploy remote unlock systemd unit
+  ansible.builtin.template:
+    src: cascadya-unlock-data.service.j2
+    dest: "/etc/systemd/system/{{ remote_unlock_systemd_unit_name }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd manager
+    - Restart remote unlock service
+
+- name: Report remote unlock bootstrap outputs
+  ansible.builtin.debug:
+    msg:
+      - "Remote unlock bootstrap deployed under {{ remote_unlock_cert_dir }}"
+      - "Effective LUKS source: {{ remote_unlock_luks_device_effective }}"
+      - "Persistent AK handle: {{ remote_unlock_tpm_ak_handle }}"
+      - "AK public key: {{ remote_unlock_tpm_dir }}/ak.pub.pem"

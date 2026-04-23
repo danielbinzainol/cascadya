@@ -1,0 +1,126 @@
+- name: Assert Cascadya Features repo is present
+  ansible.builtin.stat:
+    path: "{{ features_repo_path }}/app.py"
+  register: features_repo_stat
+
+- name: Stop if repo is missing on target VM
+  ansible.builtin.assert:
+    that:
+      - features_repo_stat.stat.exists
+    fail_msg: "Le repo n'est pas present dans {{ features_repo_path }}. Lance ./ansible/sync-cascadya-features.sh avant le playbook."
+
+- name: Ensure runtime directories exist
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default('ubuntu') }}"
+    group: "{{ item.group | default('ubuntu') }}"
+    mode: "{{ item.mode | default('0755') }}"
+  loop:
+    - { path: "{{ features_env_dir }}", owner: "root", group: "root" }
+    - { path: "{{ features_traefik_root }}/dynamic", owner: "ubuntu", group: "ubuntu" }
+    - { path: "{{ features_traefik_root }}/certs", owner: "ubuntu", group: "ubuntu", mode: "0700" }
+
+- name: Install Python runtime packages
+  ansible.builtin.apt:
+    name:
+      - python3
+      - python3-venv
+      - python3-pip
+      - openssl
+    state: present
+    update_cache: true
+
+- name: Create virtualenv if missing
+  ansible.builtin.command:
+    cmd: "python3 -m venv {{ features_venv_path }}"
+    creates: "{{ features_venv_path }}/bin/python"
+
+- name: Install Python dependencies
+  ansible.builtin.pip:
+    requirements: "{{ features_repo_path }}/requirements.txt"
+    virtualenv: "{{ features_venv_path }}"
+
+- name: Deploy environment file
+  ansible.builtin.template:
+    src: cascadya-features.env.j2
+    dest: "{{ features_env_path }}"
+    owner: root
+    group: root
+    mode: "0640"
+  notify: restart cascadya-features
+
+- name: Deploy systemd unit
+  ansible.builtin.template:
+    src: cascadya-features.service.j2
+    dest: "/etc/systemd/system/{{ features_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - reload systemd
+    - restart cascadya-features
+
+- name: Deploy Traefik dynamic config
+  ansible.builtin.template:
+    src: features-traefik.yml.j2
+    dest: "{{ features_traefik_root }}/dynamic/{{ features_service_name }}.yml"
+    owner: ubuntu
+    group: ubuntu
+    mode: "0644"
+
+- name: Generate Traefik private key if missing
+  ansible.builtin.command:
+    cmd: "openssl genrsa -out {{ features_traefik_root }}/certs/{{ features_domain }}.key 2048"
+    creates: "{{ features_traefik_root }}/certs/{{ features_domain }}.key"
+
+- name: Generate self-signed certificate if missing
+  ansible.builtin.command:
+    cmd: >-
+      openssl req -x509 -new
+      -key {{ features_traefik_root }}/certs/{{ features_domain }}.key
+      -out {{ features_traefik_root }}/certs/{{ features_domain }}.crt
+      -days 365
+      -subj /CN={{ features_domain }}
+      -addext subjectAltName=DNS:{{ features_domain }}
+    creates: "{{ features_traefik_root }}/certs/{{ features_domain }}.crt"
+
+- name: Fix Traefik certificate permissions
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    owner: ubuntu
+    group: ubuntu
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ features_traefik_root }}/certs/{{ features_domain }}.key", mode: "0600" }
+    - { path: "{{ features_traefik_root }}/certs/{{ features_domain }}.crt", mode: "0644" }
+
+- name: Ensure Cascadya Features service is enabled and running
+  ansible.builtin.systemd:
+    name: "{{ features_service_name }}.service"
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: not ansible_check_mode
+
+- name: Wait for local application port
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ features_port }}"
+    timeout: 60
+  when: not ansible_check_mode
+
+- name: Verify local health endpoint
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ features_port }}/api/healthz"
+    return_content: true
+  register: features_healthcheck
+  when: not ansible_check_mode
+
+- name: Assert health endpoint returned ok
+  ansible.builtin.assert:
+    that:
+      - features_healthcheck.json.ok | default(false)
+    fail_msg: "Le service cascadya-features ne repond pas correctement sur /api/healthz."
+  when: not ansible_check_mode
+

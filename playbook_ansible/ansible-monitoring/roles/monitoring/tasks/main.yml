@@ -1,0 +1,12 @@
+---
+- name: Install Docker
+  include_tasks: install_docker.yml
+
+- name: Prepare Grafana TLS assets
+  include_tasks: certificates.yml
+
+- name: Prepare Grafana reverse proxy
+  include_tasks: proxy_nginx.yml
+
+- name: Deploy monitoring stack
+  include_tasks: deploy_stack.yml

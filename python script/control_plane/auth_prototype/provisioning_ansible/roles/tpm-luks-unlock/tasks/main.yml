@@ -1,0 +1,302 @@
+---
+- name: Gather installed package facts
+  ansible.builtin.package_facts:
+    manager: auto
+  when: enable_tpm_luks | bool
+
+- name: Resolve missing TPM/LUKS support packages
+  ansible.builtin.set_fact:
+    tpm_luks_missing_packages: >-
+      {{
+        tpm_luks_required_packages
+        | reject('in', ansible_facts.packages.keys() | list)
+        | list
+      }}
+  when: enable_tpm_luks | bool
+
+- name: Install TPM/LUKS support packages
+  ansible.builtin.apt:
+    name: "{{ tpm_luks_missing_packages }}"
+    state: present
+    update_cache: "{{ tpm_luks_update_cache | bool }}"
+    cache_valid_time: 3600
+  when:
+    - enable_tpm_luks | bool
+    - (tpm_luks_missing_packages | default([]) | length) > 0
+
+- name: Check systemd-cryptenroll availability
+  ansible.builtin.command:
+    argv:
+      - systemd-cryptenroll
+      - --version
+  register: tpm_luks_cryptenroll_version
+  changed_when: false
+  when: enable_tpm_luks | bool
+
+- name: Check TPM resource manager device availability
+  ansible.builtin.stat:
+    path: /dev/tpmrm0
+  register: tpm_luks_tpmrm_device
+  when: enable_tpm_luks | bool
+
+- name: Check fallback TPM device availability
+  ansible.builtin.stat:
+    path: /dev/tpm0
+  register: tpm_luks_tpm0_device
+  when: enable_tpm_luks | bool
+
+- name: Resolve TPM availability
+  ansible.builtin.set_fact:
+    tpm_luks_tpm_available: >-
+      {{
+        (tpm_luks_tpmrm_device.stat.exists | default(false))
+        or
+        (tpm_luks_tpm0_device.stat.exists | default(false))
+      }}
+  when: enable_tpm_luks | bool
+
+- name: Fail when TPM auto-unlock is enabled but no TPM2 device is present
+  ansible.builtin.fail:
+    msg: >-
+      TPM2 auto-unlock is enabled, but neither /dev/tpmrm0 nor /dev/tpm0 is
+      available on the target host.
+  when:
+    - enable_tpm_luks | bool
+    - not (tpm_luks_tpm_available | default(false))
+
+- name: Check whether the target data device is already a LUKS container
+  ansible.builtin.command:
+    argv:
+      - cryptsetup
+      - isLuks
+      - "{{ tpm_luks_device }}"
+  register: tpm_luks_is_luks
+  changed_when: false
+  failed_when: false
+  when:
+    - enable_tpm_luks | bool
+    - tpm_luks_tpm_available | default(false)
+
+- name: Fail when the target data device is not encrypted yet
+  ansible.builtin.fail:
+    msg: >-
+      TPM enrollment cannot continue because {{ tpm_luks_device }} is not a
+      LUKS container yet. Encrypt /data first, then rerun this role.
+  when:
+    - enable_tpm_luks | bool
+    - tpm_luks_tpm_available | default(false)
+    - tpm_luks_is_luks.rc != 0
+
+- name: Ensure the LUKS header backup directory exists
+  ansible.builtin.file:
+    path: "{{ tpm_luks_header_backup_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  when:
+    - enable_tpm_luks | bool
+    - tpm_luks_is_luks.rc == 0
+    - tpm_luks_header_backup_enabled | bool
+
+- name: Check whether a LUKS header backup already exists
+  ansible.builtin.stat:
+    path: "{{ tpm_luks_header_backup_file }}"
+  register: tpm_luks_header_backup_stat
+  when:
+    - enable_tpm_luks | bool
+    - tpm_luks_is_luks.rc == 0
+    - tpm_luks_header_backup_enabled | bool
+
+- name: Backup the LUKS header before TPM enrollment
+  ansible.builtin.command:
+    argv:
+      - cryptsetup
+      - luksHeaderBackup
+      - "{{ tpm_luks_device }}"
+      - --header-backup-file
+      - "{{ tpm_luks_header_backup_file }}"
+  when:
+    - enable_tpm_luks | bool
+    - tpm_luks_is_luks.rc == 0
+    - tpm_luks_header_backup_enabled | bool
+    - not (tpm_luks_header_backup_stat.stat.exists | default(false))
+
+- name: Read current LUKS metadata
+  ansible.builtin.command:
+    argv:
+      - cryptsetup
+      - luksDump
+      - "{{ tpm_luks_device }}"
+  register: tpm_luks_luksdump
+  changed_when: false
+  when:
+    - enable_tpm_luks | bool
+    - tpm_luks_tpm_available | default(false)
+    - tpm_luks_is_luks.rc == 0
+
+- name: Detect an existing TPM enrollment
+  ansible.builtin.set_fact:
+    tpm_luks_token_present: >-
+      {{
+        (
+          tpm_luks_luksdump.stdout
+          | regex_search('(?m)^\\s*\\d+:\\s+systemd-tpm2\\b')
+        ) is not none
+      }}
+  when:
+    - enable_tpm_luks | bool
+    - tpm_luks_tpm_available | default(false)
+    - tpm_luks_is_luks.rc == 0
+
+- name: Check if crypttab exists
+  ansible.builtin.stat:
+    path: /etc/crypttab
+  register: tpm_luks_crypttab_stat
+  when:
+    - enable_tpm_luks | bool
+    - tpm_luks_tpm_available | default(false)
+    - tpm_luks_is_luks.rc == 0
+
+- name: Read crypttab
+  ansible.builtin.slurp:
+    src: /etc/crypttab
+  register: tpm_luks_crypttab_raw
+  when:
+    - enable_tpm_luks | bool
+    - tpm_luks_tpm_available | default(false)
+    - tpm_luks_is_luks.rc == 0
+    - tpm_luks_crypttab_stat.stat.exists
+
+- name: Extract current crypttab entry
+  ansible.builtin.set_fact:
+    tpm_luks_crypttab_line: >-
+      {{
+        (
+          (
+            tpm_luks_crypttab_raw.content | default('') | b64decode
+          )
+        ).splitlines()
+        | select('match', '^' ~ tpm_luks_crypttab_name ~ '\\s')
+        | list
+        | first
+        | default('')
+      }}
+  when:
+    - enable_tpm_luks | bool
+    - tpm_luks_tpm_available | default(false)
+    - tpm_luks_is_luks.rc == 0
+
+- name: Split current crypttab fields
+  ansible.builtin.set_fact:
+    tpm_luks_crypttab_fields: "{{ tpm_luks_crypttab_line.split() if tpm_luks_crypttab_line else [] }}"
+  when:
+    - enable_tpm_luks | bool
+    - tpm_luks_tpm_available | default(false)
+    - tpm_luks_is_luks.rc == 0
+
+- name: Build desired crypttab values
+  ansible.builtin.set_fact:
+    tpm_luks_crypttab_source: >-
+      {{
+        (tpm_luks_crypttab_fields | length > 1)
+        | ternary(tpm_luks_crypttab_fields[1], tpm_luks_device)
+      }}
+    tpm_luks_crypttab_keyfile: >-
+      {{
+        (tpm_luks_crypttab_fields | length > 2)
+        | ternary(tpm_luks_crypttab_fields[2], tpm_luks_crypttab_password)
+      }}
+    tpm_luks_existing_crypttab_options: >-
+      {{
+        (
+          (
+            (tpm_luks_crypttab_fields | length > 3)
+            | ternary(
+              tpm_luks_crypttab_fields[3],
+              tpm_luks_default_crypttab_options | join(',')
+            )
+          ).split(',')
+        )
+        | map('trim')
+        | reject('equalto', '')
+        | reject('match', '^tpm2-device=')
+        | reject('match', '^tpm2-pcrs=')
+        | list
+      }}
+  when:
+    - enable_tpm_luks | bool
+    - tpm_luks_tpm_available | default(false)
+    - tpm_luks_is_luks.rc == 0
+
+- name: Ensure TPM option is present in crypttab
+  ansible.builtin.lineinfile:
+    path: /etc/crypttab
+    regexp: "^{{ tpm_luks_crypttab_name }}\\s"
+    line: >-
+      {{ tpm_luks_crypttab_name }}
+      {{ tpm_luks_crypttab_source }}
+      {{ tpm_luks_crypttab_keyfile }}
+      {{
+        (
+          tpm_luks_existing_crypttab_options
+          + ['tpm2-device=auto', 'tpm2-pcrs=' ~ tpm_luks_pcrs]
+        ) | reject('equalto', '') | unique | join(',')
+      }}
+    create: true
+  notify:
+    - Reload systemd manager
+    - Update initramfs
+  when:
+    - enable_tpm_luks | bool
+    - tpm_luks_tpm_available | default(false)
+    - tpm_luks_is_luks.rc == 0
+
+- name: Require the current LUKS recovery passphrase for first TPM enrollment
+  ansible.builtin.assert:
+    that:
+      - tpm_luks_passphrase | length > 0
+    fail_msg: >-
+      Set tpm_luks_passphrase before the first TPM enrollment so
+      systemd-cryptenroll can unlock {{ tpm_luks_device }} non-interactively.
+  when:
+    - enable_tpm_luks | bool
+    - tpm_luks_tpm_available | default(false)
+    - tpm_luks_is_luks.rc == 0
+    - not (tpm_luks_token_present | default(false))
+
+- name: Enroll the data LUKS volume into TPM2
+  ansible.builtin.shell: |
+    set -euo pipefail
+    printf '%s' "$TPM_LUKS_PASSPHRASE" | \
+      systemd-cryptenroll \
+      --unlock-key-file=- \
+      --tpm2-device=auto \
+      --tpm2-pcrs={{ tpm_luks_pcrs | quote }} \
+      {{ tpm_luks_device | quote }}
+  args:
+    executable: /bin/bash
+  environment:
+    TPM_LUKS_PASSPHRASE: "{{ tpm_luks_passphrase }}"
+  register: tpm_luks_cryptenroll
+  changed_when: true
+  no_log: true
+  when:
+    - enable_tpm_luks | bool
+    - tpm_luks_tpm_available | default(false)
+    - tpm_luks_is_luks.rc == 0
+    - not (tpm_luks_token_present | default(false))
+  notify:
+    - Reload systemd manager
+    - Update initramfs
+
+- name: Report TPM auto-unlock status
+  ansible.builtin.debug:
+    msg: >-
+      TPM2 auto-unlock is configured for {{ tpm_luks_device }}.
+      Header backup: {{ tpm_luks_header_backup_file if tpm_luks_header_backup_enabled else 'disabled' }}.
+      Existing TPM token present: {{ tpm_luks_token_present | default(false) }}.
+  when:
+    - enable_tpm_luks | bool
+    - tpm_luks_tpm_available | default(false)
+    - tpm_luks_is_luks.rc == 0

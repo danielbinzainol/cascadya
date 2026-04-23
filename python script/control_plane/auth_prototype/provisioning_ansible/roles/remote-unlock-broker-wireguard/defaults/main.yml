@@ -1,0 +1,13 @@
+---
+remote_unlock_broker_wireguard_interface: wg0
+remote_unlock_broker_wireguard_address: 10.30.0.1/24
+remote_unlock_broker_wireguard_listen_port: 51820
+remote_unlock_broker_wireguard_private_key_path: /etc/wireguard/server.key
+remote_unlock_broker_wireguard_public_key_path: /etc/wireguard/server.pub
+remote_unlock_broker_wireguard_config_path: >-
+  /etc/wireguard/{{ remote_unlock_broker_wireguard_interface }}.conf
+remote_unlock_broker_wireguard_required_packages:
+  - wireguard-tools
+remote_unlock_broker_wireguard_peer_public_key: ""
+remote_unlock_broker_wireguard_peer_allowed_ips:
+  - 10.30.0.10/32

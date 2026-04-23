@@ -1,0 +1,184 @@
+---
+- name: Assert the remote unlock transport mode is supported
+  ansible.builtin.assert:
+    that:
+      - remote_unlock_transport_mode in ['wireguard', 'direct']
+    fail_msg: >-
+      Unsupported remote unlock transport mode: {{ remote_unlock_transport_mode }}.
+      Use `wireguard` for the canonical workflow or `direct` only for legacy diagnostics.
+
+- name: Check WireGuard service status
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - "wg-quick@{{ remote_unlock_wg_interface }}.service"
+  register: remote_unlock_wg_status
+  changed_when: false
+  failed_when: remote_unlock_wg_status.rc != 0
+  when: remote_unlock_transport_mode == "wireguard"
+
+- name: Read the route to the broker host over WireGuard
+  ansible.builtin.command:
+    argv:
+      - ip
+      - route
+      - get
+      - >-
+        {{
+          remote_unlock_broker_url
+          | regex_replace('^https?://', '')
+          | regex_replace('/.*$', '')
+          | regex_replace(':.*$', '')
+        }}
+  register: remote_unlock_broker_route
+  changed_when: false
+  when: remote_unlock_transport_mode == "wireguard"
+
+- name: Check the configured management interface
+  ansible.builtin.command:
+    argv:
+      - ip
+      - -brief
+      - addr
+      - show
+      - "{{ remote_unlock_management_interface }}"
+  register: remote_unlock_management_interface_status
+  changed_when: false
+  when: remote_unlock_management_interface | length > 0
+
+- name: Check the configured uplink interface
+  ansible.builtin.command:
+    argv:
+      - ip
+      - -brief
+      - addr
+      - show
+      - "{{ remote_unlock_uplink_interface }}"
+  register: remote_unlock_uplink_interface_status
+  changed_when: false
+  when: remote_unlock_uplink_interface | length > 0
+
+- name: Dry-run the remote unlock flow
+  ansible.builtin.command:
+    argv:
+      - "{{ remote_unlock_script_path }}"
+      - --dry-run
+  register: remote_unlock_dry_run
+  changed_when: false
+  when: remote_unlock_validate_dry_run | bool
+
+- name: Check /data mount state
+  ansible.builtin.command:
+    argv:
+      - findmnt
+      - "{{ remote_unlock_mountpoint }}"
+  register: remote_unlock_findmnt_data
+  changed_when: false
+  failed_when: remote_unlock_findmnt_data.rc != 0
+  when: remote_unlock_validate_expect_data_mounted | bool
+
+- name: Check Mender artifact state
+  ansible.builtin.shell: |
+    set -o pipefail
+    if command -v mender-update >/dev/null 2>&1; then
+      mender-update show-artifact
+    elif command -v mender >/dev/null 2>&1; then
+      mender show-artifact
+    else
+      echo "mender CLI unavailable" >&2
+      exit 127
+    fi
+  args:
+    executable: /bin/bash
+  register: remote_unlock_mender_artifact
+  changed_when: false
+  failed_when: >-
+    remote_unlock_validate_require_mender_artifact | bool
+    and remote_unlock_mender_artifact.rc != 0
+
+- name: Check WireGuard runtime
+  ansible.builtin.command:
+    argv:
+      - wg
+      - show
+      - "{{ remote_unlock_wg_interface }}"
+  register: remote_unlock_wg_show
+  changed_when: false
+  when: remote_unlock_transport_mode == "wireguard"
+
+- name: Check WireGuard latest handshakes
+  ansible.builtin.command:
+    argv:
+      - wg
+      - show
+      - "{{ remote_unlock_wg_interface }}"
+      - latest-handshakes
+  register: remote_unlock_wg_latest_handshakes
+  changed_when: false
+  when: remote_unlock_transport_mode == "wireguard"
+
+- name: Collect remote unlock journal
+  ansible.builtin.command:
+    argv:
+      - journalctl
+      - -u
+      - "{{ remote_unlock_systemd_unit_name }}"
+      - -n
+      - "50"
+      - --no-pager
+  register: remote_unlock_journal
+  changed_when: false
+
+- name: Persist the active remote unlock transport mode
+  ansible.builtin.copy:
+    dest: "{{ remote_unlock_active_mode_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+    content: "{{ remote_unlock_transport_mode }}\n"
+
+- name: Persist the remote unlock validation state
+  ansible.builtin.copy:
+    dest: "{{ remote_unlock_validate_state_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+    content: |
+      {{
+        {
+          "validated_at": ansible_date_time.iso8601,
+          "validate_success": true,
+          "boot_path_proven": false,
+          "transport_mode": remote_unlock_transport_mode,
+          "broker_url": remote_unlock_broker_url,
+          "dry_run": remote_unlock_validate_dry_run | bool,
+          "wireguard_service": remote_unlock_wg_status.stdout | default('not required in direct mode'),
+          "wireguard_route": remote_unlock_broker_route.stdout | default('not required in direct mode'),
+          "wireguard_latest_handshakes": remote_unlock_wg_latest_handshakes.stdout | default('not required in direct mode'),
+          "management_interface": remote_unlock_management_interface_status.stdout | default('not set'),
+          "uplink_interface": remote_unlock_uplink_interface_status.stdout | default('not set')
+        } | to_nice_json
+      }}
+
+- name: Report remote unlock validation summary
+  ansible.builtin.debug:
+    msg:
+      - "WireGuard status: {{ remote_unlock_wg_status.stdout | default('not required in direct mode') }}"
+      - "Transport mode: {{ remote_unlock_transport_mode }}"
+      - "Management interface: {{ remote_unlock_management_interface_status.stdout | default('not set') }}"
+      - "Uplink interface: {{ remote_unlock_uplink_interface_status.stdout | default('not set') }}"
+      - "Dry-run status: {{ (remote_unlock_dry_run.stdout | default('skipped')) }}"
+      - "findmnt /data: {{ remote_unlock_findmnt_data.stdout | default('not checked during dry-run') }}"
+      - >-
+        Mender artifact:
+        {{ remote_unlock_mender_artifact.stdout | default('') | trim
+           if (remote_unlock_mender_artifact.rc | default(1)) == 0
+           else ('unavailable (' ~ (remote_unlock_mender_artifact.stderr | default('unknown error') | trim) ~ ')') }}
+      - "WireGuard route to broker: {{ remote_unlock_broker_route.stdout | default('not required in direct mode') }}"
+      - "WireGuard runtime: {{ remote_unlock_wg_show.stdout | default('not required in direct mode') }}"
+      - >-
+        WireGuard latest handshakes:
+        {{ remote_unlock_wg_latest_handshakes.stdout | default('not required in direct mode') }}
+      - "Validation state file: {{ remote_unlock_validate_state_path }}"
+      - "Boot-path proof: not yet established automatically; this remains a separate post-cutover reboot milestone"

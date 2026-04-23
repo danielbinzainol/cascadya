@@ -1,0 +1,136 @@
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
+prometheus.remote_write "mimir" {
+  external_labels = {
+    source            = "monitoring-vm",
+    node              = "{{ monitoring_metrics_instance_name | default(inventory_hostname, true) }}",
+    role              = "monitoring",
+    retention_profile = "{{ monitoring_retention_profile }}",
+    tenant            = "{{ monitoring_metrics_tenant_label }}",
+  }
+
+  endpoint {
+    url  = "{{ alloy_remote_write_url }}"
+    name = "mimir"
+{% if alloy_remote_write_tenant | default('', true) | trim %}
+    headers = {
+      "X-Scope-OrgID" = "{{ alloy_remote_write_tenant }}",
+    }
+{% endif %}
+  }
+}
+
+{% if alloy_scrape_remote_node_exporters and (alloy_remote_node_exporter_targets | default([]) | length > 0) %}
+discovery.relabel "remote_node_exporters" {
+  targets = [
+{% for target in alloy_remote_node_exporter_targets %}
+    {
+      "__address__"       = "{{ target.address }}:{{ target.port | default(alloy_remote_node_exporter_port) }}",
+      "job"               = "node-exporter",
+      "instance"          = "{{ target.instance | default(target.name ~ ':' ~ (target.port | default(alloy_remote_node_exporter_port) | string)) }}",
+      "source"            = "{{ target.source | default(alloy_remote_metrics_source) }}",
+      "node"              = "{{ target.node | default(target.name) }}",
+      "role"              = "{{ target.role | default(alloy_remote_metrics_role) }}",
+      "site"              = "{{ target.site | default(alloy_remote_metrics_site) }}",
+      "retention_profile" = "{{ target.retention_profile | default(monitoring_retention_profile) }}",
+      "tenant"            = "{{ target.tenant | default(monitoring_metrics_tenant_label) }}",
+    },
+{% endfor %}
+  ]
+}
+
+prometheus.scrape "remote_node_exporters" {
+  targets         = discovery.relabel.remote_node_exporters.output
+  forward_to      = [prometheus.remote_write.mimir.receiver]
+  scrape_interval = "{{ alloy_scrape_interval }}"
+  scrape_timeout  = "{{ alloy_scrape_timeout }}"
+}
+{% endif %}
+
+{% if alloy_collect_local_system_metrics %}
+prometheus.exporter.unix "local_system" {
+  include_exporter_metrics = false
+  rootfs_path              = "/rootfs"
+  procfs_path              = "/host/proc"
+  sysfs_path               = "/host/sys"
+  udev_data_path           = "/host/run/udev/data"
+}
+
+discovery.relabel "local_system" {
+  targets = prometheus.exporter.unix.local_system.targets
+
+  rule {
+    target_label = "instance"
+    replacement  = "{{ monitoring_metrics_instance_name | default(inventory_hostname, true) }}:9100"
+  }
+
+  rule {
+    target_label = "job"
+    replacement  = "node-exporter"
+  }
+}
+
+prometheus.scrape "local_system" {
+  targets         = discovery.relabel.local_system.output
+  forward_to      = [prometheus.remote_write.mimir.receiver]
+  scrape_interval = "{{ alloy_scrape_interval }}"
+  scrape_timeout  = "{{ alloy_scrape_timeout }}"
+}
+{% endif %}
+
+{% if alloy_scrape_local_node_exporter %}
+discovery.relabel "local_node_exporter" {
+  targets = [
+    {
+      "__address__" = "{{ alloy_local_node_exporter_target }}",
+    },
+  ]
+
+  rule {
+    target_label = "instance"
+    replacement  = "{{ monitoring_metrics_instance_name | default(inventory_hostname, true) }}:9100"
+  }
+
+  rule {
+    target_label = "job"
+    replacement  = "node-exporter"
+  }
+}
+
+prometheus.scrape "local_node_exporter" {
+  targets         = discovery.relabel.local_node_exporter.output
+  forward_to      = [prometheus.remote_write.mimir.receiver]
+  scrape_interval = "{{ alloy_scrape_interval }}"
+  scrape_timeout  = "{{ alloy_scrape_timeout }}"
+}
+{% endif %}
+
+{% if monitoring_enable_cadvisor and alloy_scrape_local_cadvisor %}
+discovery.relabel "local_cadvisor" {
+  targets = [
+    {
+      "__address__" = "cadvisor:8080",
+    },
+  ]
+
+  rule {
+    target_label = "instance"
+    replacement  = "{{ monitoring_metrics_instance_name | default(inventory_hostname, true) }}:8080"
+  }
+
+  rule {
+    target_label = "job"
+    replacement  = "cadvisor"
+  }
+}
+
+prometheus.scrape "local_cadvisor" {
+  targets         = discovery.relabel.local_cadvisor.output
+  forward_to      = [prometheus.remote_write.mimir.receiver]
+  scrape_interval = "{{ alloy_scrape_interval }}"
+  scrape_timeout  = "{{ alloy_scrape_timeout }}"
+}
+{% endif %}

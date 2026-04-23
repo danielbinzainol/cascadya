@@ -1,0 +1,31 @@
+{
+  "realm": "{{ vault_vm_keycloak_realm_name }}",
+  "enabled": true,
+  "displayName": "{{ vault_vm_keycloak_realm_display_name }}",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "rememberMe": true,
+  "clients": [
+{% for client in vault_vm_keycloak_clients %}
+    {
+      "clientId": "{{ client.client_id }}",
+      "name": "{{ client.client_name | default(client.client_id) }}",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": {{ ((client.access_type | default('confidential')) == 'public') | to_json }},
+      "secret": "{{ client.client_secret | default('') }}",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "redirectUris": {{ client.redirect_uris | default([]) | to_json }},
+      "webOrigins": {{ client.web_origins | default([]) | to_json }},
+      "attributes": {
+        "post.logout.redirect.uris": {{ (client.post_logout_redirect_uris | default([]) | first | default('')) | to_json }}
+      }
+    }{% if not loop.last %},{% endif %}
+{% endfor %}
+  ]
+}

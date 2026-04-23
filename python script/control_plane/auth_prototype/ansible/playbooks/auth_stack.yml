@@ -1,0 +1,20 @@
+- name: Configure WireGuard DNS and forwarding
+  hosts: wireguard
+  become: true
+  roles:
+    - role: wireguard_dns
+      tags: ["wireguard"]
+
+- name: Configure private Wazuh dashboard access
+  hosts: wazuh
+  become: true
+  roles:
+    - role: wazuh_dashboard
+      tags: ["wazuh"]
+
+- name: Configure Control Panel auth stack
+  hosts: control_panel
+  become: true
+  roles:
+    - role: control_panel_auth
+      tags: ["control_panel"]

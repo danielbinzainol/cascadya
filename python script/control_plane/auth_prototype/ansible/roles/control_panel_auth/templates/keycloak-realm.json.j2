@@ -1,0 +1,32 @@
+{
+  "realm": "{{ keycloak_realm }}",
+  "enabled": true,
+  "displayName": "Cascadya Corp",
+  "loginWithEmailAllowed": true,
+  "registrationAllowed": false,
+  "resetPasswordAllowed": true,
+  "rememberMe": true,
+  "clients": [
+    {
+      "clientId": "{{ keycloak_client_id }}",
+      "name": "Control Panel Web",
+      "protocol": "openid-connect",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "{{ keycloak_client_secret }}",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "redirectUris": [
+        "https://{{ control_panel_domain }}/auth/callback"
+      ],
+      "webOrigins": [
+        "https://{{ control_panel_domain }}"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "https://{{ control_panel_domain }}/auth/login"
+      }
+    }
+  ]
+}

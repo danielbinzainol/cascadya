@@ -1,0 +1,356 @@
+---
+- name: Resolve the broker Vault token from vars or environment
+  ansible.builtin.set_fact:
+    remote_unlock_broker_vault_token_effective: >-
+      {{
+        remote_unlock_broker_vault_token
+        if (remote_unlock_broker_vault_token | length > 0)
+        else lookup('ansible.builtin.env', remote_unlock_broker_vault_token_env_var)
+      }}
+  no_log: true
+
+- name: Resolve the broker control-plane probe token from vars or environment
+  ansible.builtin.set_fact:
+    remote_unlock_broker_control_plane_probe_token_effective: >-
+      {{
+        remote_unlock_broker_control_plane_probe_token
+        if (remote_unlock_broker_control_plane_probe_token | length > 0)
+        else lookup('ansible.builtin.env', remote_unlock_broker_control_plane_probe_token_env_var)
+      }}
+  no_log: true
+
+- name: Assert broker deployment variables are set
+  ansible.builtin.assert:
+    that:
+      - remote_unlock_broker_enable | bool
+      - remote_unlock_broker_vault_addr | length > 0
+      - remote_unlock_broker_vault_token_effective | length > 0
+    fail_msg: >-
+      Set remote_unlock_broker_vault_addr and provide a Vault token via
+      remote_unlock_broker_vault_token or the
+      {{ remote_unlock_broker_vault_token_env_var }} environment variable
+      before deploying the remote unlock broker.
+
+- name: Assert broker control-plane probe variables are set when enabled
+  ansible.builtin.assert:
+    that:
+      - remote_unlock_broker_control_plane_probe_token_effective | length > 0
+      - remote_unlock_broker_control_plane_probe_nats_url | length > 0
+      - remote_unlock_broker_control_plane_probe_ca_cert_src | length > 0
+      - remote_unlock_broker_control_plane_probe_pki_mount | length > 0
+      - remote_unlock_broker_control_plane_probe_pki_role | length > 0
+      - remote_unlock_broker_control_plane_probe_cert_common_name | length > 0
+    fail_msg: >-
+      The safe control-plane probe requires a token, a local NATS URL, a
+      controller-side NATS server CA bundle, and Vault PKI parameters before
+      it can be exposed on the broker host.
+  when: remote_unlock_broker_control_plane_probe_enable | bool
+
+- name: Check Docker CLI availability on the broker host
+  ansible.builtin.command:
+    argv:
+      - docker
+      - version
+      - --format
+      - "{{ '{{.Server.Version}}' }}"
+  register: remote_unlock_broker_docker_version
+  changed_when: false
+
+- name: Check Docker Compose plugin availability on the broker host
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - version
+  register: remote_unlock_broker_compose_version
+  changed_when: false
+  failed_when: false
+
+- name: Check docker-compose availability on the broker host
+  ansible.builtin.command:
+    argv:
+      - docker-compose
+      - version
+  register: remote_unlock_broker_legacy_compose_version
+  changed_when: false
+  failed_when: false
+
+- name: Select the available Docker Compose command
+  ansible.builtin.set_fact:
+    remote_unlock_broker_compose_cmd: >-
+      {{ ['docker', 'compose']
+         if remote_unlock_broker_compose_version.rc == 0
+         else ['docker-compose'] }}
+    remote_unlock_broker_compose_version_text: >-
+      {{ remote_unlock_broker_compose_version.stdout
+         if remote_unlock_broker_compose_version.rc == 0
+         else remote_unlock_broker_legacy_compose_version.stdout }}
+
+- name: Assert Docker Compose is available on the broker host
+  ansible.builtin.assert:
+    that:
+      - remote_unlock_broker_compose_version.rc == 0 or remote_unlock_broker_legacy_compose_version.rc == 0
+    fail_msg: >-
+      The broker host needs either the Docker Compose plugin (`docker compose`)
+      or the legacy `docker-compose` binary.
+
+- name: Ensure remote unlock broker directories exist
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    mode: "{{ item.mode }}"
+  loop:
+    - path: "{{ remote_unlock_broker_app_dir }}"
+      mode: "0755"
+    - path: "{{ remote_unlock_broker_cert_dir }}"
+      mode: "0700"
+
+- name: Check the controller-side NATS server CA bundle for the broker control-plane probe
+  ansible.builtin.stat:
+    path: "{{ remote_unlock_broker_control_plane_probe_ca_cert_src }}"
+  delegate_to: localhost
+  become: false
+  register: remote_unlock_broker_probe_ca_src_stat
+  when: remote_unlock_broker_control_plane_probe_enable | bool
+
+- name: Assert the controller-side NATS server CA bundle exists for the broker control-plane probe
+  ansible.builtin.assert:
+    that:
+      - remote_unlock_broker_probe_ca_src_stat.stat.exists
+      - remote_unlock_broker_probe_ca_src_stat.stat.isreg
+    fail_msg: >-
+      Missing controller-side NATS server CA bundle for the broker control-plane probe:
+      {{ remote_unlock_broker_control_plane_probe_ca_cert_src }}
+  when: remote_unlock_broker_control_plane_probe_enable | bool
+
+- name: Check the broker control-plane probe client credentials on the broker host
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ remote_unlock_broker_control_plane_probe_client_cert_path }}"
+    - "{{ remote_unlock_broker_control_plane_probe_client_key_path }}"
+  register: remote_unlock_broker_probe_bundle_stats
+  when: remote_unlock_broker_control_plane_probe_enable | bool
+
+- name: Compute whether the broker control-plane probe client credentials already exist
+  ansible.builtin.set_fact:
+    remote_unlock_broker_probe_bundle_complete: >-
+      {{
+        (
+          remote_unlock_broker_probe_bundle_stats.results
+          | map(attribute='stat.exists')
+          | select('equalto', true)
+          | list
+          | length
+        ) == 2
+      }}
+  when: remote_unlock_broker_control_plane_probe_enable | bool
+
+- name: Issue the broker control-plane probe client certificate from Vault PKI
+  ansible.builtin.uri:
+    url: >-
+      {{
+        remote_unlock_broker_vault_addr.rstrip('/')
+      }}/v1/{{ remote_unlock_broker_control_plane_probe_pki_mount }}/issue/{{ remote_unlock_broker_control_plane_probe_pki_role }}
+    method: POST
+    body_format: json
+    headers:
+      X-Vault-Token: "{{ remote_unlock_broker_vault_token_effective }}"
+    body:
+      common_name: "{{ remote_unlock_broker_control_plane_probe_cert_common_name }}"
+      ttl: "{{ remote_unlock_broker_control_plane_probe_cert_ttl }}"
+    return_content: true
+    status_code: 200
+  register: remote_unlock_broker_probe_issue
+  no_log: true
+  when:
+    - remote_unlock_broker_control_plane_probe_enable | bool
+    - not (remote_unlock_broker_probe_bundle_complete | default(false))
+
+- name: Write the broker control-plane probe client bundle
+  ansible.builtin.copy:
+    content: "{{ item.content }}"
+    dest: "{{ item.dest }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - dest: "{{ remote_unlock_broker_control_plane_probe_client_cert_path }}"
+      mode: "0644"
+      content: "{{ remote_unlock_broker_probe_issue.json.data.certificate }}"
+    - dest: "{{ remote_unlock_broker_control_plane_probe_client_key_path }}"
+      mode: "0600"
+      content: "{{ remote_unlock_broker_probe_issue.json.data.private_key }}"
+  register: remote_unlock_broker_probe_bundle_write
+  no_log: true
+  when:
+    - remote_unlock_broker_control_plane_probe_enable | bool
+    - not (remote_unlock_broker_probe_bundle_complete | default(false))
+
+- name: Copy the controller-side NATS server CA bundle to the broker host for the control-plane probe
+  ansible.builtin.copy:
+    src: "{{ remote_unlock_broker_control_plane_probe_ca_cert_src }}"
+    dest: "{{ remote_unlock_broker_control_plane_probe_ca_cert_path }}"
+    mode: "0644"
+  register: remote_unlock_broker_probe_ca_copy
+  when: remote_unlock_broker_control_plane_probe_enable | bool
+
+- name: Check remote unlock broker certificate bundle on the controller
+  ansible.builtin.stat:
+    path: "{{ remote_unlock_broker_cert_src_dir }}/{{ item.filename }}"
+  loop: "{{ remote_unlock_broker_cert_specs }}"
+  register: remote_unlock_broker_controller_bundle
+  delegate_to: localhost
+  become: false
+
+- name: Fail when the remote unlock broker certificate bundle is missing on the controller
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - (item.stat.size | default(0) | int) > 0
+    fail_msg: >-
+      Missing controller-side broker certificate file:
+      {{ item.stat.path | default(remote_unlock_broker_cert_src_dir ~ '/' ~ item.item.filename) }}
+  loop: "{{ remote_unlock_broker_controller_bundle.results }}"
+  loop_control:
+    label: "{{ item.item.filename }}"
+
+- name: Copy the remote unlock broker certificate bundle to the broker host
+  ansible.builtin.copy:
+    src: "{{ remote_unlock_broker_cert_src_dir }}/{{ item.filename }}"
+    dest: "{{ remote_unlock_broker_cert_dir }}/{{ item.filename }}"
+    mode: "{{ item.mode }}"
+  loop: "{{ remote_unlock_broker_cert_specs }}"
+  register: remote_unlock_broker_cert_bundle_copy
+
+- name: Deploy the remote unlock broker Python service
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/demo/remote_unlock_demo_broker.py"
+    dest: "{{ remote_unlock_broker_script_path }}"
+    mode: "0644"
+  register: remote_unlock_broker_script_copy
+
+- name: Deploy the shared NATS E2E helper used by the remote unlock broker
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../app/nats_e2e.py"
+    dest: "{{ remote_unlock_broker_nats_e2e_path }}"
+    mode: "0644"
+  register: remote_unlock_broker_nats_e2e_copy
+
+- name: Deploy the remote unlock broker Dockerfile
+  ansible.builtin.template:
+    src: Dockerfile.remote-unlock-broker.j2
+    dest: "{{ remote_unlock_broker_dockerfile_path }}"
+    mode: "0644"
+  register: remote_unlock_broker_dockerfile_template
+
+- name: Deploy the remote unlock broker environment file
+  ansible.builtin.template:
+    src: broker.env.j2
+    dest: "{{ remote_unlock_broker_env_path }}"
+    mode: "0600"
+  register: remote_unlock_broker_env_template
+
+- name: Deploy the remote unlock broker compose file
+  ansible.builtin.template:
+    src: docker-compose.remote-unlock-broker.yml.j2
+    dest: "{{ remote_unlock_broker_compose_path }}"
+    mode: "0644"
+  register: remote_unlock_broker_compose_template
+
+- name: Decide whether the remote unlock broker container must be recreated
+  ansible.builtin.set_fact:
+    remote_unlock_broker_force_recreate_effective: >-
+      {{
+         (remote_unlock_broker_force_recreate | default(false) | bool)
+         or (remote_unlock_broker_cert_bundle_copy.results | selectattr('changed') | list | length) > 0
+         or ((remote_unlock_broker_probe_bundle_write.results | default([])) | selectattr('changed') | list | length) > 0
+         or (((remote_unlock_broker_probe_ca_copy | default({})).changed) | default(false))
+         or remote_unlock_broker_script_copy.changed
+         or remote_unlock_broker_nats_e2e_copy.changed
+         or remote_unlock_broker_dockerfile_template.changed
+         or remote_unlock_broker_env_template.changed
+         or remote_unlock_broker_compose_template.changed
+      }}
+
+- name: Build and start the remote unlock broker
+  ansible.builtin.command:
+    argv: >-
+      {{
+        remote_unlock_broker_compose_cmd
+        + ['up', '-d', '--build']
+        + (['--force-recreate'] if remote_unlock_broker_force_recreate_effective else [])
+        + ['--remove-orphans']
+      }}
+  args:
+    chdir: "{{ remote_unlock_broker_app_dir }}"
+  register: remote_unlock_broker_compose_up
+  changed_when: >-
+    remote_unlock_broker_force_recreate_effective or
+    'Creating' in (remote_unlock_broker_compose_up.stdout | default('')) or
+    'Recreating' in (remote_unlock_broker_compose_up.stdout | default('')) or
+    'Starting' in (remote_unlock_broker_compose_up.stdout | default('')) or
+    'Building' in (remote_unlock_broker_compose_up.stdout | default('')) or
+    'Created' in (remote_unlock_broker_compose_up.stderr | default('')) or
+    'Started' in (remote_unlock_broker_compose_up.stderr | default(''))
+
+- name: Wait for the remote unlock broker TCP port
+  ansible.builtin.wait_for:
+    host: "{{ remote_unlock_broker_wait_host }}"
+    port: "{{ remote_unlock_broker_bind_port | int }}"
+    timeout: "{{ remote_unlock_broker_wait_timeout | int }}"
+    state: started
+
+- name: Wait for the control-plane probe TCP port
+  ansible.builtin.wait_for:
+    host: "{{ remote_unlock_broker_control_plane_probe_wait_host }}"
+    port: "{{ remote_unlock_broker_control_plane_probe_bind_port | int }}"
+    timeout: "{{ remote_unlock_broker_wait_timeout | int }}"
+    state: started
+  when: remote_unlock_broker_control_plane_probe_enable | bool
+
+- name: Capture remote unlock broker container state
+  ansible.builtin.command:
+    argv: "{{ remote_unlock_broker_compose_cmd + ['ps'] }}"
+  args:
+    chdir: "{{ remote_unlock_broker_app_dir }}"
+  register: remote_unlock_broker_compose_ps
+  changed_when: false
+
+- name: Report remote unlock broker deployment summary
+  ansible.builtin.debug:
+    msg:
+      - "Remote unlock broker app dir: {{ remote_unlock_broker_app_dir }}"
+      - "Remote unlock broker port: {{ remote_unlock_broker_bind_port }}"
+      - "Vault addr: {{ remote_unlock_broker_vault_addr }}"
+      - "Vault KV path: {{ remote_unlock_broker_vault_kv_mount }}/{{ remote_unlock_broker_vault_kv_prefix }}"
+      - >-
+        Vault token source:
+        {{ 'inventory/vars' if (remote_unlock_broker_vault_token | length > 0) else remote_unlock_broker_vault_token_env_var }}
+      - >-
+        Control-plane probe token source:
+        {{
+          (
+            'inventory/vars'
+            if (remote_unlock_broker_control_plane_probe_token | length > 0)
+            else remote_unlock_broker_control_plane_probe_token_env_var
+          )
+          if (remote_unlock_broker_control_plane_probe_enable | bool)
+          else 'disabled'
+        }}
+      - "Docker version: {{ remote_unlock_broker_docker_version.stdout }}"
+      - "Compose command: {{ remote_unlock_broker_compose_cmd | join(' ') }}"
+      - "Compose version: {{ remote_unlock_broker_compose_version_text }}"
+      - >-
+        Control-plane probe:
+        {{
+          'enabled on TCP ' ~ (remote_unlock_broker_control_plane_probe_bind_port | string)
+          if (remote_unlock_broker_control_plane_probe_enable | bool)
+          else 'disabled'
+        }}
+      - >-
+        Control-plane probe NATS CA:
+        {{
+          remote_unlock_broker_control_plane_probe_ca_cert_src
+          if (remote_unlock_broker_control_plane_probe_enable | bool)
+          else 'disabled'
+        }}
+      - "Compose status: {{ remote_unlock_broker_compose_ps.stdout_lines }}"

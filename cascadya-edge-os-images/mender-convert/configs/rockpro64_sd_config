@@ -1,0 +1,3 @@
+ROCKPRO64_CONFIG="rockpro64_sd"
+
+source configs/rockpro64_config

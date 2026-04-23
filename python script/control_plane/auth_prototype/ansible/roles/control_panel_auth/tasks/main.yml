@@ -1,0 +1,365 @@
+- name: Assert control panel repo is present
+  ansible.builtin.stat:
+    path: "{{ control_panel_repo_path }}/auth_prototype/app/main.py"
+  register: control_panel_repo_stat
+  tags: ["control_panel", "app"]
+
+- name: Stop if repo is missing on control panel VM
+  ansible.builtin.assert:
+    that:
+      - control_panel_repo_stat.stat.exists
+    fail_msg: "Le repo n'est pas present dans {{ control_panel_repo_path }}. Lance ./auth_prototype/ansible/sync-auth-prototype.sh avant d'appliquer ce playbook."
+  tags: ["control_panel", "app"]
+
+- name: Ensure control-panel directories exist
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default('ubuntu') }}"
+    group: "{{ item.group | default('ubuntu') }}"
+    mode: "{{ item.mode | default('0755') }}"
+  loop:
+    - { path: "/etc/control-panel", owner: "root", group: "root" }
+    - { path: "{{ control_panel_traefik_root }}", owner: "ubuntu", group: "ubuntu" }
+    - { path: "{{ control_panel_traefik_root }}/dynamic", owner: "ubuntu", group: "ubuntu" }
+    - { path: "{{ control_panel_traefik_root }}/certs", owner: "ubuntu", group: "ubuntu", mode: "0700" }
+    - { path: "{{ control_panel_traefik_root }}/logs", owner: "ubuntu", group: "ubuntu" }
+    - { path: "{{ control_panel_postgres_root }}", owner: "ubuntu", group: "ubuntu" }
+    - { path: "{{ control_panel_keycloak_root }}", owner: "ubuntu", group: "ubuntu" }
+    - { path: "{{ control_panel_keycloak_root }}/realm-import", owner: "ubuntu", group: "ubuntu" }
+  tags: ["control_panel", "app", "traefik", "postgres"]
+
+- name: Install Python runtime packages
+  ansible.builtin.apt:
+    name:
+      - ansible-core
+      - python3
+      - python3-venv
+      - python3-pip
+      - openssl
+      - sshpass
+      - wireguard-tools
+    state: present
+    update_cache: true
+  tags: ["control_panel", "app"]
+
+- name: Ensure provisioning runtime directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: ubuntu
+    group: ubuntu
+    mode: "0755"
+  loop:
+    - "{{ control_panel_repo_path }}/auth_prototype/generated"
+    - "{{ control_panel_repo_path }}/auth_prototype/provisioning_ansible/.tmp"
+  tags: ["control_panel", "app", "provisioning"]
+
+- name: Check vendored provisioning Galaxy requirements file
+  ansible.builtin.stat:
+    path: "{{ control_panel_repo_path }}/auth_prototype/provisioning_ansible/requirements.yml"
+  register: control_panel_provisioning_requirements_stat
+  tags: ["control_panel", "app", "provisioning"]
+
+- name: Install vendored provisioning role requirements
+  ansible.builtin.command:
+    cmd: >-
+      ansible-galaxy role install
+      -r {{ control_panel_repo_path }}/auth_prototype/provisioning_ansible/requirements.yml
+  changed_when: false
+  become_user: ubuntu
+  when:
+    - not ansible_check_mode
+    - control_panel_provisioning_requirements_stat.stat.exists
+  tags: ["control_panel", "app", "provisioning"]
+
+- name: Install vendored provisioning collection requirements
+  ansible.builtin.command:
+    cmd: >-
+      ansible-galaxy collection install
+      -r {{ control_panel_repo_path }}/auth_prototype/provisioning_ansible/requirements.yml
+  changed_when: false
+  become_user: ubuntu
+  when:
+    - not ansible_check_mode
+    - control_panel_provisioning_requirements_stat.stat.exists
+  tags: ["control_panel", "app", "provisioning"]
+
+- name: Deploy auth application environment
+  ansible.builtin.template:
+    src: auth-prototype.env.j2
+    dest: "{{ control_panel_auth_env_path }}"
+    owner: root
+    group: root
+    mode: "0640"
+  notify: restart control-panel-auth
+  tags: ["control_panel", "app"]
+
+- name: Deploy control-panel auth systemd unit
+  ansible.builtin.template:
+    src: control-panel-auth.service.j2
+    dest: /etc/systemd/system/control-panel-auth.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - reload systemd
+    - restart control-panel-auth
+  tags: ["control_panel", "app"]
+
+- name: Deploy control-panel route service
+  ansible.builtin.template:
+    src: control-panel-wireguard-route.service.j2
+    dest: /etc/systemd/system/control-panel-wireguard-route.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - reload systemd
+    - restart control-panel-wireguard-route
+  tags: ["control_panel", "routing"]
+
+- name: Deploy Traefik compose file
+  ansible.builtin.template:
+    src: traefik-docker-compose.yml.j2
+    dest: "{{ control_panel_traefik_root }}/docker-compose.yml"
+    owner: ubuntu
+    group: ubuntu
+    mode: "0644"
+  tags: ["control_panel", "traefik"]
+
+- name: Deploy Traefik static config
+  ansible.builtin.template:
+    src: traefik.yml.j2
+    dest: "{{ control_panel_traefik_root }}/traefik.yml"
+    owner: ubuntu
+    group: ubuntu
+    mode: "0644"
+  tags: ["control_panel", "traefik"]
+
+- name: Deploy Traefik dynamic config
+  ansible.builtin.template:
+    src: control-panel.yml.j2
+    dest: "{{ control_panel_traefik_root }}/dynamic/control-panel.yml"
+    owner: ubuntu
+    group: ubuntu
+    mode: "0644"
+  tags: ["control_panel", "traefik"]
+
+- name: Generate Traefik private key if missing
+  ansible.builtin.command:
+    cmd: "openssl genrsa -out {{ control_panel_traefik_root }}/certs/{{ item }}.key 2048"
+    creates: "{{ control_panel_traefik_root }}/certs/{{ item }}.key"
+  loop:
+    - "{{ control_panel_domain }}"
+    - "{{ keycloak_domain }}"
+  tags: ["control_panel", "traefik", "tls"]
+
+- name: Generate self-signed certificate if missing
+  ansible.builtin.command:
+    cmd: >-
+      openssl req -x509 -new
+      -key {{ control_panel_traefik_root }}/certs/{{ item }}.key
+      -out {{ control_panel_traefik_root }}/certs/{{ item }}.crt
+      -days 365
+      -subj /CN={{ item }}
+      -addext subjectAltName=DNS:{{ item }}
+    creates: "{{ control_panel_traefik_root }}/certs/{{ item }}.crt"
+  loop:
+    - "{{ control_panel_domain }}"
+    - "{{ keycloak_domain }}"
+  tags: ["control_panel", "traefik", "tls"]
+
+- name: Fix Traefik certificate permissions
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    owner: ubuntu
+    group: ubuntu
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ control_panel_traefik_root }}/certs/{{ control_panel_domain }}.key", mode: "0600" }
+    - { path: "{{ control_panel_traefik_root }}/certs/{{ control_panel_domain }}.crt", mode: "0644" }
+    - { path: "{{ control_panel_traefik_root }}/certs/{{ keycloak_domain }}.key", mode: "0600" }
+    - { path: "{{ control_panel_traefik_root }}/certs/{{ keycloak_domain }}.crt", mode: "0644" }
+  tags: ["control_panel", "traefik", "tls"]
+
+- name: Deploy postgres-fastapi compose file
+  ansible.builtin.template:
+    src: postgres-fastapi-docker-compose.yml.j2
+    dest: "{{ control_panel_postgres_root }}/docker-compose.yml"
+    owner: ubuntu
+    group: ubuntu
+    mode: "0644"
+  tags: ["control_panel", "postgres"]
+
+- name: Deploy postgres-fastapi env file
+  ansible.builtin.template:
+    src: postgres-fastapi.env.j2
+    dest: "{{ control_panel_postgres_root }}/postgres-fastapi.env"
+    owner: ubuntu
+    group: ubuntu
+    mode: "0600"
+  tags: ["control_panel", "postgres"]
+
+- name: Deploy keycloak compose file
+  ansible.builtin.template:
+    src: keycloak-docker-compose.yml.j2
+    dest: "{{ control_panel_keycloak_root }}/docker-compose.yml"
+    owner: ubuntu
+    group: ubuntu
+    mode: "0644"
+  tags: ["control_panel", "keycloak"]
+
+- name: Deploy keycloak env file
+  ansible.builtin.template:
+    src: keycloak.env.j2
+    dest: "{{ control_panel_keycloak_root }}/keycloak.env"
+    owner: ubuntu
+    group: ubuntu
+    mode: "0600"
+  tags: ["control_panel", "keycloak"]
+
+- name: Deploy keycloak realm import
+  ansible.builtin.template:
+    src: keycloak-realm.json.j2
+    dest: "{{ control_panel_keycloak_root }}/realm-import/{{ keycloak_realm }}-realm.json"
+    owner: ubuntu
+    group: ubuntu
+    mode: "0644"
+  tags: ["control_panel", "keycloak"]
+
+- name: Start postgres-fastapi container stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ control_panel_postgres_root }}"
+    state: present
+  when: not ansible_check_mode
+  tags: ["control_panel", "postgres"]
+
+- name: Wait for postgres-fastapi to listen
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ control_panel_database_port }}"
+    timeout: 60
+  when: not ansible_check_mode
+  tags: ["control_panel", "postgres"]
+
+- name: Start Traefik container stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ control_panel_traefik_root }}"
+    state: present
+  when: not ansible_check_mode
+  tags: ["control_panel", "traefik"]
+
+- name: Start Keycloak container stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ control_panel_keycloak_root }}"
+    state: present
+  when: not ansible_check_mode
+  tags: ["control_panel", "keycloak"]
+
+- name: Wait for Keycloak backchannel port
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ keycloak_http_port }}"
+    timeout: 120
+  when: not ansible_check_mode
+  tags: ["control_panel", "keycloak"]
+
+- name: Ensure application virtualenv dependencies are installed
+  ansible.builtin.pip:
+    requirements: "{{ control_panel_repo_path }}/auth_prototype/requirements.txt"
+    virtualenv: "{{ control_panel_venv_path }}"
+    virtualenv_command: python3 -m venv
+  become_user: ubuntu
+  tags: ["control_panel", "app"]
+
+- name: Apply Alembic migrations
+  ansible.builtin.command:
+    cmd: "{{ control_panel_venv_path }}/bin/alembic -c auth_prototype/alembic.ini upgrade head"
+    chdir: "{{ control_panel_repo_path }}"
+  environment:
+    AUTH_PROTO_DATABASE_URL: "postgresql+psycopg://{{ control_panel_database_user }}:{{ control_panel_database_password | urlencode }}@127.0.0.1:{{ control_panel_database_port }}/{{ control_panel_database_name }}"
+    AUTH_PROTO_DATABASE_ECHO: "{{ 'true' if control_panel_database_echo else 'false' }}"
+  become_user: ubuntu
+  when: not ansible_check_mode
+  tags: ["control_panel", "db_migrate"]
+
+- name: Seed RBAC catalog
+  ansible.builtin.command:
+    cmd: "{{ control_panel_venv_path }}/bin/python -m auth_prototype.scripts.seed_rbac"
+    chdir: "{{ control_panel_repo_path }}"
+  environment:
+    AUTH_PROTO_DATABASE_URL: "postgresql+psycopg://{{ control_panel_database_user }}:{{ control_panel_database_password | urlencode }}@127.0.0.1:{{ control_panel_database_port }}/{{ control_panel_database_name }}"
+    AUTH_PROTO_DATABASE_ECHO: "{{ 'true' if control_panel_database_echo else 'false' }}"
+  become_user: ubuntu
+  when: not ansible_check_mode
+  tags: ["control_panel", "db_seed"]
+
+- name: Ensure route service is enabled and running
+  ansible.builtin.systemd:
+    name: control-panel-wireguard-route.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: not ansible_check_mode
+  tags: ["control_panel", "routing"]
+
+- name: Ensure auth service is enabled and running
+  ansible.builtin.systemd:
+    name: control-panel-auth.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: not ansible_check_mode
+  tags: ["control_panel", "app"]
+
+- name: Wait for FastAPI to listen on localhost
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: 8000
+    timeout: 60
+  when: not ansible_check_mode
+  tags: ["control_panel", "verify"]
+
+- name: Verify app health endpoint
+  ansible.builtin.uri:
+    url: http://127.0.0.1:8000/healthz
+    return_content: true
+  register: control_panel_health
+  when: not ansible_check_mode
+  tags: ["control_panel", "verify"]
+
+- name: Verify app database health endpoint
+  ansible.builtin.uri:
+    url: http://127.0.0.1:8000/healthz/db
+    return_content: true
+  register: control_panel_health_db
+  when: not ansible_check_mode
+  tags: ["control_panel", "verify"]
+
+- name: Verify Keycloak realm endpoint
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ keycloak_http_port }}/realms/{{ keycloak_realm }}"
+    return_content: true
+  register: keycloak_realm_check
+  when: not ansible_check_mode
+  tags: ["control_panel", "verify"]
+
+- name: Verify route back to WireGuard subnet
+  ansible.builtin.command: "ip route get 10.8.0.2"
+  register: control_panel_route_check
+  changed_when: false
+  when: not ansible_check_mode
+  tags: ["control_panel", "verify"]
+
+- name: Assert health checks and route are correct
+  ansible.builtin.assert:
+    that:
+      - control_panel_health.json.status == "ok"
+      - control_panel_health_db.json.database == "ok"
+      - keycloak_realm_check.status == 200
+      - "'via ' ~ wireguard_private_ip in control_panel_route_check.stdout"
+      - "'dev ' ~ control_panel_private_interface in control_panel_route_check.stdout"
+    fail_msg: "Le control panel n'est pas dans l'etat attendu."
+  when: not ansible_check_mode
+  tags: ["control_panel", "verify"]

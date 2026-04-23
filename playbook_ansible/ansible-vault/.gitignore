@@ -1,0 +1,6 @@
+*.retry
+.ansible/
+
+inventory/hosts.yml
+inventory/group_vars/*.yml
+!inventory/group_vars/*.example.yml

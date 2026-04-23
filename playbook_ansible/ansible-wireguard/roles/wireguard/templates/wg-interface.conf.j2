@@ -1,0 +1,27 @@
+[Interface]
+Address = {{ item.address }}
+ListenPort = {{ item.listen_port }}
+PrivateKey = {{ item.private_key }}
+{% if item.mtu is defined %}
+MTU = {{ item.mtu }}
+{% endif %}
+
+{% for peer in item.peers | default([]) %}
+{% set peer_allowed_ips = peer.allowed_ips | default(([peer.address] if peer.address is defined else []) + (peer.routed_networks | default([]))) %}
+[Peer]
+{% if peer.name is defined %}
+# {{ peer.name }}
+{% endif %}
+PublicKey = {{ peer.public_key }}
+{% if peer.preshared_key is defined and peer.preshared_key | trim | length > 0 %}
+PresharedKey = {{ peer.preshared_key }}
+{% endif %}
+AllowedIPs = {{ peer_allowed_ips | join(', ') }}
+{% if peer.endpoint is defined and peer.endpoint | trim | length > 0 %}
+Endpoint = {{ peer.endpoint }}
+{% endif %}
+{% if peer.persistent_keepalive is defined %}
+PersistentKeepalive = {{ peer.persistent_keepalive }}
+{% endif %}
+
+{% endfor %}

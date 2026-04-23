@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ensure_chain() {
+  local table="$1"
+  local chain="$2"
+
+  if ! iptables -t "$table" -n -L "$chain" >/dev/null 2>&1; then
+    iptables -t "$table" -N "$chain"
+  fi
+}
+
+ensure_jump() {
+  local table="$1"
+  shift
+
+  if ! iptables -t "$table" -C "$@" >/dev/null 2>&1; then
+    iptables -t "$table" -A "$@"
+  fi
+}
+
+delete_rule_if_present() {
+  local table="$1"
+  shift
+
+  while iptables -t "$table" -C "$@" >/dev/null 2>&1; do
+    iptables -t "$table" -D "$@"
+  done
+}
+
+append_rule() {
+  local table="$1"
+  shift
+  iptables -t "$table" -A "$@"
+}
+
+ensure_chain filter WIREGUARD-FORWARD
+ensure_chain nat WIREGUARD-POSTROUTING
+ensure_jump filter FORWARD -j WIREGUARD-FORWARD
+ensure_jump nat POSTROUTING -j WIREGUARD-POSTROUTING
+
+iptables -t filter -F WIREGUARD-FORWARD
+iptables -t nat -F WIREGUARD-POSTROUTING
+
+{% if wireguard_cleanup_legacy_rules | bool %}
+{% for rule in wireguard_legacy_cleanup_rules %}
+delete_rule_if_present {{ rule.table | default('filter') }} {{ rule.chain }} {{ rule.rule }}
+{% endfor %}
+{% endif %}
+
+append_rule filter WIREGUARD-FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+
+{% for rule in wireguard_forward_rules %}
+append_rule filter WIREGUARD-FORWARD{% if rule.in_interface is defined %} -i {{ rule.in_interface }}{% endif %}{% if rule.out_interface is defined %} -o {{ rule.out_interface }}{% endif %}{% if rule.source is defined %} -s {{ rule.source }}{% endif %}{% if rule.destination is defined %} -d {{ rule.destination }}{% endif %}{% if rule.protocol is defined %} -p {{ rule.protocol }}{% endif %}{% if rule.destination_ports is defined %} -m multiport --dports {{ rule.destination_ports | join(',') }}{% endif %}{% if rule.states is defined and rule.states | length > 0 %} -m conntrack --ctstate {{ rule.states | join(',') }}{% endif %} -j {{ rule.action | default('ACCEPT') }}
+{% endfor %}
+
+{% for rule in wireguard_nat_rules %}
+append_rule nat WIREGUARD-POSTROUTING{% if rule.out_interface is defined %} -o {{ rule.out_interface }}{% endif %}{% if rule.source is defined %} -s {{ rule.source }}{% endif %}{% if rule.destination is defined %} -d {{ rule.destination }}{% endif %}{% if rule.protocol is defined %} -p {{ rule.protocol }}{% endif %}{% if rule.destination_ports is defined %} -m multiport --dports {{ rule.destination_ports | join(',') }}{% endif %} -j {{ rule.action | default('MASQUERADE') }}{% if (rule.action | default('MASQUERADE')) == 'SNAT' and rule.to_source is defined %} --to-source {{ rule.to_source }}{% endif %}
+{% endfor %}

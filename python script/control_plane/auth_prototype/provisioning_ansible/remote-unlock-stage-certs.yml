@@ -1,0 +1,13 @@
+---
+- name: Place boot-unlock certificates on Cascadya IPC
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    remote_unlock_enable: true
+    remote_unlock_phase: stage_certs
+
+  roles:
+    - role: remote-unlock
+

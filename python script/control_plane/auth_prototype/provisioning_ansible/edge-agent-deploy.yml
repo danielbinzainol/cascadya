@@ -1,0 +1,25 @@
+---
+- name: Deploy edge-agent telemetry services on Cascadya IPC
+  hosts: all
+  become: true
+  gather_facts: false
+
+  vars:
+    ansible_ssh_timeout: 30
+    edge_agent_wait_for_connection_timeout_seconds: 120
+    edge_agent_wait_for_connection_sleep_seconds: 5
+
+  pre_tasks:
+    - name: Wait for IPC SSH connectivity before edge-agent deployment
+      ansible.builtin.wait_for_connection:
+        timeout: "{{ edge_agent_wait_for_connection_timeout_seconds | int }}"
+        connect_timeout: "{{ ansible_ssh_timeout | int }}"
+        sleep: "{{ edge_agent_wait_for_connection_sleep_seconds | int }}"
+
+    - name: Gather minimal facts after SSH connectivity is stable
+      ansible.builtin.setup:
+        gather_subset:
+          - min
+
+  roles:
+    - role: edge-agent

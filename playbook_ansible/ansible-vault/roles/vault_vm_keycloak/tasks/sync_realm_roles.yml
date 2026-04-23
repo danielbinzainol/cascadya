@@ -1,0 +1,51 @@
+---
+- name: Authenticate kcadm against the local Keycloak admin API for realm role sync
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - "{{ vault_vm_keycloak_container_name }}"
+      - /opt/keycloak/bin/kcadm.sh
+      - config
+      - credentials
+      - --server
+      - "{{ vault_vm_keycloak_kcadm_server_url }}"
+      - --realm
+      - master
+      - --user
+      - "{{ vault_vm_keycloak_admin_username }}"
+      - --password
+      - "{{ vault_vm_keycloak_admin_password }}"
+  changed_when: false
+
+- name: Query existing Keycloak realm roles
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - "{{ vault_vm_keycloak_container_name }}"
+      - /opt/keycloak/bin/kcadm.sh
+      - get
+      - "roles/{{ item }}"
+      - -r
+      - "{{ vault_vm_keycloak_realm_name }}"
+  loop: "{{ vault_vm_keycloak_realm_roles }}"
+  register: vault_vm_keycloak_realm_role_queries
+  changed_when: false
+  failed_when: false
+
+- name: Create missing Keycloak realm roles
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - "{{ vault_vm_keycloak_container_name }}"
+      - /opt/keycloak/bin/kcadm.sh
+      - create
+      - roles
+      - -r
+      - "{{ vault_vm_keycloak_realm_name }}"
+      - -s
+      - "name={{ item.item }}"
+  loop: "{{ vault_vm_keycloak_realm_role_queries.results }}"
+  when: item.rc != 0

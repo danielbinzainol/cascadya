@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="card" style="margin-bottom: 18px;">
+    <div class="eyebrow">Session active</div>
+    <h1>Bienvenue {{ user.display_name }}</h1>
+    <p>
+        Le backend a etabli une session serveur apres authentification
+        {% if user.auth_source == 'oidc' %}OIDC via Keycloak{% else %}locale{% endif %}.
+        Toutes les routes HTML et API passent maintenant par le RBAC PostgreSQL.
+    </p>
+    <div class="stack">
+        <span class="badge">{{ user.username }}</span>
+        {% if user.email %}
+        <span class="badge">{{ user.email }}</span>
+        {% endif %}
+        {% if user.keycloak_uuid %}
+        <span class="badge">{{ user.keycloak_uuid }}</span>
+        {% endif %}
+        {% for role in user.roles %}
+        <span class="badge {% if role == 'admin' %}admin{% endif %}">{{ role }}</span>
+        {% endfor %}
+        {% if 'user:read' in user.permissions %}
+        <a class="button secondary" href="/ui/admin">Gerer les utilisateurs</a>
+        {% endif %}
+    </div>
+</section>
+
+<div class="grid two">
+    <section class="card">
+        <div class="eyebrow">Ce que ce lot 2 montre</div>
+        <ul class="list">
+            <li>Login OIDC configurable via Keycloak.</li>
+            <li>Creation JIT du compte miroir dans PostgreSQL.</li>
+            <li>Evaluation des permissions metier a chaque requete.</li>
+            <li>Premiere surface de gestion d'utilisateurs et de roles.</li>
+        </ul>
+    </section>
+
+    <section class="card">
+        <div class="eyebrow">Permissions effectives</div>
+        <div class="stack" style="margin-bottom: 16px;">
+            {% for permission in user.permissions %}
+            <span class="badge">{{ permission }}</span>
+            {% endfor %}
+        </div>
+        <div class="helper">
+            Source de session: <code>{{ user.auth_source }}</code><br>
+            Secure cookies: <code>{{ secure_cookies }}</code><br>
+            OIDC active: <code>{{ oidc_enabled }}</code>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="eyebrow">Actions rapides</div>
+        <ul class="list">
+            <li><code>GET /api/me</code> pour verifier la resolution du profil courant.</li>
+            <li><code>GET /api/admin/users</code> si ton compte a <code>user:read</code>.</li>
+            <li><code>GET /api/admin/audit</code> si ton compte a <code>audit:read</code>.</li>
+        </ul>
+    </section>
+</div>
+
+<section class="card" style="margin-top: 18px;">
+    <div class="eyebrow">Conseil de test</div>
+    <h2>Cas a valider une fois Keycloak branche</h2>
+    <pre>GET /api/me
+GET /api/admin/users
+GET /api/admin/audit
+GET /healthz
+GET /healthz/db</pre>
+</section>
+{% endblock %}

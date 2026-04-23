@@ -1,0 +1,141 @@
+---
+- name: Collect baseline proof commands for Cascadya IPC
+  hosts: all
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Collect block device layout
+      ansible.builtin.command:
+        argv:
+          - lsblk
+          - -o
+          - NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS
+      register: baseline_lsblk
+      changed_when: false
+
+    - name: Collect root mount
+      ansible.builtin.command:
+        argv:
+          - findmnt
+          - /
+      register: baseline_root_mount
+      changed_when: false
+
+    - name: Collect data mount
+      ansible.builtin.command:
+        argv:
+          - findmnt
+          - "{{ remote_unlock_mountpoint }}"
+      register: baseline_data_mount
+      changed_when: false
+      failed_when: false
+
+    - name: Read crypttab
+      ansible.builtin.command:
+        argv:
+          - cat
+          - /etc/crypttab
+      register: baseline_crypttab
+      changed_when: false
+
+    - name: Extract current crypttab entry for the data mapper
+      ansible.builtin.set_fact:
+        baseline_crypttab_line: >-
+          {{
+            baseline_crypttab.stdout.splitlines()
+            | select('match', '^' ~ remote_unlock_mapper_name ~ '\\s')
+            | list
+            | first
+            | default('')
+          }}
+
+    - name: Split current crypttab fields for baseline device discovery
+      ansible.builtin.set_fact:
+        baseline_crypttab_fields: "{{ baseline_crypttab_line.split() if baseline_crypttab_line else [] }}"
+
+    - name: Resolve the effective baseline LUKS source
+      ansible.builtin.set_fact:
+        baseline_luks_device_effective: >-
+          {%- set source = ((baseline_crypttab_fields[1]) if (baseline_crypttab_fields | length > 1) else remote_unlock_luks_device) | trim -%}
+          {%- if source is match('^UUID=.+') -%}
+          /dev/disk/by-uuid/{{ source | regex_replace('^UUID=', '') }}
+          {%- elif source is match('^PARTUUID=.+') -%}
+          /dev/disk/by-partuuid/{{ source | regex_replace('^PARTUUID=', '') }}
+          {%- elif source is match('^LABEL=.+') -%}
+          /dev/disk/by-label/{{ source | regex_replace('^LABEL=', '') }}
+          {%- elif source is match('^PARTLABEL=.+') -%}
+          /dev/disk/by-partlabel/{{ source | regex_replace('^PARTLABEL=', '') }}
+          {%- else -%}
+          {{ source }}
+          {%- endif -%}
+
+    - name: Read LUKS metadata
+      ansible.builtin.command:
+        argv:
+          - cryptsetup
+          - luksDump
+          - "{{ baseline_luks_device_effective }}"
+      register: baseline_luksdump
+      changed_when: false
+      failed_when: false
+
+    - name: Read TPM token entry from LUKS
+      ansible.builtin.shell: |
+        set -euo pipefail
+        cryptsetup luksDump {{ baseline_luks_device_effective | quote }} | grep -i systemd-tpm2 || true
+      args:
+        executable: /bin/bash
+      register: baseline_tpm_token
+      changed_when: false
+      failed_when: false
+
+    - name: Read PCR 7
+      ansible.builtin.command:
+        argv:
+          - tpm2_pcrread
+          - "sha256:{{ remote_unlock_pcrs }}"
+      register: baseline_pcrread
+      changed_when: false
+      failed_when: false
+
+    - name: Read Mender artifact
+      ansible.builtin.shell: |
+        set -euo pipefail
+        mender-update show-artifact || mender show-artifact
+      args:
+        executable: /bin/bash
+      register: baseline_mender_artifact
+      changed_when: false
+      failed_when: false
+
+    - name: Read WireGuard state
+      ansible.builtin.command:
+        argv:
+          - wg
+          - show
+      register: baseline_wg_show
+      changed_when: false
+      failed_when: false
+
+    - name: Print baseline summary
+      ansible.builtin.debug:
+        msg:
+          - "lsblk: {{ baseline_lsblk.stdout }}"
+          - "findmnt /: {{ baseline_root_mount.stdout }}"
+          - "findmnt /data: {{ baseline_data_mount.stdout | default('not mounted') }}"
+          - "crypttab: {{ baseline_crypttab.stdout }}"
+          - "Effective LUKS source: {{ baseline_luks_device_effective }}"
+          - >-
+            LUKS metadata:
+            {{ baseline_luksdump.stdout | default('unavailable') | trim
+               if (baseline_luksdump.rc | default(1)) == 0
+               else ('unavailable (' ~ (baseline_luksdump.msg | default(baseline_luksdump.stderr | default('unknown error')) | trim) ~ ')') }}
+          - "PCR 7: {{ baseline_pcrread.stdout | default('unavailable') }}"
+          - >-
+            TPM token:
+            {{ baseline_tpm_token.stdout | default('') | trim
+               if (baseline_tpm_token.rc | default(1)) == 0
+               else ('unavailable (' ~ (baseline_tpm_token.stderr | default('unknown error') | trim) ~ ')') }}
+          - "Mender artifact: {{ baseline_mender_artifact.stdout | default('unavailable') }}"
+          - "WireGuard: {{ baseline_wg_show.stdout | default('unavailable') }}"

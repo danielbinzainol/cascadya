@@ -1,0 +1,157 @@
+---
+- name: Validate Grafana HTTPS settings
+  assert:
+    that:
+      - monitoring_grafana_domain | trim | length > 0
+      - monitoring_grafana_public_base_url | trim | length > 0
+      - monitoring_grafana_tls_cert_path | trim | length > 0
+      - monitoring_grafana_tls_key_path | trim | length > 0
+    fail_msg: >-
+      Grafana HTTPS provisioning requires monitoring_grafana_domain,
+      monitoring_grafana_public_base_url, monitoring_grafana_tls_cert_path,
+      and monitoring_grafana_tls_key_path.
+  when: monitoring_grafana_tls_mode != 'disabled'
+
+- name: Validate infracontrol HTTPS settings
+  assert:
+    that:
+      - monitoring_infracontrol_domain | trim | length > 0
+      - monitoring_infracontrol_tls_cert_path | trim | length > 0
+      - monitoring_infracontrol_tls_key_path | trim | length > 0
+      - monitoring_infracontrol_frontend_proxy_pass | trim | length > 0
+      - monitoring_infracontrol_api_proxy_pass | trim | length > 0
+      - monitoring_infracontrol_health_proxy_pass | trim | length > 0
+    fail_msg: >-
+      Infracontrol HTTPS provisioning requires its domain, TLS asset paths,
+      and proxy upstream URLs to be defined.
+  when: monitoring_infracontrol_enabled
+
+- name: Install Grafana HTTPS dependencies
+  apt:
+    name:
+      - nginx
+      - openssl
+    state: present
+    update_cache: true
+  when:
+    - monitoring_grafana_tls_mode != 'disabled' or monitoring_infracontrol_enabled
+
+- name: Ensure Grafana certificate directory exists
+  file:
+    path: "{{ monitoring_grafana_tls_cert_path | dirname }}"
+    state: directory
+    mode: "0755"
+  when: monitoring_grafana_tls_mode != 'disabled'
+
+- name: Ensure infracontrol certificate directory exists
+  file:
+    path: "{{ monitoring_infracontrol_tls_cert_path | dirname }}"
+    state: directory
+    mode: "0755"
+  when: monitoring_infracontrol_enabled
+
+- name: Generate Grafana self-signed certificate
+  command:
+    argv:
+      - openssl
+      - req
+      - -x509
+      - -nodes
+      - -newkey
+      - rsa:2048
+      - -days
+      - "825"
+      - -keyout
+      - "{{ monitoring_grafana_tls_key_path }}"
+      - -out
+      - "{{ monitoring_grafana_tls_cert_path }}"
+      - -subj
+      - "/CN={{ monitoring_grafana_domain }}"
+  args:
+    creates: "{{ monitoring_grafana_tls_cert_path }}"
+  register: grafana_tls_cert_generated
+  when: monitoring_grafana_tls_mode == 'self_signed'
+
+- name: Generate infracontrol self-signed certificate
+  command:
+    argv:
+      - openssl
+      - req
+      - -x509
+      - -nodes
+      - -newkey
+      - rsa:2048
+      - -days
+      - "825"
+      - -keyout
+      - "{{ monitoring_infracontrol_tls_key_path }}"
+      - -out
+      - "{{ monitoring_infracontrol_tls_cert_path }}"
+      - -subj
+      - "/CN={{ monitoring_infracontrol_domain }}"
+  args:
+    creates: "{{ monitoring_infracontrol_tls_cert_path }}"
+  register: infracontrol_tls_cert_generated
+  when:
+    - monitoring_infracontrol_enabled
+    - monitoring_infracontrol_tls_mode == 'self_signed'
+
+- name: Ensure provided Grafana TLS certificate exists
+  stat:
+    path: "{{ monitoring_grafana_tls_cert_path }}"
+  register: grafana_tls_cert_stat
+  when: monitoring_grafana_tls_mode != 'disabled'
+
+- name: Ensure provided infracontrol TLS certificate exists
+  stat:
+    path: "{{ monitoring_infracontrol_tls_cert_path }}"
+  register: infracontrol_tls_cert_stat
+  when: monitoring_infracontrol_enabled
+
+- name: Ensure provided Grafana TLS key exists
+  stat:
+    path: "{{ monitoring_grafana_tls_key_path }}"
+  register: grafana_tls_key_stat
+  when: monitoring_grafana_tls_mode != 'disabled'
+
+- name: Ensure provided infracontrol TLS key exists
+  stat:
+    path: "{{ monitoring_infracontrol_tls_key_path }}"
+  register: infracontrol_tls_key_stat
+  when: monitoring_infracontrol_enabled
+
+- name: Assert Grafana TLS assets are present
+  assert:
+    that:
+      - grafana_tls_cert_stat.stat.exists
+      - grafana_tls_key_stat.stat.exists
+    fail_msg: >-
+      Grafana TLS assets are missing after certificate provisioning.
+      Check monitoring_grafana_tls_cert_path and monitoring_grafana_tls_key_path.
+  when: monitoring_grafana_tls_mode != 'disabled'
+
+- name: Assert infracontrol TLS assets are present
+  assert:
+    that:
+      - infracontrol_tls_cert_stat.stat.exists
+      - infracontrol_tls_key_stat.stat.exists
+    fail_msg: >-
+      Infracontrol TLS assets are missing after certificate provisioning.
+      Check monitoring_infracontrol_tls_cert_path and monitoring_infracontrol_tls_key_path.
+  when: monitoring_infracontrol_enabled
+
+- name: Secure Grafana TLS private key permissions
+  file:
+    path: "{{ monitoring_grafana_tls_key_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  when: monitoring_grafana_tls_mode != 'disabled'
+
+- name: Secure infracontrol TLS private key permissions
+  file:
+    path: "{{ monitoring_infracontrol_tls_key_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  when: monitoring_infracontrol_enabled

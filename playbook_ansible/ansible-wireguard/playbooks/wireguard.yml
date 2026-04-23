@@ -1,0 +1,7 @@
+---
+- name: Deploy WireGuard routing VM
+  hosts: wireguard
+  become: yes
+
+  roles:
+    - wireguard

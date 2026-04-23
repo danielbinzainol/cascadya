@@ -1,0 +1,10 @@
+---
+- name: Reload systemd manager
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart remote unlock service
+  ansible.builtin.systemd:
+    name: "{{ remote_unlock_systemd_unit_name }}"
+    state: restarted
+  when: remote_unlock_phase != "bootstrap"

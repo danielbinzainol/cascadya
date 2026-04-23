@@ -1,0 +1,37 @@
+---
+- name: Validate dnsmasq settings
+  ansible.builtin.assert:
+    that:
+      - wireguard_dns_interface | trim | length > 0
+      - wireguard_dns_ip | trim | length > 0
+    fail_msg: >-
+      wireguard_dns_interface and wireguard_dns_ip must be set when
+      wireguard_manage_dnsmasq=true.
+
+- name: Install dnsmasq package
+  ansible.builtin.apt:
+    name: "{{ wireguard_dns_package }}"
+    state: present
+
+- name: Ensure dnsmasq config directory exists
+  ansible.builtin.file:
+    path: "{{ wireguard_dns_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Render internal dnsmasq configuration
+  ansible.builtin.template:
+    src: cascadya-internal.conf.j2
+    dest: "{{ wireguard_dns_config_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart dnsmasq
+
+- name: Ensure dnsmasq is enabled and started
+  ansible.builtin.systemd:
+    name: "{{ wireguard_dns_service_name }}"
+    enabled: true
+    state: started

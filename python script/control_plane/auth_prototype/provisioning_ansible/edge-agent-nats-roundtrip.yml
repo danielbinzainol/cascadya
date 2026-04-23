@@ -1,0 +1,298 @@
+---
+- name: Verify edge-agent NATS request/reply telemetry through the broker
+  hosts: all
+  gather_facts: false
+
+  vars:
+    edge_agent_controller_bundle_root: "{{ playbook_dir }}/../generated/cascadya-edge-agent"
+    edge_agent_local_cert_dir: "{{ edge_agent_controller_bundle_root }}/{{ inventory_hostname }}"
+    edge_agent_local_nats_server_ca_cert_filename: "nats-ca.crt"
+    edge_agent_nats_probe_script: "{{ playbook_dir }}/scripts/nats_e2e_probe.py"
+    edge_agent_control_plane_python_candidate: "{{ playbook_dir }}/../../.venv/bin/python"
+    edge_agent_nats_probe_timeout_seconds: 10
+    edge_agent_nats_probe_retries: 6
+    edge_agent_nats_probe_retry_delay_seconds: 10
+    edge_agent_probe_nats_url_effective: "{{ edge_agent_probe_nats_url | default('', true) }}"
+    edge_agent_probe_broker_url_env_var_effective: >-
+      {{
+        edge_agent_probe_broker_url_env_var
+        | default('AUTH_PROTO_PROVISIONING_REMOTE_UNLOCK_BROKER_PROBE_URL_DEFAULT')
+      }}
+    edge_agent_probe_broker_token_env_var_effective: >-
+      {{
+        edge_agent_probe_broker_token_env_var
+        | default('AUTH_PROTO_PROVISIONING_REMOTE_UNLOCK_BROKER_PROBE_TOKEN')
+      }}
+    edge_agent_probe_broker_ca_cert_path: "{{ playbook_dir }}/.tmp/cascadya-remote-unlock/broker/ca.crt"
+    edge_agent_nats_monitoring_url_effective: >-
+      {{
+        edge_agent_probe_monitoring_url
+        | default(edge_agent_nats_monitoring_url | default('', true), true)
+      }}
+
+  tasks:
+    - name: Resolve broker-side edge-agent NATS probe settings from vars or environment
+      ansible.builtin.set_fact:
+        edge_agent_probe_broker_url_effective: >-
+          {{
+            edge_agent_probe_broker_url
+            if (edge_agent_probe_broker_url | default('') | length > 0)
+            else lookup('ansible.builtin.env', edge_agent_probe_broker_url_env_var_effective)
+          }}
+        edge_agent_probe_broker_token_effective: >-
+          {{
+            edge_agent_probe_broker_token
+            if (edge_agent_probe_broker_token | default('') | length > 0)
+            else lookup('ansible.builtin.env', edge_agent_probe_broker_token_env_var_effective)
+          }}
+      no_log: true
+
+    - name: Decide which control-plane edge-agent probe mode is configured
+      ansible.builtin.set_fact:
+        edge_agent_nats_probe_mode: >-
+          {{
+            'direct_nats'
+            if (edge_agent_probe_nats_url_effective | length) > 0
+            else (
+              'broker_proxy'
+              if (edge_agent_probe_broker_url_effective | length) > 0
+              else 'disabled'
+            )
+          }}
+
+    - name: Report skipped edge-agent NATS round-trip probe
+      ansible.builtin.debug:
+        msg:
+          - "Round-trip probe skipped for {{ inventory_hostname }}"
+          - >-
+            Configure edge_agent_probe_nats_url for direct NATS access, or
+            edge_agent_probe_broker_url for the safe broker-side control-plane probe,
+            to enable this step.
+      when: edge_agent_nats_probe_mode == 'disabled'
+
+    - name: Stop the play when no control-plane probe URL is configured
+      ansible.builtin.meta: end_play
+      when: edge_agent_nats_probe_mode == 'disabled'
+
+    - name: Assert direct edge-agent NATS probe variables are set
+      ansible.builtin.assert:
+        that:
+          - (edge_agent_probe_nats_url_effective | default('')) | length > 0
+          - (edge_agent_nats_ping_subject | default('')) | length > 0
+        fail_msg: >-
+          edge_agent_probe_nats_url et edge_agent_nats_ping_subject doivent etre definis
+          pour verifier le round-trip NATS edge-agent.
+      when: edge_agent_nats_probe_mode == 'direct_nats'
+
+    - name: Assert broker-side edge-agent NATS probe variables are set
+      ansible.builtin.assert:
+        that:
+          - (edge_agent_probe_broker_url_effective | default('')) | length > 0
+          - (edge_agent_probe_broker_token_effective | default('')) | length > 0
+          - (edge_agent_nats_ping_subject | default('')) | length > 0
+        fail_msg: >-
+          edge_agent_probe_broker_url, edge_agent_probe_broker_token et
+          edge_agent_nats_ping_subject doivent etre definis pour verifier
+          le round-trip NATS edge-agent via le broker.
+          En reprise manuelle, le token peut aussi venir de
+          {{ edge_agent_probe_broker_token_env_var_effective }}.
+      when: edge_agent_nats_probe_mode == 'broker_proxy'
+
+    - name: Check control-plane virtualenv Python candidate
+      ansible.builtin.stat:
+        path: "{{ edge_agent_control_plane_python_candidate }}"
+      delegate_to: localhost
+      become: false
+      register: edge_agent_control_plane_python_stat
+
+    - name: Select the Python interpreter used to run the probe on the controller
+      ansible.builtin.set_fact:
+        edge_agent_nats_probe_python: >-
+          {{
+            edge_agent_control_plane_python_candidate
+            if edge_agent_control_plane_python_stat.stat.exists
+            else ansible_playbook_python
+          }}
+
+    - name: Check the controller-side edge-agent NATS probe certificate bundle
+      ansible.builtin.stat:
+        path: "{{ edge_agent_local_cert_dir }}/{{ item }}"
+      delegate_to: localhost
+      become: false
+      loop:
+        - ca.crt
+        - client.crt
+        - client.key
+      register: edge_agent_probe_cert_stats
+      when: edge_agent_nats_probe_mode == 'direct_nats'
+
+    - name: Assert the controller-side edge-agent NATS probe certificate bundle exists
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.isreg
+        fail_msg: >-
+          Missing {{ item.item }} in {{ edge_agent_local_cert_dir }} on the Ansible controller.
+          Generate the edge-agent bundle before running the round-trip probe.
+      loop: "{{ edge_agent_probe_cert_stats.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: edge_agent_nats_probe_mode == 'direct_nats'
+
+    - name: Check the optional controller-side NATS server CA bundle for the direct probe
+      ansible.builtin.stat:
+        path: "{{ edge_agent_local_cert_dir }}/{{ edge_agent_local_nats_server_ca_cert_filename }}"
+      delegate_to: localhost
+      become: false
+      register: edge_agent_probe_nats_server_ca_stat
+      when: edge_agent_nats_probe_mode == 'direct_nats'
+
+    - name: Select the controller-side CA bundle used by the direct probe
+      ansible.builtin.set_fact:
+        edge_agent_probe_ca_cert_path_effective: >-
+          {{
+            (edge_agent_local_cert_dir ~ '/' ~ edge_agent_local_nats_server_ca_cert_filename)
+            if edge_agent_probe_nats_server_ca_stat.stat.exists
+            else (edge_agent_local_cert_dir ~ '/ca.crt')
+          }}
+      when: edge_agent_nats_probe_mode == 'direct_nats'
+
+    - name: Check the controller-side remote unlock broker CA bundle for the proxy probe
+      ansible.builtin.stat:
+        path: "{{ edge_agent_probe_broker_ca_cert_path }}"
+      delegate_to: localhost
+      become: false
+      register: edge_agent_probe_broker_ca_stat
+      when: edge_agent_nats_probe_mode == 'broker_proxy'
+
+    - name: Assert the controller-side remote unlock broker CA bundle exists for the proxy probe
+      ansible.builtin.assert:
+        that:
+          - edge_agent_probe_broker_ca_stat.stat.exists
+          - edge_agent_probe_broker_ca_stat.stat.isreg
+        fail_msg: >-
+          Missing broker CA bundle {{ edge_agent_probe_broker_ca_cert_path }} on the Ansible controller.
+          Generate the broker certificate bundle before running the round-trip proxy probe.
+      when: edge_agent_nats_probe_mode == 'broker_proxy'
+
+    - name: Build the controller-side edge-agent NATS probe command
+      ansible.builtin.set_fact:
+        edge_agent_nats_probe_command: >-
+          {{
+            (
+              [
+                edge_agent_nats_probe_python,
+                edge_agent_nats_probe_script,
+                '--asset-name',
+                inventory_hostname,
+                '--nats-url',
+                edge_agent_probe_nats_url_effective,
+                '--subject',
+                edge_agent_nats_ping_subject,
+                '--ca-cert',
+                edge_agent_probe_ca_cert_path_effective,
+                '--client-cert',
+                edge_agent_local_cert_dir ~ '/client.crt',
+                '--client-key',
+                edge_agent_local_cert_dir ~ '/client.key',
+                '--timeout-seconds',
+                edge_agent_nats_probe_timeout_seconds | string
+              ]
+              +
+              (
+                ['--monitoring-url', edge_agent_nats_monitoring_url_effective]
+                if (edge_agent_nats_monitoring_url_effective | length > 0)
+                else []
+              )
+            )
+            if edge_agent_nats_probe_mode == 'direct_nats'
+            else
+            [
+              edge_agent_nats_probe_python,
+              edge_agent_nats_probe_script,
+              '--asset-name',
+              inventory_hostname,
+              '--subject',
+              edge_agent_nats_ping_subject,
+              '--broker-probe-url',
+              edge_agent_probe_broker_url_effective,
+              '--broker-probe-token',
+              edge_agent_probe_broker_token_effective,
+              '--broker-probe-ca-cert',
+              edge_agent_probe_broker_ca_cert_path,
+              '--timeout-seconds',
+              edge_agent_nats_probe_timeout_seconds | string
+            ]
+          }}
+
+    - name: Run the controller-side edge-agent NATS round-trip probe
+      ansible.builtin.command:
+        argv: "{{ edge_agent_nats_probe_command }}"
+      delegate_to: localhost
+      become: false
+      register: edge_agent_nats_probe_result
+      changed_when: false
+      failed_when: false
+      until: edge_agent_nats_probe_result.rc == 0
+      retries: "{{ edge_agent_nats_probe_retries | int }}"
+      delay: "{{ edge_agent_nats_probe_retry_delay_seconds | int }}"
+
+    - name: Assert the controller-side edge-agent NATS round-trip probe completed successfully
+      ansible.builtin.assert:
+        that:
+          - edge_agent_nats_probe_result.rc == 0
+        fail_msg: >-
+          Edge-agent NATS round-trip probe failed for {{ inventory_hostname }}
+          after {{ edge_agent_nats_probe_retries }} attempt(s).
+          stderr={{ edge_agent_nats_probe_result.stderr | default('') }}
+          stdout={{ edge_agent_nats_probe_result.stdout | default('') }}
+
+    - name: Parse the edge-agent NATS probe JSON payload
+      ansible.builtin.set_fact:
+        edge_agent_nats_probe_summary: "{{ edge_agent_nats_probe_result.stdout | from_json }}"
+
+    - name: Assert the edge-agent NATS probe round-trip completed successfully
+      ansible.builtin.assert:
+        that:
+          - edge_agent_nats_probe_summary.summary.reply_status == 'ok'
+          - (edge_agent_nats_probe_summary.summary.round_trip_ms | float) >= 0
+        fail_msg: >-
+          Edge-agent NATS round-trip failed for {{ inventory_hostname }}:
+          {{ edge_agent_nats_probe_summary.reply_payload | default({}) }}
+
+    - name: Summarize the edge-agent NATS round-trip probe
+      ansible.builtin.debug:
+        msg:
+          - "Probe mode: {{ edge_agent_nats_probe_mode }}"
+          - >-
+            Broker proxy URL:
+            {{
+              edge_agent_probe_broker_url_effective
+              if edge_agent_nats_probe_mode == 'broker_proxy'
+              else 'n/a'
+            }}
+          - "Probe asset: {{ edge_agent_nats_probe_summary.asset_name }}"
+          - "NATS URL: {{ edge_agent_nats_probe_summary.nats_url }}"
+          - "Ping subject: {{ edge_agent_nats_probe_summary.subject }}"
+          - "Monitoring URL: {{ edge_agent_nats_probe_summary.monitoring_url | default('n/a') }}"
+          - "Temps total observe: {{ edge_agent_nats_probe_summary.summary.round_trip_ms }} ms"
+          - >-
+            Composant proxy:
+            {{ edge_agent_nats_probe_summary.summary.transport_overhead_ms | default('n/a') }} ms
+          - >-
+            Composant request/reply actif:
+            {{
+              edge_agent_nats_probe_summary.summary.active_request_reply_ms
+              | default(edge_agent_nats_probe_summary.summary.round_trip_ms)
+            }} ms
+          - >-
+            Canal probe /connz:
+            {{ edge_agent_nats_probe_summary.summary.probe_connection_rtt_ms | default('n/a') }} ms
+          - >-
+            Canal gateway_modbus /connz:
+            {{ edge_agent_nats_probe_summary.summary.gateway_connection_rtt_ms | default('n/a') }} ms
+          - >-
+            Canal telemetry_publisher /connz:
+            {{ edge_agent_nats_probe_summary.summary.telemetry_connection_rtt_ms | default('n/a') }} ms
+          - "Reply payload: {{ edge_agent_nats_probe_summary.reply_payload }}"
+          - "Monitoring warnings: {{ edge_agent_nats_probe_summary.warnings | default([]) }}"

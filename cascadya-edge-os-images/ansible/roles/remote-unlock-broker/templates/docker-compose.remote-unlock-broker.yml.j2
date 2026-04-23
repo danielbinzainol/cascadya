@@ -1,0 +1,36 @@
+services:
+  remote-unlock-broker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: "{{ remote_unlock_broker_container_name }}"
+    restart: unless-stopped
+    env_file:
+      - broker.env
+    command:
+      - --listen-host
+      - "{{ remote_unlock_broker_listen_host }}"
+      - --listen-port
+      - "{{ remote_unlock_broker_bind_port }}"
+      - --server-cert
+      - "/certs/server.crt"
+      - --server-key
+      - "/certs/server.key"
+      - --client-ca
+      - "/certs/ca.crt"
+      - --vault-addr
+      - "{{ remote_unlock_broker_vault_addr }}"
+      - --vault-kv-mount
+      - "{{ remote_unlock_broker_vault_kv_mount }}"
+      - --vault-kv-prefix
+      - "{{ remote_unlock_broker_vault_kv_prefix }}"
+      - --challenge-ttl-seconds
+      - "{{ remote_unlock_broker_challenge_ttl_seconds }}"
+    ports:
+{% if remote_unlock_broker_publish_address | length > 0 %}
+      - "{{ remote_unlock_broker_publish_address }}:{{ remote_unlock_broker_bind_port }}:{{ remote_unlock_broker_bind_port }}"
+{% else %}
+      - "{{ remote_unlock_broker_bind_port }}:{{ remote_unlock_broker_bind_port }}"
+{% endif %}
+    volumes:
+      - ./certs:/certs:ro

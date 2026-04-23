@@ -1,0 +1,148 @@
+control_panel_domain: control-panel.cascadya.internal
+control_panel_public_ip: 51.15.115.203
+control_panel_private_ip: 10.42.1.2
+control_panel_private_interface: ens6
+wazuh_dashboard_domain: wazuh.cascadya.internal
+wazuh_dashboard_private_ip: 10.42.1.7
+wazuh_dashboard_service_name: wazuh-dashboard
+wazuh_dashboard_config_path: /etc/wazuh-dashboard/opensearch_dashboards.yml
+wazuh_dashboard_cert_dir: /etc/wazuh-dashboard/certs
+wazuh_dashboard_server_host: 0.0.0.0
+wazuh_dashboard_server_port: 443
+grafana_domain: grafana.cascadya.internal
+grafana_private_ip: 10.42.1.4
+control_panel_wazuh_dashboard_url: "https://{{ wazuh_dashboard_domain }}"
+control_panel_wazuh_alerts_indexer_url: "https://{{ wazuh_dashboard_private_ip }}:9200"
+control_panel_wazuh_alerts_indexer_username: ""
+control_panel_wazuh_alerts_indexer_password: ""
+control_panel_wazuh_alerts_index_pattern: "wazuh-alerts-*"
+control_panel_wazuh_alerts_verify_tls: false
+control_panel_wazuh_alerts_ca_cert_path: ""
+control_panel_wazuh_alerts_page_size: 25
+control_panel_wazuh_alerts_min_rule_level: 3
+control_panel_wazuh_alerts_timeout_seconds: 10
+
+wireguard_public_ip: 51.15.84.140
+wireguard_private_ip: 10.42.1.5
+wireguard_dns_ip: 10.8.0.1
+wireguard_interface: wg0
+wireguard_interface_service: wg-quick@wg0.service
+wireguard_client_cidr: 10.8.0.0/24
+wireguard_private_network_cidr: 10.42.0.0/16
+wireguard_remote_lan_cidrs:
+  - 192.168.10.0/24
+wireguard_masquerade_private_to_remote_lans: true
+
+control_panel_repo_path: /opt/control-panel/control_plane
+control_panel_venv_path: /opt/control-panel/control_plane/.venv
+control_panel_auth_env_path: /etc/control-panel/auth-prototype.env
+control_panel_traefik_root: /opt/traefik-control-panel
+control_panel_postgres_root: /opt/control-panel/postgres-fastapi
+control_panel_keycloak_root: /opt/control-panel/keycloak
+
+control_panel_app_name: Control Plane Auth Prototype
+control_panel_session_secret: replace-with-a-long-random-secret
+control_panel_session_cookie_name: control_plane_session
+control_panel_secure_cookies: true
+control_panel_same_site: lax
+control_panel_session_ttl_seconds: 28800
+control_panel_trusted_hosts:
+  - control-panel.cascadya.internal
+  - 127.0.0.1
+  - localhost
+
+control_panel_database_name: control_panel
+control_panel_database_user: control_panel
+control_panel_database_password: change-me-before-apply
+control_panel_database_echo: false
+control_panel_database_port: 5433
+
+control_panel_oidc_enabled: true
+control_panel_enable_legacy_login: false
+control_panel_oidc_verify_tls: true
+control_panel_oidc_scopes:
+  - openid
+  - profile
+  - email
+control_panel_bootstrap_admin_emails: []
+control_panel_jit_default_roles: []
+control_panel_provisioning_playbook_root: /opt/control-panel/control_plane/auth_prototype/provisioning_ansible
+control_panel_provisioning_default_playbook: full-ipc-wireguard-onboarding
+control_panel_provisioning_execution_mode: mock
+control_panel_provisioning_ssh_key_path: ""
+control_panel_provisioning_ssh_key_passphrase: ""
+control_panel_provisioning_ssh_password: ""
+control_panel_provisioning_become_password: ""
+control_panel_provisioning_step_timeout_seconds: 900
+control_panel_provisioning_remote_unlock_broker_url_default: "https://10.30.0.1:8443"
+control_panel_provisioning_remote_unlock_broker_inventory_hostname: "broker-DEV1-S"
+control_panel_provisioning_remote_unlock_broker_ansible_host: "51.15.64.139"
+control_panel_provisioning_remote_unlock_broker_ansible_user: "ubuntu"
+control_panel_provisioning_remote_unlock_broker_ansible_port: 22
+control_panel_provisioning_remote_unlock_broker_ssh_key_path: ""
+control_panel_provisioning_remote_unlock_broker_ssh_key_passphrase: ""
+control_panel_provisioning_remote_unlock_broker_ssh_password: ""
+control_panel_provisioning_remote_unlock_broker_become_password: ""
+control_panel_provisioning_remote_unlock_broker_wireguard_interface: "wg0"
+control_panel_provisioning_remote_unlock_broker_wireguard_address: "10.30.0.1/24"
+control_panel_provisioning_remote_unlock_broker_wireguard_listen_port: 51820
+control_panel_provisioning_remote_unlock_broker_probe_port: 9443
+control_panel_provisioning_remote_unlock_broker_probe_url_default: "https://51.15.64.139:9443"
+control_panel_provisioning_remote_unlock_broker_probe_token: ""
+control_panel_provisioning_remote_unlock_broker_probe_ca_cert_path: ""
+control_panel_provisioning_remote_unlock_broker_vault_addr: "http://51.15.36.65:8200"
+control_panel_provisioning_remote_unlock_broker_vault_token: ""
+control_panel_provisioning_remote_unlock_broker_vault_kv_mount: "secret"
+control_panel_provisioning_remote_unlock_broker_vault_kv_prefix: "remote-unlock"
+control_panel_provisioning_wireguard_endpoint_default: "51.15.64.139:51820"
+control_panel_provisioning_wireguard_peer_public_key_default: ""
+control_panel_provisioning_auto_generate_wireguard_private_key: true
+control_panel_provisioning_wazuh_manager_address_default: "10.42.1.7"
+control_panel_provisioning_wazuh_manager_port_default: 1514
+control_panel_provisioning_wazuh_registration_server_default: "10.42.1.7"
+control_panel_provisioning_wazuh_registration_port_default: 1515
+control_panel_provisioning_wazuh_agent_group_default: ""
+control_panel_provisioning_wazuh_registration_password: ""
+control_panel_provisioning_wazuh_registration_ca_cert_path: ""
+control_panel_provisioning_ipc_alloy_mimir_remote_write_url_default: "http://10.42.1.4:9009/api/v1/push"
+control_panel_provisioning_ipc_alloy_scrape_interval_default: "15s"
+control_panel_provisioning_ipc_alloy_scrape_timeout_default: "10s"
+control_panel_provisioning_ipc_alloy_tenant_default: "classic"
+control_panel_provisioning_ipc_alloy_retention_profile_default: "classic"
+control_panel_provisioning_ipc_alloy_mimir_username: ""
+control_panel_provisioning_ipc_alloy_mimir_password: ""
+control_panel_provisioning_ipc_alloy_mimir_verify_tls: false
+control_panel_provisioning_ipc_alloy_mimir_ca_cert_path: ""
+
+keycloak_domain: auth.cascadya.internal
+keycloak_realm: cascadya-corp
+keycloak_http_port: 8081
+keycloak_db_name: keycloak
+keycloak_db_user: keycloak
+keycloak_db_password: change-me-before-apply
+keycloak_db_port: 5434
+keycloak_admin_username: admin
+keycloak_admin_password: change-me-before-apply
+keycloak_client_id: control-panel-web
+keycloak_client_secret: change-me-before-apply
+
+traefik_allowed_cidrs:
+  - 10.8.0.0/24
+  - 10.42.1.5/32
+  - 195.68.106.70/32
+
+wireguard_dns_upstreams:
+  - 1.1.1.1
+  - 1.0.0.1
+
+wireguard_dns_records:
+  - name: "{{ control_panel_domain }}"
+    address: "{{ control_panel_private_ip }}"
+  - name: auth.cascadya.internal
+    address: 10.42.2.4
+  - name: "{{ wazuh_dashboard_domain }}"
+    address: "{{ wazuh_dashboard_private_ip }}"
+  - name: "{{ grafana_domain }}"
+    address: "{{ grafana_private_ip }}"
+  - name: mosquitto.cascadya.internal
+    address: 10.42.1.6

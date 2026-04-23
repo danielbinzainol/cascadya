@@ -1,0 +1,126 @@
+---
+- name: Validate the Wazuh agent on a Cascadya IPC
+  hosts: all
+  become: false
+  gather_facts: true
+
+  vars:
+    wazuh_agent_service_name: "wazuh-agent"
+    wazuh_agent_package_name: "wazuh-agent"
+    wazuh_agent_registration_enabled: true
+    wazuh_agent_protocol: "tcp"
+    wazuh_agent_manager_port: 1514
+    wazuh_agent_registration_port: 1515
+    wazuh_agent_validation_timeout_seconds: 120
+    wazuh_agent_validation_delay_seconds: 5
+    wazuh_agent_registration_server_effective: >-
+      {{
+        (wazuh_agent_registration_server | default('', true) | trim)
+        or (wazuh_agent_manager_address | default('', true) | trim)
+      }}
+
+  tasks:
+    - name: Assert Wazuh manager address is configured
+      ansible.builtin.assert:
+        that:
+          - (wazuh_agent_manager_address | default('', true) | trim) | length > 0
+        fail_msg: "Renseigne wazuh_agent_manager_address avant de valider l'agent Wazuh."
+
+    - name: Collect package facts
+      ansible.builtin.package_facts:
+        manager: auto
+
+    - name: Assert the Wazuh agent package is installed
+      ansible.builtin.assert:
+        that:
+          - wazuh_agent_package_name in ansible_facts.packages
+        fail_msg: "Le paquet {{ wazuh_agent_package_name }} n'est pas installe sur l'IPC."
+
+    - name: Collect systemd service facts
+      ansible.builtin.service_facts:
+
+    - name: Assert the Wazuh systemd unit is present
+      ansible.builtin.assert:
+        that:
+          - (wazuh_agent_service_name ~ '.service') in ansible_facts.services
+        fail_msg: "L'unite systemd {{ wazuh_agent_service_name }}.service est absente sur l'IPC."
+
+    - name: Wait for Wazuh manager port from the IPC
+      ansible.builtin.wait_for:
+        host: "{{ wazuh_agent_manager_address }}"
+        port: "{{ wazuh_agent_manager_port | int }}"
+        timeout: 30
+        connect_timeout: 5
+      changed_when: false
+
+    - name: Wait for Wazuh enrollment port from the IPC
+      ansible.builtin.wait_for:
+        host: "{{ wazuh_agent_registration_server_effective }}"
+        port: "{{ wazuh_agent_registration_port | int }}"
+        timeout: 30
+        connect_timeout: 5
+      changed_when: false
+      when:
+        - wazuh_agent_registration_enabled | bool
+        - (wazuh_agent_registration_server_effective | trim) | length > 0
+
+    - name: Check Wazuh agent service active state
+      ansible.builtin.command:
+        cmd: "systemctl is-active {{ wazuh_agent_service_name }}"
+      register: wazuh_agent_service_active
+      changed_when: false
+      failed_when: false
+      retries: 6
+      delay: 5
+      until: wazuh_agent_service_active.stdout.strip() == "active"
+
+    - name: Check Wazuh agent service enabled state
+      ansible.builtin.command:
+        cmd: "systemctl is-enabled {{ wazuh_agent_service_name }}"
+      register: wazuh_agent_service_enabled
+      changed_when: false
+      failed_when: false
+
+    - name: Wait for an established Wazuh TCP session to the manager
+      ansible.builtin.shell: >-
+        ss -H -tn state established
+        | grep -F "{{ wazuh_agent_manager_address }}:{{ wazuh_agent_manager_port | int }}"
+      register: wazuh_agent_established_sessions
+      changed_when: false
+      failed_when: false
+      retries: "{{ (wazuh_agent_validation_timeout_seconds / wazuh_agent_validation_delay_seconds) | round(0, 'ceil') | int }}"
+      delay: "{{ wazuh_agent_validation_delay_seconds | int }}"
+      until:
+        - wazuh_agent_established_sessions.rc == 0
+        - (wazuh_agent_established_sessions.stdout | default('') | trim) | length > 0
+
+    - name: Read Wazuh agent journal tail
+      ansible.builtin.command:
+        cmd: "journalctl -u {{ wazuh_agent_service_name }} -n 25 --no-pager"
+      register: wazuh_agent_journal
+      changed_when: false
+      failed_when: false
+
+    - name: Assert Wazuh agent runtime state
+      ansible.builtin.assert:
+        that:
+          - wazuh_agent_service_active.rc == 0
+          - wazuh_agent_service_active.stdout.strip() == "active"
+          - wazuh_agent_service_enabled.rc == 0
+          - wazuh_agent_service_enabled.stdout.strip() == "enabled"
+          - wazuh_agent_established_sessions.rc == 0
+          - (wazuh_agent_established_sessions.stdout | default('') | trim) | length > 0
+        fail_msg: >-
+          L'agent Wazuh n'est pas encore correctement connecte.
+          service={{ wazuh_agent_service_active.stdout | default('unknown') }}
+          enabled={{ wazuh_agent_service_enabled.stdout | default('unknown') }}
+          sessions={{ wazuh_agent_established_sessions.stdout_lines | default([]) }}
+
+    - name: Summarize Wazuh agent validation
+      ansible.builtin.debug:
+        msg:
+          - "Manager Wazuh: {{ wazuh_agent_manager_address }}:{{ wazuh_agent_manager_port }}"
+          - "Serveur enrollment: {{ wazuh_agent_registration_server_effective }}:{{ wazuh_agent_registration_port }}"
+          - "Service wazuh-agent: {{ wazuh_agent_service_active.stdout | default('unknown') }}/{{ wazuh_agent_service_enabled.stdout | default('unknown') }}"
+          - "Sessions TCP manager: {{ wazuh_agent_established_sessions.stdout_lines | default([]) }}"
+          - "Journal wazuh-agent: {{ wazuh_agent_journal.stdout_lines | default([]) }}"

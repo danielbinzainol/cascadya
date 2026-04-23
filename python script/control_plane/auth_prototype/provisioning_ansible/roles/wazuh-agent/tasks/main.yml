@@ -1,0 +1,166 @@
+- name: Assert Wazuh manager address is configured
+  ansible.builtin.assert:
+    that:
+      - (wazuh_agent_manager_address | default('', true) | trim) | length > 0
+    fail_msg: "Renseigne wazuh_agent_manager_address avant de deployer l'agent Wazuh."
+
+- name: Compute effective Wazuh enrollment settings
+  ansible.builtin.set_fact:
+    wazuh_agent_registration_server_effective: >-
+      {{
+        (wazuh_agent_registration_server | default('', true) | trim)
+        or (wazuh_agent_manager_address | default('', true) | trim)
+      }}
+
+- name: Install Wazuh repository dependencies
+  ansible.builtin.apt:
+    name: "{{ wazuh_agent_apt_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when: wazuh_agent_manage_repo | bool
+
+- name: Ensure Wazuh keyring directory exists
+  ansible.builtin.file:
+    path: "{{ wazuh_agent_repo_keyring_path | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: wazuh_agent_manage_repo | bool
+
+- name: Download the Wazuh repository key
+  ansible.builtin.get_url:
+    url: "{{ wazuh_agent_repo_key_url }}"
+    dest: "{{ wazuh_agent_repo_key_tmp_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: wazuh_agent_manage_repo | bool
+
+- name: Check whether the Wazuh keyring already exists
+  ansible.builtin.stat:
+    path: "{{ wazuh_agent_repo_keyring_path }}"
+  register: wazuh_agent_keyring_stat
+  when: wazuh_agent_manage_repo | bool
+
+- name: Dearmor the Wazuh repository key
+  ansible.builtin.command:
+    cmd: >-
+      gpg --dearmor --yes --output {{ wazuh_agent_repo_keyring_path }}
+      {{ wazuh_agent_repo_key_tmp_path }}
+  when:
+    - wazuh_agent_manage_repo | bool
+    - not wazuh_agent_keyring_stat.stat.exists
+
+- name: Configure the Wazuh apt repository
+  ansible.builtin.apt_repository:
+    repo: "{{ wazuh_agent_repo }}"
+    filename: "{{ wazuh_agent_repo_filename }}"
+    state: present
+    update_cache: true
+  when: wazuh_agent_manage_repo | bool
+
+- name: Install the Wazuh agent package
+  ansible.builtin.apt:
+    name: "{{ wazuh_agent_package_name }}"
+    state: "{{ wazuh_agent_package_state }}"
+    update_cache: true
+    cache_valid_time: 3600
+  register: wazuh_agent_package_install
+
+- name: Hold the Wazuh agent package version
+  ansible.builtin.dpkg_selections:
+    name: "{{ wazuh_agent_package_name }}"
+    selection: hold
+  when: wazuh_agent_hold_package | bool
+
+- name: Copy the Wazuh enrollment CA certificate when provided
+  ansible.builtin.copy:
+    src: "{{ wazuh_agent_registration_ca_source_path }}"
+    dest: "{{ wazuh_agent_registration_ca_path }}"
+    owner: root
+    group: wazuh
+    mode: "0640"
+  when: (wazuh_agent_registration_ca_source_path | default('', true) | trim) | length > 0
+  register: wazuh_agent_registration_ca_copy
+
+- name: Check whether the Wazuh enrollment CA certificate exists locally
+  ansible.builtin.stat:
+    path: "{{ wazuh_agent_registration_ca_path }}"
+  register: wazuh_agent_registration_ca_stat
+
+- name: Render the managed Wazuh client configuration block
+  ansible.builtin.set_fact:
+    wazuh_agent_registration_ca_effective: >-
+      {{
+        wazuh_agent_registration_ca_path
+        if wazuh_agent_registration_ca_stat.stat.exists
+        else ''
+      }}
+    wazuh_agent_client_block: "{{ lookup('template', 'client-section.xml.j2') | trim }}"
+
+- name: Check the current Wazuh agent configuration file
+  ansible.builtin.slurp:
+    path: "{{ wazuh_agent_ossec_conf_path }}"
+  register: wazuh_agent_ossec_conf_current
+
+- name: Assert the default Wazuh agent configuration contains a client block
+  ansible.builtin.assert:
+    that:
+      - "'<client>' in (wazuh_agent_ossec_conf_current.content | b64decode)"
+      - "'</client>' in (wazuh_agent_ossec_conf_current.content | b64decode)"
+    fail_msg: >-
+      Le fichier {{ wazuh_agent_ossec_conf_path }} ne contient pas de bloc
+      <client> exploitable a remplacer.
+
+- name: Update the managed Wazuh client section
+  ansible.builtin.replace:
+    path: "{{ wazuh_agent_ossec_conf_path }}"
+    regexp: '(?s)<client>.*?</client>'
+    replace: "{{ wazuh_agent_client_block }}"
+  register: wazuh_agent_client_config
+
+- name: Write the Wazuh enrollment password file when configured
+  ansible.builtin.copy:
+    content: "{{ wazuh_agent_registration_password }}\n"
+    dest: "{{ wazuh_agent_registration_password_path }}"
+    owner: root
+    group: wazuh
+    mode: "0640"
+  no_log: true
+  when: (wazuh_agent_registration_password | default('', true) | trim) | length > 0
+  register: wazuh_agent_password_file
+
+- name: Remove the Wazuh enrollment password file when unused
+  ansible.builtin.file:
+    path: "{{ wazuh_agent_registration_password_path }}"
+    state: absent
+  when: (wazuh_agent_registration_password | default('', true) | trim) | length == 0
+  register: wazuh_agent_password_file_absent
+
+- name: Ensure the Wazuh agent service is enabled and started
+  ansible.builtin.systemd:
+    name: "{{ wazuh_agent_service_name }}"
+    enabled: true
+    state: started
+
+- name: Restart the Wazuh agent when configuration changed
+  ansible.builtin.systemd:
+    name: "{{ wazuh_agent_service_name }}"
+    state: restarted
+  when: >-
+    wazuh_agent_package_install is changed or
+    wazuh_agent_client_config is changed or
+    (
+      wazuh_agent_registration_ca_copy is defined and
+      wazuh_agent_registration_ca_copy is changed
+    ) or
+    (
+      wazuh_agent_password_file is defined and
+      wazuh_agent_password_file is changed
+    ) or
+    (
+      wazuh_agent_password_file_absent is defined and
+      wazuh_agent_password_file_absent is changed
+    )

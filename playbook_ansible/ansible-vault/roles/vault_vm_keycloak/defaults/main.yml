@@ -1,0 +1,73 @@
+---
+vault_vm_keycloak_manage_system_packages: true
+vault_vm_keycloak_manage_proxy: true
+vault_vm_keycloak_pull_images: true
+vault_vm_keycloak_manage_clients: true
+vault_vm_keycloak_manage_realm_roles: true
+vault_vm_keycloak_compose_command: docker compose
+
+vault_vm_keycloak_proxy_mode: nginx
+vault_vm_keycloak_replace_existing_nginx: false
+
+vault_vm_keycloak_runtime_root: /opt/keycloak-vault
+vault_vm_keycloak_compose_file: "{{ vault_vm_keycloak_runtime_root }}/docker-compose.yml"
+vault_vm_keycloak_realm_file: "{{ vault_vm_keycloak_runtime_root }}/import/realm.json"
+vault_vm_keycloak_client_sync_root: "{{ vault_vm_keycloak_runtime_root }}/client-sync"
+vault_vm_keycloak_client_sync_mount_path: /opt/keycloak/data/client-sync
+vault_vm_keycloak_tls_root: /etc/ssl/cascadya
+vault_vm_keycloak_tls_cert_path: "{{ vault_vm_keycloak_tls_root }}/{{ vault_vm_keycloak_domain }}.crt"
+vault_vm_keycloak_tls_key_path: "{{ vault_vm_keycloak_tls_root }}/{{ vault_vm_keycloak_domain }}.key"
+vault_vm_keycloak_postgres_container_uid: "70"
+vault_vm_keycloak_postgres_container_gid: "70"
+vault_vm_keycloak_container_uid: "1000"
+vault_vm_keycloak_container_gid: "0"
+vault_vm_keycloak_container_name: keycloak
+
+vault_vm_keycloak_domain: auth.cascadya.internal
+vault_vm_keycloak_public_base_url: "https://{{ vault_vm_keycloak_domain }}"
+vault_vm_keycloak_backchannel_base_url: ""
+vault_vm_keycloak_private_ip: ""
+vault_vm_keycloak_kcadm_server_url: "http://127.0.0.1:8080"
+
+vault_vm_keycloak_image: quay.io/keycloak/keycloak:26.1
+vault_vm_keycloak_postgres_image: postgres:16-alpine
+
+vault_vm_keycloak_realm_name: cascadya-corp
+vault_vm_keycloak_realm_display_name: Cascadya Corp
+vault_vm_keycloak_realm_import_enabled: false
+
+vault_vm_keycloak_admin_username: ""
+vault_vm_keycloak_admin_password: ""
+
+vault_vm_keycloak_db_name: keycloak
+vault_vm_keycloak_db_user: keycloak
+vault_vm_keycloak_db_password: ""
+
+vault_vm_keycloak_http_bind: 127.0.0.1
+vault_vm_keycloak_http_port: 8081
+vault_vm_keycloak_host_header_port: 443
+vault_vm_keycloak_health_retries: 30
+vault_vm_keycloak_health_delay: 5
+
+vault_vm_keycloak_tls_mode: self_signed
+vault_vm_keycloak_tls_self_signed_days: 825
+
+vault_vm_keycloak_allowed_cidrs:
+  - 127.0.0.1/32
+  - 10.8.0.0/24
+  - 10.42.0.0/16
+
+vault_vm_keycloak_nginx_site_name: "{{ vault_vm_keycloak_domain }}"
+
+vault_vm_keycloak_clients: []
+vault_vm_keycloak_realm_roles: []
+
+vault_vm_keycloak_apt_packages_common:
+  - ca-certificates
+  - curl
+  - openssl
+  - python3
+vault_vm_keycloak_apt_packages_docker:
+  - docker.io
+vault_vm_keycloak_apt_packages_nginx:
+  - nginx

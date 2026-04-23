@@ -1,0 +1,8 @@
+---
+- name: Deploy the remote unlock broker on the broker host
+  hosts: remote_unlock_broker
+  become: true
+  gather_facts: false
+
+  roles:
+    - role: remote-unlock-broker

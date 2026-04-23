@@ -1,0 +1,67 @@
+multitenancy_enabled: {{ mimir_enable_multitenancy | bool | lower }}
+
+server:
+  http_listen_port: 9009
+  log_level: info
+
+runtime_config:
+  file: /etc/mimir/runtime.yml
+  period: {{ mimir_runtime_config_reload_period | quote }}
+
+limits:
+  compactor_blocks_retention_period: {{ mimir_default_retention_period | quote }}
+
+blocks_storage:
+  backend: s3
+  bucket_store:
+    sync_dir: /data/tsdb-sync
+  tsdb:
+    dir: /data/tsdb
+  s3:
+    endpoint: ${MIMIR_S3_ENDPOINT}
+    region: ${MIMIR_S3_REGION}
+    bucket_name: ${MIMIR_S3_BUCKET_NAME}
+    access_key_id: ${MIMIR_S3_ACCESS_KEY_ID}
+    secret_access_key: ${MIMIR_S3_SECRET_ACCESS_KEY}
+    insecure: ${MIMIR_S3_INSECURE}
+    bucket_lookup_type: path
+
+compactor:
+  data_dir: /data/compactor
+  sharding_ring:
+    kvstore:
+      store: inmemory
+
+distributor:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+
+ingester:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+    replication_factor: 1
+
+ruler:
+  poll_interval: {{ mimir_ruler_poll_interval | quote }}
+  rule_path: {{ mimir_ruler_rule_path | quote }}
+
+ruler_storage:
+{% if mimir_enable_rule_provisioning %}
+  backend: local
+  local:
+    directory: /rules
+{% else %}
+  backend: filesystem
+  filesystem:
+    dir: /data/ruler
+{% endif %}
+
+store_gateway:
+  sharding_ring:
+    kvstore:
+      store: inmemory
+    replication_factor: 1

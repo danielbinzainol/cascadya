@@ -1,0 +1,45 @@
+---
+# roles/pki/tasks/edge.yml
+#
+# Objectif :
+# - Spécialiser l'issuance "client/device" (Vault role devices-role)
+# - Imposer un CN conforme à la policy Vault (FQDN + domaine cascadya.local)
+# - Déployer dans /opt/mosquitto/clients (et non /opt/mosquitto/ssl)
+# - Conserver la logique générique (staging/archivage/promotion) via broker.yml
+
+- name: Set defaults for edge/client issuance
+  set_fact:
+    # Vault
+    vault_pki_mount: "{{ vault_pki_mount | default('pki_int') }}"
+    vault_role: "{{ vault_role | default('devices-role') }}"
+
+    # CN conforme (enforce_hostnames + allowed_domains=cascadya.local)
+    leaf_common_name: "{{ leaf_common_name | default(inventory_hostname ~ '.cascadya.local') }}"
+
+    # SAN par défaut (vide)
+    leaf_alt_names: "{{ leaf_alt_names | default([]) }}"
+    leaf_ip_sans: "{{ leaf_ip_sans | default([]) }}"
+
+    # TTL
+    leaf_ttl: "{{ leaf_ttl | default('720h') }}"
+
+    # Chemins / nommage client
+    leaf_cert_dir: "{{ leaf_cert_dir | default('/opt/mosquitto/clients') }}"
+    leaf_cert_name: "{{ leaf_cert_name | default('client') }}"
+    leaf_ca_name: "{{ leaf_ca_name | default('ca-chain') }}"
+
+    # Rotation/archivage (si votre broker.yml les utilise)
+    renew_before_days: "{{ renew_before_days | default(10) }}"
+    archive_retention_days: "{{ archive_retention_days | default(90) }}"
+
+    # Permissions côté client : strictes
+    # - cert/chain lisibles
+    # - key root-only
+    leaf_owner: "{{ leaf_owner | default('root') }}"
+    leaf_key_group: "{{ leaf_key_group | default('root') }}"
+    leaf_cert_mode: "{{ leaf_cert_mode | default('0644') }}"
+    leaf_key_mode: "{{ leaf_key_mode | default('0600') }}"
+    leaf_fix_owner: "{{ leaf_fix_owner | default(true) }}"
+
+- name: Include generic PKI issue/deploy tasks (client)
+  import_tasks: broker.yml

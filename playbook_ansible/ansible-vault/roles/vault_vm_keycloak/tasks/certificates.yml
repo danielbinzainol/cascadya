@@ -1,0 +1,45 @@
+---
+- name: Ensure TLS directory exists
+  ansible.builtin.file:
+    path: "{{ vault_vm_keycloak_tls_root }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+  when: vault_vm_keycloak_tls_mode == 'self_signed'
+
+- name: Generate a self-signed certificate for the shared IdP
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - req
+      - -x509
+      - -nodes
+      - -newkey
+      - rsa:2048
+      - -days
+      - "{{ vault_vm_keycloak_tls_self_signed_days | string }}"
+      - -keyout
+      - "{{ vault_vm_keycloak_tls_key_path }}"
+      - -out
+      - "{{ vault_vm_keycloak_tls_cert_path }}"
+      - -subj
+      - "/CN={{ vault_vm_keycloak_domain }}"
+    creates: "{{ vault_vm_keycloak_tls_cert_path }}"
+  when: vault_vm_keycloak_tls_mode == 'self_signed'
+
+- name: Harden private key permissions
+  ansible.builtin.file:
+    path: "{{ vault_vm_keycloak_tls_key_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  when: vault_vm_keycloak_tls_mode == 'self_signed'
+
+- name: Validate externally managed certificate paths
+  ansible.builtin.assert:
+    that:
+      - vault_vm_keycloak_tls_cert_path | length > 0
+      - vault_vm_keycloak_tls_key_path | length > 0
+    fail_msg: "Set vault_vm_keycloak_tls_cert_path and vault_vm_keycloak_tls_key_path when tls_mode is not self_signed."
+  when: vault_vm_keycloak_tls_mode != 'self_signed'

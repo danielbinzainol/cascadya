@@ -1,0 +1,12 @@
+---
+- name: Cut over Cascadya IPC to remote unlock
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    remote_unlock_enable: true
+    remote_unlock_phase: cutover
+
+  roles:
+    - role: remote-unlock

@@ -1,0 +1,84 @@
+---
+remote_unlock_enable: false
+remote_unlock_phase: bootstrap
+
+remote_unlock_luks_device: /dev/sda4
+remote_unlock_mapper_name: cascadya_data
+remote_unlock_mountpoint: /data
+remote_unlock_transport_mode: wireguard
+remote_unlock_wg_interface: wg0
+remote_unlock_manage_wireguard: false
+remote_unlock_management_interface: ""
+remote_unlock_uplink_interface: ""
+remote_unlock_gateway_ip: ""
+remote_unlock_broker_url: https://unlock-broker.internal
+remote_unlock_challenge_path: /challenge
+remote_unlock_unlock_path: /unlock
+remote_unlock_timeout_seconds: 20
+remote_unlock_retry_interval_seconds: 5
+remote_unlock_boot_retry_window_seconds: 180
+remote_unlock_systemd_timeout_seconds: 300
+remote_unlock_systemd_restart_policy: on-failure
+remote_unlock_systemd_restart_seconds: 15
+remote_unlock_pcrs: "7"
+remote_unlock_device_id: "{{ inventory_hostname }}"
+remote_unlock_gateway_audit: true
+
+remote_unlock_cert_dir: /etc/cascadya/unlock
+remote_unlock_tpm_dir: "{{ remote_unlock_cert_dir }}/tpm"
+remote_unlock_env_path: "{{ remote_unlock_cert_dir }}/unlock.env"
+remote_unlock_script_path: /usr/local/libexec/cascadya-unlock-data.sh
+remote_unlock_manual_script_path: /usr/local/bin/unlock-data-manual
+remote_unlock_systemd_unit_name: cascadya-unlock-data.service
+remote_unlock_state_dir: /var/lib/cascadya/unlock
+remote_unlock_validate_state_path: "{{ remote_unlock_state_dir }}/last-validate.json"
+remote_unlock_cutover_state_path: "{{ remote_unlock_state_dir }}/cutover-ready.json"
+remote_unlock_boot_path_state_path: "{{ remote_unlock_state_dir }}/boot-path-proven.json"
+remote_unlock_active_mode_path: "{{ remote_unlock_state_dir }}/active-transport-mode"
+remote_unlock_crypttab_backup_path: >-
+  {{ remote_unlock_state_dir }}/crypttab-{{ remote_unlock_mapper_name }}.pre-remote-unlock
+remote_unlock_fstab_backup_path: >-
+  {{ remote_unlock_state_dir }}/fstab-{{ remote_unlock_mapper_name }}.pre-remote-unlock
+remote_unlock_allow_remove_local_tpm: false
+remote_unlock_validate_success_max_age_seconds: 86400
+
+remote_unlock_cert_src_dir: "{{ playbook_dir }}/.tmp/cascadya-remote-unlock"
+remote_unlock_local_cert_dir: "{{ remote_unlock_cert_src_dir }}/{{ inventory_hostname }}"
+remote_unlock_cert_specs:
+  - filename: ca.crt
+    mode: "0644"
+  - filename: client.crt
+    mode: "0644"
+  - filename: client.key
+    mode: "0600"
+
+remote_unlock_required_packages:
+  - curl
+  - cryptsetup
+  - tpm2-tools
+
+remote_unlock_manual_passphrase: ""
+remote_unlock_validate_dry_run: true
+remote_unlock_validate_expect_data_mounted: "{{ not (remote_unlock_validate_dry_run | bool) }}"
+remote_unlock_validate_require_mender_artifact: false
+
+remote_unlock_tpm_ak_handle: "0x81010020"
+remote_unlock_tpm_ak_alg: rsa
+remote_unlock_tpm_ak_hash_alg: sha256
+remote_unlock_tpm_ak_sign_alg: rsassa
+
+remote_unlock_crypttab_keyfile: none
+remote_unlock_crypttab_default_options:
+  - luks
+remote_unlock_crypttab_final_options:
+  - luks
+  - noauto
+  - nofail
+remote_unlock_fstab_default_source: "/dev/mapper/{{ remote_unlock_mapper_name }}"
+remote_unlock_fstab_default_fstype: ext4
+remote_unlock_fstab_default_options:
+  - defaults
+remote_unlock_fstab_final_options:
+  - noauto
+  - nofail
+remote_unlock_cutover_start_service_now: false

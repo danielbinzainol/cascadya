@@ -1,0 +1,8 @@
+---
+- name: Prepare broker WireGuard for remote unlock
+  hosts: remote_unlock_broker
+  become: true
+  gather_facts: false
+
+  roles:
+    - role: remote-unlock-broker-wireguard

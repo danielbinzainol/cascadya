@@ -1,0 +1,133 @@
+#! /usr/bin/env bash
+#
+# Copyright 2021 Northern.tech AS
+#
+#  Licensed under the Apache License, Version 2.0 (the "License");
+#  you may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+
+source modules/bootstrap.sh
+source modules/cliparser.sh
+source modules/decompressinput.sh
+source modules/testscfg.sh
+
+export MENDER_CONVERT_LOG_FILE=$(pwd)/${MENDER_CONVERT_LOG_FILE:-logs/convert.log}
+touch ${MENDER_CONVERT_LOG_FILE}
+chown -R --reference=. ${MENDER_CONVERT_LOG_FILE}
+
+###############################################################################
+#                Declaration of important variables for this file             #
+###############################################################################
+declare prepend_extraargs=""  # Default arguments passed to the sub-scripts
+declare append_extraargs=""   # Override arguments passed to the sub-scripts
+declare compression_type=""   # Detected input file compression, also applied to the output
+declare ocfile="./work/override_compression_config"
+declare disk_image=""         # Needed in parse_cli_options, and is passed to decompress_image()
+declare -a overlays=()        # [Dummy] Needed in parse_cli_options, not here
+declare -a configs=()         # [Dummy] Needed in parse_cli_options, not here
+MENDER_ARTIFACT_NAME="${MENDER_ARTIFACT_NAME:-}"     # Required env variable
+MENDER_CONVERT_VERSION="${MENDER_CONVERT_VERSION:-}" # Required env variable
+###############################################################################
+
+function show_help() {
+    cat << EOF
+mender-convert
+
+A tool that takes an existing embedded image (Debian, Ubuntu, Raspbian, etc)
+and converts it to a Mender image by restructuring partition table and adding
+necessary files.
+
+Usage: $0 COMMAND [options]
+
+Options:
+  -d, --disk-image            - Path to disk image to convert (Debian, Raspbian,
+                                Ubuntu, etc)
+  -o, --overlay               - Path to root filesystem overlay directory, you
+                                are able to provide this option multiple times
+  -c, --config                - Path to configuration file, you are able to
+                                provide this option multiple times
+  -v, --version               - output version information and exit
+  -h, --help                  - display this help and exit
+
+EOF
+}
+
+function show_version() {
+    echo "Version: ${MENDER_CONVERT_VERSION}"
+}
+
+function trap_exit() {
+    EXIT_CODE=$?
+    if [[ ${EXIT_CODE} -ne 0 && ${EXIT_CODE} -ne ${FATAL_EXIT_CODE} ]]; then
+        log_error "mender-convert failed"
+        [ -e ${MENDER_CONVERT_LOG_FILE} ] && tac ${MENDER_CONVERT_LOG_FILE} | sed '/DEBUG/q' | tac | sed 's/Running/When running/'
+        log_error "mender-convert exit code: ${EXIT_CODE}"
+    fi
+    sudo rm -rf work/*
+}
+
+function trap_term() {
+    echo "Program interrupted by user"
+}
+
+trap trap_term INT TERM
+trap trap_exit EXIT
+
+# We only handle a selection of the arguments here, the rest are passed on
+# to the sub-scripts.
+while (("$#")); do
+    case "$1" in
+        -h | --help)
+            show_help
+            exit 0
+            ;;
+        -v | --version)
+            show_version
+            exit 0
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+mender_convert_dir=$( cd "$( dirname "${BASH_SOURCE[0]}")"  && pwd)
+if [ "${mender_convert_dir}" != "${PWD}" ]; then
+    echo "You must execute mender-convert from the root directory: ${mender_convert_dir}"
+    exit 1
+fi
+
+if [ -z "${MENDER_ARTIFACT_NAME}" ]; then
+    echo "Sorry, it seems that you have not defined MENDER_ARTIFACT_NAME"
+    echo "You can do this with the following command:"
+    echo ""
+    echo -e "\tMENDER_ARTIFACT_NAME=\"release-1\" ./mender-convert"
+    exit 1
+fi
+
+testscfg_init
+
+parse_cli_options "$@"
+
+compression_type=$(compression_type "${disk_image}")
+if [[ ${compression_type} != "none" ]]; then
+    uncompressed_disk_image=$(decompress_image "${disk_image}" "./work")
+    append_extraargs="--disk-image ${uncompressed_disk_image}"
+fi
+echo "MENDER_COMPRESS_DISK_IMAGE=${compression_type}" > ${ocfile}
+prepend_extraargs="--config ${ocfile}"
+
+./mender-convert-extract ${prepend_extraargs} "$@" ${append_extraargs}
+./mender-convert-modify  ${prepend_extraargs} "$@" ${append_extraargs}
+./mender-convert-package ${prepend_extraargs} "$@" ${append_extraargs}
+
+echo "Output Artifacts and images can be found in the deploy directory:"
+ls -1 deploy/*

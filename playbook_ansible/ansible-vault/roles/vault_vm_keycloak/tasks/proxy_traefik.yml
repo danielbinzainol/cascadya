@@ -1,0 +1,7 @@
+---
+- name: Explain why Traefik mode is not activated in phase 1
+  ansible.builtin.fail:
+    msg: >-
+      This scaffold keeps phase 1 on nginx because the collected cartography shows nginx already
+      fronts Vault for secrets.cascadya.com on 80/443. Migrate that traffic first, then add a
+      dedicated Traefik ingress role or extend this role with Traefik templates.

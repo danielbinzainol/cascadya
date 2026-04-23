@@ -1,0 +1,3 @@
+{% for record in features_dns_records %}
+address=/{{ record.name }}/{{ record.address }}
+{% endfor %}

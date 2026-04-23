@@ -1,0 +1,14 @@
+- name: Configure WireGuard DNS for Cascadya Features
+  hosts: wireguard
+  become: true
+  roles:
+    - role: features_wireguard_dns
+      tags: ["wireguard", "dns"]
+
+- name: Deploy Cascadya Features HTTP service
+  hosts: features_web
+  become: true
+  roles:
+    - role: features_http
+      tags: ["features", "app", "traefik"]
+

@@ -1,0 +1,137 @@
+- name: Normalize broker WireGuard peer allowed IPs
+  ansible.builtin.set_fact:
+    remote_unlock_broker_wireguard_peer_allowed_ips_normalized: >-
+      {{
+        (remote_unlock_broker_wireguard_peer_allowed_ips | from_yaml)
+        if (remote_unlock_broker_wireguard_peer_allowed_ips is string)
+        else remote_unlock_broker_wireguard_peer_allowed_ips
+      }}
+
+- name: Assert broker WireGuard variables are set
+  ansible.builtin.assert:
+    that:
+      - remote_unlock_broker_wireguard_interface | length > 0
+      - remote_unlock_broker_wireguard_address | length > 0
+      - remote_unlock_broker_wireguard_listen_port | int > 0
+      - remote_unlock_broker_wireguard_private_key_path | length > 0
+      - remote_unlock_broker_wireguard_public_key_path | length > 0
+      - remote_unlock_broker_wireguard_peer_public_key | length > 0
+      - remote_unlock_broker_wireguard_peer_allowed_ips_normalized is sequence
+      - remote_unlock_broker_wireguard_peer_allowed_ips_normalized is not string
+      - (remote_unlock_broker_wireguard_peer_allowed_ips_normalized | length) > 0
+    fail_msg: >-
+      Set the broker WireGuard variables and provide
+      remote_unlock_broker_wireguard_peer_allowed_ips as a structured list.
+
+- name: Gather installed package facts for broker WireGuard
+  ansible.builtin.package_facts:
+    manager: auto
+
+- name: Resolve missing broker WireGuard packages
+  ansible.builtin.set_fact:
+    remote_unlock_broker_wireguard_missing_packages: >-
+      {{
+        remote_unlock_broker_wireguard_required_packages
+        | reject('in', ansible_facts.packages.keys() | list)
+        | list
+      }}
+
+- name: Install broker WireGuard packages
+  ansible.builtin.apt:
+    name: "{{ remote_unlock_broker_wireguard_missing_packages }}"
+    state: present
+    update_cache: false
+    cache_valid_time: 3600
+  when: (remote_unlock_broker_wireguard_missing_packages | length) > 0
+
+- name: Ensure the broker WireGuard directory exists
+  ansible.builtin.file:
+    path: /etc/wireguard
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Check the broker WireGuard private key
+  ansible.builtin.stat:
+    path: "{{ remote_unlock_broker_wireguard_private_key_path }}"
+  register: remote_unlock_broker_wireguard_private_key_stat
+
+- name: Check the broker WireGuard public key
+  ansible.builtin.stat:
+    path: "{{ remote_unlock_broker_wireguard_public_key_path }}"
+  register: remote_unlock_broker_wireguard_public_key_stat
+
+- name: Generate the broker WireGuard key pair when absent
+  ansible.builtin.shell: |
+    umask 077
+    wg genkey | tee "{{ remote_unlock_broker_wireguard_private_key_path }}" | wg pubkey > "{{ remote_unlock_broker_wireguard_public_key_path }}"
+  args:
+    executable: /bin/bash
+  when: not remote_unlock_broker_wireguard_private_key_stat.stat.exists
+
+- name: Derive the broker WireGuard public key from the private key when missing
+  ansible.builtin.shell: |
+    umask 077
+    wg pubkey < "{{ remote_unlock_broker_wireguard_private_key_path }}" > "{{ remote_unlock_broker_wireguard_public_key_path }}"
+  args:
+    executable: /bin/bash
+  when:
+    - remote_unlock_broker_wireguard_private_key_stat.stat.exists
+    - not remote_unlock_broker_wireguard_public_key_stat.stat.exists
+
+- name: Read the broker WireGuard private key material
+  ansible.builtin.slurp:
+    src: "{{ remote_unlock_broker_wireguard_private_key_path }}"
+  register: remote_unlock_broker_wireguard_private_key_raw
+  no_log: true
+
+- name: Read the broker WireGuard public key material
+  ansible.builtin.slurp:
+    src: "{{ remote_unlock_broker_wireguard_public_key_path }}"
+  register: remote_unlock_broker_wireguard_public_key_raw
+
+- name: Set broker WireGuard key facts
+  ansible.builtin.set_fact:
+    remote_unlock_broker_wireguard_private_key_material: >-
+      {{ remote_unlock_broker_wireguard_private_key_raw.content | b64decode | trim }}
+    remote_unlock_broker_wireguard_public_key_material: >-
+      {{ remote_unlock_broker_wireguard_public_key_raw.content | b64decode | trim }}
+  no_log: true
+
+- name: Render the broker WireGuard configuration
+  ansible.builtin.template:
+    src: wg0.conf.j2
+    dest: "{{ remote_unlock_broker_wireguard_config_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart broker WireGuard
+  no_log: true
+
+- name: Enable the broker WireGuard service
+  ansible.builtin.systemd:
+    name: "wg-quick@{{ remote_unlock_broker_wireguard_interface }}"
+    enabled: true
+    state: started
+
+- name: Capture broker WireGuard runtime
+  ansible.builtin.command:
+    argv:
+      - wg
+      - show
+      - "{{ remote_unlock_broker_wireguard_interface }}"
+  register: remote_unlock_broker_wireguard_runtime
+  changed_when: false
+
+- name: Report broker WireGuard summary
+  ansible.builtin.debug:
+    msg:
+      - "Broker WireGuard interface: {{ remote_unlock_broker_wireguard_interface }}"
+      - "Broker WireGuard address: {{ remote_unlock_broker_wireguard_address }}"
+      - "Broker WireGuard listen port: {{ remote_unlock_broker_wireguard_listen_port }}"
+      - "Broker WireGuard public key: {{ remote_unlock_broker_wireguard_public_key_material }}"
+      - >-
+        Broker WireGuard peer allowed IPs:
+        {{ remote_unlock_broker_wireguard_peer_allowed_ips_normalized | join(', ') }}
+      - "Broker WireGuard runtime: {{ remote_unlock_broker_wireguard_runtime.stdout_lines }}"

@@ -1,0 +1,281 @@
+---
+- name: Check that a successful validation marker exists before cutover
+  ansible.builtin.stat:
+    path: "{{ remote_unlock_validate_state_path }}"
+  register: remote_unlock_validate_state_stat
+
+- name: Assert remote unlock has been validated before cutover
+  ansible.builtin.assert:
+    that:
+      - remote_unlock_validate_state_stat.stat.exists
+      - (remote_unlock_validate_state_stat.stat.size | default(0) | int) > 0
+    fail_msg: >-
+      Missing validation marker at {{ remote_unlock_validate_state_path }}.
+      Run remote-unlock-validate.yml successfully before remote-unlock-cutover.yml.
+
+- name: Check if crypttab exists for remote unlock cutover
+  ansible.builtin.stat:
+    path: /etc/crypttab
+  register: remote_unlock_crypttab_stat
+
+- name: Check if fstab exists for remote unlock cutover
+  ansible.builtin.stat:
+    path: /etc/fstab
+  register: remote_unlock_fstab_stat
+
+- name: Read current crypttab
+  ansible.builtin.slurp:
+    src: /etc/crypttab
+  register: remote_unlock_crypttab_raw
+  when: remote_unlock_crypttab_stat.stat.exists
+
+- name: Read current fstab
+  ansible.builtin.slurp:
+    src: /etc/fstab
+  register: remote_unlock_fstab_raw
+  when: remote_unlock_fstab_stat.stat.exists
+
+- name: Extract current crypttab entry for the mapper
+  ansible.builtin.set_fact:
+    remote_unlock_crypttab_line: >-
+      {{
+        (
+          (
+            remote_unlock_crypttab_raw.content | default('') | b64decode
+          )
+        ).splitlines()
+        | select('match', '^' ~ remote_unlock_mapper_name ~ '\\s')
+        | list
+        | first
+        | default('')
+      }}
+  when: remote_unlock_crypttab_stat.stat.exists
+
+- name: Extract current fstab entry for the mountpoint
+  ansible.builtin.set_fact:
+    remote_unlock_fstab_line: >-
+      {{
+        (
+          (
+            remote_unlock_fstab_raw.content | default('') | b64decode
+          )
+        ).splitlines()
+        | reject('match', '^\\s*#')
+        | select('match', '^\\S+\\s+' ~ (remote_unlock_mountpoint | regex_escape) ~ '\\s')
+        | list
+        | first
+        | default('')
+      }}
+  when: remote_unlock_fstab_stat.stat.exists
+
+- name: Split crypttab fields for cutover
+  ansible.builtin.set_fact:
+    remote_unlock_crypttab_fields: >-
+      {{ remote_unlock_crypttab_line.split() if remote_unlock_crypttab_line else [] }}
+
+- name: Split fstab fields for cutover
+  ansible.builtin.set_fact:
+    remote_unlock_fstab_fields: >-
+      {{ remote_unlock_fstab_line.split() if remote_unlock_fstab_line else [] }}
+
+- name: Build desired crypttab fields for remote unlock cutover
+  ansible.builtin.set_fact:
+    remote_unlock_crypttab_source: >-
+      {{
+        (remote_unlock_crypttab_fields | length > 1)
+        | ternary(remote_unlock_crypttab_fields[1], remote_unlock_luks_device)
+      }}
+    remote_unlock_crypttab_keyfile_value: >-
+      {{
+        (remote_unlock_crypttab_fields | length > 2)
+        | ternary(remote_unlock_crypttab_fields[2], remote_unlock_crypttab_keyfile)
+      }}
+    remote_unlock_existing_crypttab_options: >-
+      {{
+        (
+          (
+            (remote_unlock_crypttab_fields | length > 3)
+            | ternary(
+              remote_unlock_crypttab_fields[3],
+              remote_unlock_crypttab_default_options | join(',')
+            )
+          ).split(',')
+        )
+        | map('trim')
+        | reject('equalto', '')
+        | reject('match', '^tpm2-device=')
+        | reject('match', '^tpm2-pcrs=')
+        | reject('equalto', 'noauto')
+        | reject('equalto', 'nofail')
+        | list
+      }}
+
+- name: Build desired fstab fields for remote unlock cutover
+  ansible.builtin.set_fact:
+    remote_unlock_fstab_source: >-
+      {{
+        (remote_unlock_fstab_fields | length > 0)
+        | ternary(remote_unlock_fstab_fields[0], remote_unlock_fstab_default_source)
+      }}
+    remote_unlock_fstab_fstype: >-
+      {{
+        (remote_unlock_fstab_fields | length > 2)
+        | ternary(remote_unlock_fstab_fields[2], remote_unlock_fstab_default_fstype)
+      }}
+    remote_unlock_existing_fstab_options: >-
+      {{
+        (
+          (
+            (remote_unlock_fstab_fields | length > 3)
+            | ternary(
+              remote_unlock_fstab_fields[3],
+              remote_unlock_fstab_default_options | join(',')
+            )
+          ).split(',')
+        )
+        | map('trim')
+        | reject('equalto', '')
+        | reject('equalto', 'auto')
+        | reject('equalto', 'noauto')
+        | reject('equalto', 'nofail')
+        | list
+      }}
+    remote_unlock_fstab_dump: >-
+      {{
+        (remote_unlock_fstab_fields | length > 4)
+        | ternary(remote_unlock_fstab_fields[4], '0')
+      }}
+    remote_unlock_fstab_passno: >-
+      {{
+        (remote_unlock_fstab_fields | length > 5)
+        | ternary(remote_unlock_fstab_fields[5], '2')
+      }}
+
+- name: Backup the current crypttab entry before remote unlock cutover
+  ansible.builtin.copy:
+    dest: "{{ remote_unlock_crypttab_backup_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+    force: false
+    content: "{{ remote_unlock_crypttab_line }}\n"
+  when: remote_unlock_crypttab_line | length > 0
+
+- name: Backup the current fstab entry before remote unlock cutover
+  ansible.builtin.copy:
+    dest: "{{ remote_unlock_fstab_backup_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+    force: false
+    content: "{{ remote_unlock_fstab_line }}\n"
+  when: remote_unlock_fstab_line | length > 0
+
+- name: Write remote unlock crypttab policy
+  ansible.builtin.lineinfile:
+    path: /etc/crypttab
+    regexp: "^{{ remote_unlock_mapper_name }}\\s"
+    line: >-
+      {{ remote_unlock_mapper_name }}
+      {{ remote_unlock_crypttab_source }}
+      {{ remote_unlock_crypttab_keyfile_value }}
+      {{
+        (
+          remote_unlock_existing_crypttab_options
+          + remote_unlock_crypttab_final_options
+        ) | reject('equalto', '') | unique | join(',')
+      }}
+    create: true
+  notify: Reload systemd manager
+
+- name: Write remote unlock fstab policy for the data mount
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    regexp: "^\\S+\\s+{{ remote_unlock_mountpoint | regex_escape }}\\s"
+    line: >-
+      {{ remote_unlock_fstab_source }}
+      {{ remote_unlock_mountpoint }}
+      {{ remote_unlock_fstab_fstype }}
+      {{
+        (
+          remote_unlock_existing_fstab_options
+          + remote_unlock_fstab_final_options
+        ) | reject('equalto', '') | unique | join(',')
+      }}
+      {{ remote_unlock_fstab_dump }}
+      {{ remote_unlock_fstab_passno }}
+    create: true
+
+- name: Persist the active remote unlock transport mode
+  ansible.builtin.copy:
+    dest: "{{ remote_unlock_active_mode_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+    content: "{{ remote_unlock_transport_mode }}\n"
+
+- name: Enable remote unlock service for subsequent boots
+  ansible.builtin.systemd:
+    name: "{{ remote_unlock_systemd_unit_name }}"
+    enabled: true
+    daemon_reload: true
+
+- name: Optionally start the remote unlock service immediately after cutover
+  ansible.builtin.systemd:
+    name: "{{ remote_unlock_systemd_unit_name }}"
+    state: started
+    daemon_reload: true
+  when: remote_unlock_cutover_start_service_now | bool
+
+- name: Clear stale remote unlock service failures when not starting immediately
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - reset-failed
+      - "{{ remote_unlock_systemd_unit_name }}"
+  changed_when: false
+  when: not (remote_unlock_cutover_start_service_now | bool)
+
+- name: Persist the remote unlock cutover-ready state
+  ansible.builtin.copy:
+    dest: "{{ remote_unlock_cutover_state_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+    content: |
+      {{
+        {
+          "cutover_ready_at": ansible_date_time.iso8601,
+          "transport_mode": remote_unlock_transport_mode,
+          "broker_url": remote_unlock_broker_url,
+          "validation_state_path": remote_unlock_validate_state_path,
+          "crypttab_backup_path": remote_unlock_crypttab_backup_path,
+          "fstab_backup_path": remote_unlock_fstab_backup_path,
+          "boot_path_proven": false
+        } | to_nice_json
+      }}
+
+- name: Capture remote unlock service state after cutover
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - show
+      - "{{ remote_unlock_systemd_unit_name }}"
+      - --property=UnitFileState
+      - --property=ActiveState
+      - --property=SubState
+  register: remote_unlock_cutover_status
+  changed_when: false
+  failed_when: false
+
+- name: Report remote unlock cutover
+  ansible.builtin.debug:
+    msg:
+      - "Remote unlock service enabled: {{ remote_unlock_systemd_unit_name }}"
+      - "Immediate service start attempted: {{ remote_unlock_cutover_start_service_now | bool }}"
+      - "Validation marker: {{ remote_unlock_validate_state_path }}"
+      - "Crypttab backup: {{ remote_unlock_crypttab_backup_path }}"
+      - "Fstab backup: {{ remote_unlock_fstab_backup_path }}"
+      - "Cutover state file: {{ remote_unlock_cutover_state_path }}"
+      - "Boot-path proof: not yet established; keep local TPM until the reboot validation milestone is done"
+      - "Service state:\n{{ remote_unlock_cutover_status.stdout_lines | join('\n') }}"

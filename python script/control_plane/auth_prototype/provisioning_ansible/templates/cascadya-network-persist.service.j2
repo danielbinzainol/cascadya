@@ -1,0 +1,32 @@
+{% set service_lines = [
+  '[Unit]',
+  'Description=Cascadya IPC network persistence',
+  'Wants=network-online.target',
+  'After=network-online.target',
+  '',
+  '[Service]',
+  'Type=oneshot',
+  'ExecStart=/usr/sbin/ip link set dev ' ~ (network_persist_management_interface_effective | trim) ~ ' up',
+  'ExecStart=/usr/sbin/ip addr replace ' ~ (network_persist_management_address_effective | trim) ~ ' dev ' ~ (network_persist_management_interface_effective | trim),
+  'ExecStart=/usr/sbin/ip link set dev ' ~ (network_persist_uplink_interface_effective | trim) ~ ' up',
+  'ExecStart=/usr/sbin/ip addr replace ' ~ (network_persist_uplink_address_effective | trim) ~ ' dev ' ~ (network_persist_uplink_interface_effective | trim),
+  'ExecStart=/usr/sbin/ip route replace default via ' ~ (network_persist_uplink_gateway_resolved | trim) ~ ' dev ' ~ (network_persist_uplink_interface_effective | trim),
+] %}
+{% for route in network_persist_static_routes_effective %}
+{% set _ = service_lines.append(
+  'ExecStart=/usr/sbin/ip route replace '
+  ~ (route.to | trim)
+  ~ ' via '
+  ~ ((route.via | default(network_persist_uplink_gateway_resolved)) | trim)
+  ~ ' dev '
+  ~ ((route.dev | default(network_persist_uplink_interface_effective)) | trim)
+  ~ (' onlink' if (route.onlink | default(false)) else '')
+) %}
+{% endfor %}
+{% set _ = service_lines.extend([
+  'RemainAfterExit=yes',
+  '',
+  '[Install]',
+  'WantedBy=multi-user.target',
+]) %}
+{{ service_lines | join('\n') }}

@@ -1,0 +1,57 @@
+---
+remote_unlock_broker_enable: true
+
+remote_unlock_broker_app_dir: /opt/remote-unlock-broker
+remote_unlock_broker_cert_dir: "{{ remote_unlock_broker_app_dir }}/certs"
+remote_unlock_broker_script_path: "{{ remote_unlock_broker_app_dir }}/remote_unlock_broker.py"
+remote_unlock_broker_dockerfile_path: "{{ remote_unlock_broker_app_dir }}/Dockerfile"
+remote_unlock_broker_compose_path: "{{ remote_unlock_broker_app_dir }}/docker-compose.yml"
+remote_unlock_broker_env_path: "{{ remote_unlock_broker_app_dir }}/broker.env"
+
+remote_unlock_broker_container_name: remote_unlock_broker
+remote_unlock_broker_image_name: cascadya-remote-unlock-broker
+remote_unlock_broker_compose_cmd: []
+
+remote_unlock_broker_bind_port: 8443
+remote_unlock_broker_publish_address: >-
+  {{
+    remote_unlock_broker_wireguard_address
+    | regex_replace('/.*$', '')
+  }}
+remote_unlock_broker_listen_host: 0.0.0.0
+remote_unlock_broker_wait_host: >-
+  {{
+    remote_unlock_broker_publish_address
+    if (remote_unlock_broker_publish_address | length > 0)
+    else '127.0.0.1'
+  }}
+remote_unlock_broker_wait_timeout: 30
+
+remote_unlock_broker_vault_addr: ""
+remote_unlock_broker_vault_token: ""
+remote_unlock_broker_vault_token_env_var: REMOTE_UNLOCK_BROKER_VAULT_TOKEN
+remote_unlock_broker_vault_kv_mount: secret
+remote_unlock_broker_vault_kv_prefix: remote-unlock
+remote_unlock_broker_challenge_ttl_seconds: 300
+
+remote_unlock_broker_cert_src_dir: "{{ playbook_dir }}/.tmp/cascadya-remote-unlock/broker"
+remote_unlock_broker_cert_specs:
+  - filename: server.crt
+    mode: "0644"
+  - filename: server.key
+    mode: "0600"
+  - filename: ca.crt
+    mode: "0644"
+
+remote_unlock_broker_wireguard_interface: wg0
+remote_unlock_broker_wireguard_address: 10.30.0.1/24
+remote_unlock_broker_wireguard_listen_port: 51820
+remote_unlock_broker_wireguard_private_key_path: /etc/wireguard/server.key
+remote_unlock_broker_wireguard_public_key_path: /etc/wireguard/server.pub
+remote_unlock_broker_wireguard_config_path: >-
+  /etc/wireguard/{{ remote_unlock_broker_wireguard_interface }}.conf
+remote_unlock_broker_wireguard_required_packages:
+  - wireguard-tools
+remote_unlock_broker_wireguard_peer_public_key: ""
+remote_unlock_broker_wireguard_peer_allowed_ips:
+  - 10.30.0.10/32

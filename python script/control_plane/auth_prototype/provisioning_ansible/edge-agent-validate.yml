@@ -1,0 +1,247 @@
+---
+- name: Validate edge-agent telemetry services on Cascadya IPC
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    ansible_ssh_timeout: 30
+    edge_agent_app_dir: "{{ cascadya_data_dir }}/agent"
+    edge_agent_certs_dir: "{{ edge_agent_app_dir }}/certs"
+    edge_agent_venv_dir: "{{ cascadya_data_dir }}/venv"
+    edge_agent_expect_runtime_connectivity: true
+    edge_agent_wait_for_connection_timeout_seconds: 120
+    edge_agent_wait_for_connection_sleep_seconds: 5
+    edge_agent_scripts:
+      - gateway_modbus_sbc.py
+      - telemetry_publisher.py
+    edge_agent_cert_files:
+      - ca.crt
+      - client.crt
+      - client.key
+    edge_agent_service_names:
+      - gateway_modbus.service
+      - telemetry_publisher.service
+
+  tasks:
+    - name: Check edge-agent directories
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ edge_agent_app_dir }}"
+        - "{{ edge_agent_certs_dir }}"
+        - "{{ edge_agent_venv_dir }}"
+      register: edge_agent_directory_stats
+
+    - name: Assert edge-agent directories exist
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.isdir
+        fail_msg: "Missing edge-agent directory {{ item.item }} on the IPC."
+      loop: "{{ edge_agent_directory_stats.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Check deployed edge-agent scripts
+      ansible.builtin.stat:
+        path: "{{ edge_agent_app_dir }}/{{ item }}"
+      loop: "{{ edge_agent_scripts }}"
+      register: edge_agent_script_stats
+
+    - name: Assert deployed edge-agent scripts exist
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.isreg
+        fail_msg: "Missing deployed edge-agent script {{ item.item }} on the IPC."
+      loop: "{{ edge_agent_script_stats.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Check deployed edge-agent certificate files
+      ansible.builtin.stat:
+        path: "{{ edge_agent_certs_dir }}/{{ item }}"
+      loop: "{{ edge_agent_cert_files }}"
+      register: edge_agent_cert_stats
+
+    - name: Assert deployed edge-agent certificate files exist
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.isreg
+        fail_msg: "Missing deployed edge-agent certificate file {{ item.item }} on the IPC."
+      loop: "{{ edge_agent_cert_stats.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Collect service facts
+      ansible.builtin.service_facts:
+
+    - name: Reset SSH connection before runtime service checks
+      ansible.builtin.meta: reset_connection
+      when: edge_agent_expect_runtime_connectivity | bool
+
+    - name: Wait for IPC SSH connectivity before runtime service checks
+      ansible.builtin.wait_for_connection:
+        timeout: "{{ edge_agent_wait_for_connection_timeout_seconds | int }}"
+        connect_timeout: "{{ ansible_ssh_timeout | int }}"
+        sleep: "{{ edge_agent_wait_for_connection_sleep_seconds | int }}"
+      when: edge_agent_expect_runtime_connectivity | bool
+
+    - name: Assert edge-agent services are installed
+      ansible.builtin.assert:
+        that:
+          - item in ansible_facts.services
+        fail_msg: "Missing systemd unit {{ item }} on the IPC."
+      loop: "{{ edge_agent_service_names }}"
+
+    - name: Check edge-agent service active state
+      ansible.builtin.command:
+        cmd: "systemctl is-active {{ item }}"
+      loop: "{{ edge_agent_service_names }}"
+      register: edge_agent_service_active
+      changed_when: false
+      failed_when: false
+      retries: 6
+      delay: 5
+      until: edge_agent_service_active.stdout.strip() == "active"
+      when: edge_agent_expect_runtime_connectivity | bool
+
+    - name: Check edge-agent service enabled state
+      ansible.builtin.command:
+        cmd: "systemctl is-enabled {{ item }}"
+      loop: "{{ edge_agent_service_names }}"
+      register: edge_agent_service_enabled
+      changed_when: false
+      failed_when: false
+
+    - name: Capture edge-agent service runtime snapshot before stability check
+      ansible.builtin.command:
+        cmd: >-
+          systemctl show {{ item }}
+          --property=ActiveState
+          --property=SubState
+          --property=Result
+          --property=NRestarts
+      loop: "{{ edge_agent_service_names }}"
+      register: edge_agent_service_runtime_before
+      changed_when: false
+      when: edge_agent_expect_runtime_connectivity | bool
+
+    - name: Wait before re-checking service stability
+      ansible.builtin.pause:
+        seconds: 10
+      when: edge_agent_expect_runtime_connectivity | bool
+
+    - name: Reset SSH connection before the stability re-check
+      ansible.builtin.meta: reset_connection
+      when: edge_agent_expect_runtime_connectivity | bool
+
+    - name: Wait for IPC SSH connectivity before the stability re-check
+      ansible.builtin.wait_for_connection:
+        timeout: "{{ edge_agent_wait_for_connection_timeout_seconds | int }}"
+        connect_timeout: "{{ ansible_ssh_timeout | int }}"
+        sleep: "{{ edge_agent_wait_for_connection_sleep_seconds | int }}"
+      when: edge_agent_expect_runtime_connectivity | bool
+
+    - name: Capture edge-agent service runtime snapshot after stability check
+      ansible.builtin.command:
+        cmd: >-
+          systemctl show {{ item }}
+          --property=ActiveState
+          --property=SubState
+          --property=Result
+          --property=NRestarts
+      loop: "{{ edge_agent_service_names }}"
+      register: edge_agent_service_runtime_after
+      changed_when: false
+      when: edge_agent_expect_runtime_connectivity | bool
+
+    - name: Read gateway_modbus journal tail
+      ansible.builtin.command:
+        cmd: "journalctl -u gateway_modbus.service -n 15 --no-pager"
+      register: edge_agent_gateway_journal
+      changed_when: false
+
+    - name: Read telemetry_publisher journal tail
+      ansible.builtin.command:
+        cmd: "journalctl -u telemetry_publisher.service -n 15 --no-pager"
+      register: edge_agent_telemetry_journal
+      changed_when: false
+
+    - name: Assert edge-agent service active state
+      ansible.builtin.assert:
+        that:
+          - item.rc == 0
+          - item.stdout.strip() == "active"
+        fail_msg: "Service {{ item.item }} is not active on the IPC."
+      loop: "{{ edge_agent_service_active.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: edge_agent_expect_runtime_connectivity | bool
+
+    - name: Assert edge-agent service enabled state
+      ansible.builtin.assert:
+        that:
+          - item.rc == 0
+          - item.stdout.strip() == "enabled"
+        fail_msg: "Service {{ item.item }} is not enabled on the IPC."
+      loop: "{{ edge_agent_service_enabled.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Assert edge-agent service runtime stability
+      ansible.builtin.assert:
+        that:
+          - edge_agent_service_runtime_after.results[idx].stdout is search('ActiveState=active')
+          - edge_agent_service_runtime_after.results[idx].stdout is search('SubState=running')
+          - >-
+            (
+              edge_agent_service_runtime_before.results[idx].stdout
+              | regex_findall('NRestarts=(\\d+)')
+              | first
+              | int
+            ) == (
+              edge_agent_service_runtime_after.results[idx].stdout
+              | regex_findall('NRestarts=(\\d+)')
+              | first
+              | int
+            )
+        fail_msg: >-
+          Service {{ edge_agent_service_names[idx] }} is not stable on the IPC.
+          Before: {{ edge_agent_service_runtime_before.results[idx].stdout_lines | default([]) }}
+          After: {{ edge_agent_service_runtime_after.results[idx].stdout_lines | default([]) }}
+      loop: "{{ range(0, edge_agent_service_names | length) | list }}"
+      loop_control:
+        loop_var: idx
+        label: "{{ edge_agent_service_names[idx] }}"
+      when: edge_agent_expect_runtime_connectivity | bool
+
+    - name: Summarize edge-agent validation
+      ansible.builtin.debug:
+        msg:
+          - "Edge-agent app dir: {{ edge_agent_app_dir }}"
+          - "Edge-agent certs dir: {{ edge_agent_certs_dir }}"
+          - "Edge-agent venv dir: {{ edge_agent_venv_dir }}"
+          - "Runtime connectivity expected: {{ edge_agent_expect_runtime_connectivity }}"
+          - >-
+            gateway_modbus.service state/enabled:
+            {{
+              (
+                (edge_agent_service_active.results[0].stdout | default('skipped'))
+                if edge_agent_expect_runtime_connectivity | bool
+                else 'runtime-check-skipped'
+              )
+            }}/{{ edge_agent_service_enabled.results[0].stdout | default('unknown') }}
+          - >-
+            telemetry_publisher.service state/enabled:
+            {{
+              (
+                (edge_agent_service_active.results[1].stdout | default('skipped'))
+                if edge_agent_expect_runtime_connectivity | bool
+                else 'runtime-check-skipped'
+              )
+            }}/{{ edge_agent_service_enabled.results[1].stdout | default('unknown') }}
+          - "gateway_modbus journal tail: {{ edge_agent_gateway_journal.stdout_lines | default([]) }}"
+          - "telemetry_publisher journal tail: {{ edge_agent_telemetry_journal.stdout_lines | default([]) }}"

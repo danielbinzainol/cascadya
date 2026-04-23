@@ -1,0 +1,20 @@
+all:
+  children:
+    control_panel:
+      hosts:
+        control-panel-DEV1-S:
+          ansible_host: 51.15.115.203
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+    wireguard:
+      hosts:
+        wireguard-DEV1-S:
+          ansible_host: 51.15.84.140
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+    wazuh:
+      hosts:
+        wazuh-dev1-s:
+          ansible_host: 10.42.1.7
+          ansible_user: ubuntu
+          ansible_ssh_private_key_file: ~/.ssh/id_ed25519

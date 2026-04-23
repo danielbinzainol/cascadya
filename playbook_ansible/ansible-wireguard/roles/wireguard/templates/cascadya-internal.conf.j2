@@ -1,0 +1,15 @@
+port=53
+interface={{ wireguard_dns_interface }}
+listen-address={{ wireguard_dns_ip }}
+bind-interfaces
+
+no-resolv
+{% for server in wireguard_dns_upstreams %}
+server={{ server }}
+{% endfor %}
+
+cache-size={{ wireguard_dns_cache_size }}
+
+{% for record in wireguard_dns_records %}
+address=/{{ record.name }}/{{ record.address }}
+{% endfor %}

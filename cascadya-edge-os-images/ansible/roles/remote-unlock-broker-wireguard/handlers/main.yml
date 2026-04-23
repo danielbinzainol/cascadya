@@ -1,0 +1,4 @@
+- name: Restart broker WireGuard
+  ansible.builtin.systemd_service:
+    name: "wg-quick@{{ remote_unlock_broker_wireguard_interface }}"
+    state: restarted

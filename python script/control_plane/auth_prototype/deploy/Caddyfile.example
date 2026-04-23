@@ -1,0 +1,11 @@
+control-panel-dev1-s.example.internal {
+    encode gzip zstd
+
+    reverse_proxy 127.0.0.1:8000
+
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy no-referrer
+    }
+}

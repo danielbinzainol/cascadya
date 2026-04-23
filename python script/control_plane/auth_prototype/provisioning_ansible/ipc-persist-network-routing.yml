@@ -1,0 +1,311 @@
+---
+- name: Persist the detected IPC interface addresses and routes across reboot
+  hosts: all
+  become: true
+  gather_facts: false
+
+  vars:
+    network_persist_management_interface_effective: >-
+      {{ network_persist_management_interface | default(remote_unlock_management_interface | default('')) }}
+    network_persist_uplink_interface_effective: >-
+      {{ network_persist_uplink_interface | default(remote_unlock_uplink_interface | default('')) }}
+    network_persist_management_address_configured: "{{ network_persist_management_address | default('') }}"
+    network_persist_uplink_address_configured: "{{ network_persist_uplink_address | default('') }}"
+    network_persist_uplink_gateway_effective: >-
+      {{
+        network_persist_uplink_gateway_ip
+        | default(remote_unlock_gateway_ip | default(network_uplink_gateway_ip | default('')))
+      }}
+    network_persist_mimir_route_target: >-
+      {%- set candidate = (
+            ipc_alloy_mimir_remote_write_host
+            | default('', true)
+            | trim
+         ) -%}
+      {{ candidate if (candidate | regex_search('^[0-9]+(?:\\.[0-9]+){3}$')) else '' }}
+    network_persist_static_routes_configured: "{{ network_persist_static_routes | default([], true) }}"
+    network_persist_legacy_dir: /etc/cascadya/network-persist
+    network_persist_legacy_env_path: /etc/cascadya/network-persist/network.env
+    network_persist_legacy_script_path: /usr/local/sbin/cascadya-network-persist.sh
+    network_persist_service_name: cascadya-network-persist.service
+
+  tasks:
+    - name: Assert the target interfaces are known
+      ansible.builtin.assert:
+        that:
+          - network_persist_management_interface_effective | length > 0
+          - network_persist_uplink_interface_effective | length > 0
+        fail_msg: >-
+          Renseigne remote_unlock_management_interface et remote_unlock_uplink_interface
+          avant de figer la topologie IP de l'IPC.
+
+    - name: Capture current management IPv4 address when not preconfigured
+      ansible.builtin.command:
+        argv:
+          - ip
+          - -o
+          - -4
+          - addr
+          - show
+          - dev
+          - "{{ network_persist_management_interface_effective }}"
+          - scope
+          - global
+      register: network_persist_management_addr_cmd
+      changed_when: false
+      when: network_persist_management_address_configured | length == 0
+
+    - name: Capture current uplink IPv4 address when not preconfigured
+      ansible.builtin.command:
+        argv:
+          - ip
+          - -o
+          - -4
+          - addr
+          - show
+          - dev
+          - "{{ network_persist_uplink_interface_effective }}"
+          - scope
+          - global
+      register: network_persist_uplink_addr_cmd
+      changed_when: false
+      when: network_persist_uplink_address_configured | length == 0
+
+    - name: Capture current uplink default route when gateway is not preconfigured
+      ansible.builtin.command:
+        argv:
+          - ip
+          - route
+          - show
+          - default
+          - dev
+          - "{{ network_persist_uplink_interface_effective }}"
+      register: network_persist_uplink_gateway_cmd
+      changed_when: false
+      failed_when: false
+      when: network_persist_uplink_gateway_effective | length == 0
+
+    - name: Resolve effective network values
+      ansible.builtin.set_fact:
+        network_persist_management_address_effective: >-
+          {{
+            network_persist_management_address_configured
+            if (network_persist_management_address_configured | length) > 0
+            else (
+              network_persist_management_addr_cmd.stdout
+              | default('')
+              | regex_findall('([0-9]+(?:\\.[0-9]+){3}/[0-9]+)')
+              | first
+              | default('')
+            )
+          }}
+        network_persist_uplink_address_effective: >-
+          {{
+            network_persist_uplink_address_configured
+            if (network_persist_uplink_address_configured | length) > 0
+            else (
+              network_persist_uplink_addr_cmd.stdout
+              | default('')
+              | regex_findall('([0-9]+(?:\\.[0-9]+){3}/[0-9]+)')
+              | first
+              | default('')
+            )
+          }}
+        network_persist_uplink_gateway_resolved: >-
+          {{
+            network_persist_uplink_gateway_effective
+            if (network_persist_uplink_gateway_effective | length) > 0
+            else (
+              network_persist_uplink_gateway_cmd.stdout
+              | default('')
+              | regex_findall('via\\s+([0-9]+(?:\\.[0-9]+){3})')
+              | first
+              | default('')
+            )
+          }}
+
+    - name: Assert the current IPC routing can be frozen
+      ansible.builtin.assert:
+        that:
+          - network_persist_management_address_effective | length > 0
+          - network_persist_uplink_address_effective | length > 0
+          - network_persist_uplink_gateway_resolved | length > 0
+        fail_msg: >-
+          Impossible de deduire l'etat reseau courant de l'IPC. Verifie d'abord la configuration
+          manuelle avec `ip a` et `ip route`, ou renseigne explicitement les variables
+          network_persist_management_address, network_persist_uplink_address et
+          network_persist_uplink_gateway_ip.
+
+    - name: Normalize configured static routes
+      ansible.builtin.set_fact:
+        network_persist_static_routes_normalized: >-
+          {{
+            network_persist_static_routes_configured
+            | select('mapping')
+            | selectattr('to', 'defined')
+            | list
+          }}
+
+    - name: Derive default Wazuh and Mimir static routes for the IPC
+      ansible.builtin.set_fact:
+        network_persist_static_routes_effective: >-
+          {%- set configured_destinations = (
+                network_persist_static_routes_normalized
+                | map(attribute='to')
+                | list
+             ) -%}
+          {%- set route_targets = [
+                (wazuh_agent_manager_address | default('', true) | trim),
+                ((wazuh_agent_registration_server | default('', true) | trim)
+                 or (wazuh_agent_manager_address | default('', true) | trim)),
+                network_persist_mimir_route_target
+             ]
+             | reject('equalto', '')
+             | unique
+             | list -%}
+          {%- set derived_routes = [] -%}
+          {%- for target in route_targets -%}
+          {%-   set destination = target if '/' in target else (target ~ '/32') -%}
+          {%-   if destination not in configured_destinations -%}
+          {%-     set _ = derived_routes.append({
+                    'to': destination,
+                    'via': network_persist_uplink_gateway_resolved,
+                    'dev': network_persist_uplink_interface_effective
+                  }) -%}
+          {%-   endif -%}
+          {%- endfor -%}
+          {{ network_persist_static_routes_normalized + derived_routes }}
+
+    - name: Assert managed static routes are valid
+      ansible.builtin.assert:
+        that:
+          - (item.to | default('') | trim) | length > 0
+          - ((item.via | default(network_persist_uplink_gateway_resolved)) | trim) | length > 0
+          - ((item.dev | default(network_persist_uplink_interface_effective)) | trim) | length > 0
+        fail_msg: >-
+          Chaque route geree doit definir au minimum `to`, et optionnellement `via`
+          / `dev`. Route invalide recue: {{ item | to_nice_json }}
+      loop: "{{ network_persist_static_routes_effective }}"
+      loop_control:
+        label: "{{ item.to | default('route-sans-destination') }}"
+
+    - name: Apply the management interface state immediately
+      ansible.builtin.command:
+        argv:
+          - ip
+          - link
+          - set
+          - dev
+          - "{{ network_persist_management_interface_effective | trim }}"
+          - up
+      changed_when: false
+
+    - name: Apply the management interface address immediately
+      ansible.builtin.command:
+        argv:
+          - ip
+          - addr
+          - replace
+          - "{{ network_persist_management_address_effective | trim }}"
+          - dev
+          - "{{ network_persist_management_interface_effective | trim }}"
+      changed_when: false
+
+    - name: Apply the uplink interface state immediately
+      ansible.builtin.command:
+        argv:
+          - ip
+          - link
+          - set
+          - dev
+          - "{{ network_persist_uplink_interface_effective | trim }}"
+          - up
+      changed_when: false
+
+    - name: Apply the uplink interface address immediately
+      ansible.builtin.command:
+        argv:
+          - ip
+          - addr
+          - replace
+          - "{{ network_persist_uplink_address_effective | trim }}"
+          - dev
+          - "{{ network_persist_uplink_interface_effective | trim }}"
+      changed_when: false
+
+    - name: Apply the uplink default route immediately
+      ansible.builtin.command:
+        argv:
+          - ip
+          - route
+          - replace
+          - default
+          - via
+          - "{{ network_persist_uplink_gateway_resolved | trim }}"
+          - dev
+          - "{{ network_persist_uplink_interface_effective | trim }}"
+      changed_when: false
+
+    - name: Apply the managed static routes immediately
+      ansible.builtin.command:
+        argv: >-
+          {{
+            [
+              'ip',
+              'route',
+              'replace',
+              (item.to | trim),
+              'via',
+              ((item.via | default(network_persist_uplink_gateway_resolved)) | trim),
+              'dev',
+              ((item.dev | default(network_persist_uplink_interface_effective)) | trim)
+            ]
+            + (
+              ['onlink']
+              if (item.onlink | default(false))
+              else []
+            )
+          }}
+      changed_when: false
+      loop: "{{ network_persist_static_routes_effective }}"
+      loop_control:
+        label: "{{ item.to | default('route-sans-destination') }}"
+
+    - name: Install the systemd unit that reapplies the IPC network state on boot
+      ansible.builtin.template:
+        src: "templates/cascadya-network-persist.service.j2"
+        dest: "/etc/systemd/system/{{ network_persist_service_name }}"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Remove the legacy network persistence helper
+      ansible.builtin.file:
+        path: "{{ network_persist_legacy_script_path }}"
+        state: absent
+
+    - name: Remove the legacy network persistence environment file
+      ansible.builtin.file:
+        path: "{{ network_persist_legacy_env_path }}"
+        state: absent
+
+    - name: Remove the legacy network persistence directory when empty
+      ansible.builtin.file:
+        path: "{{ network_persist_legacy_dir }}"
+        state: absent
+
+    - name: Enable the network persistence systemd unit
+      ansible.builtin.systemd:
+        name: "{{ network_persist_service_name }}"
+        enabled: true
+        state: restarted
+        daemon_reload: true
+
+    - name: Summarize the frozen IPC network state
+      ansible.builtin.debug:
+        msg:
+          - "Management interface: {{ network_persist_management_interface_effective }} -> {{ network_persist_management_address_effective }}"
+          - "Uplink interface: {{ network_persist_uplink_interface_effective }} -> {{ network_persist_uplink_address_effective }}"
+          - "Default route: via {{ network_persist_uplink_gateway_resolved }} dev {{ network_persist_uplink_interface_effective }}"
+          - "Managed static routes: {{ network_persist_static_routes_effective | map(attribute='to') | list }}"
+          - "Persistence unit: {{ network_persist_service_name }}"

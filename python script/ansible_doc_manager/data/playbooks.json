@@ -1,0 +1,79 @@
+{
+    "type": "group",
+    "name": "Root",
+    "children": [
+        {
+            "type": "group",
+            "name": "Ansible",
+            "children": [
+                {
+                    "type": "group",
+                    "name": "mosquitto-certificates",
+                    "children": [
+                        {
+                            "type": "element",
+                            "name": "roles",
+                            "content": "Le Moteur Principal : \nLe R\u00f4le pki (tasks/broker.yml & edge.yml)\n\nValidation (Assert) : \nV\u00e9rifie que toutes les variables n\u00e9cessaires (Token, URL, Chemins) sont bien fournies. S'il manque quelque chose, le script s'arr\u00eate net (\"Fail-Fast\") avant de rien casser.\n\nCr\u00e9ation des dossiers (Ensure directory exists) : \nV\u00e9rifie que /opt/mosquitto/ssl (ou clients) et le sous-dossier /archive existent. Idempotence : Si les dossiers existent d\u00e9j\u00e0 avec les bons droits (0755), Ansible ne fait rien.\n\nAudit de l'existant (Stat & Read notAfter) : \nRegarde si un certificat .crt existe d\u00e9j\u00e0. Si oui, il utilise openssl pour lire sa date d'expiration exacte.\n\nLe Cerveau de l'Idempotence (Compute remaining days & Decide renewal) : \nCalcule le nombre de jours restants. Si le certificat expire dans plus de X jours (ex: 10 jours), la variable do_renew passe \u00e0 False. Toutes les \u00e9tapes suivantes sont alors ignor\u00e9es (Skipped).\n\nG\u00e9n\u00e9ration (Issue leaf certificate) : \nSi do_renew est True, fait un appel API REST s\u00e9curis\u00e9 \u00e0 Hashicorp Vault pour forger un nouveau certificat.\n\nStaging S\u00e9curis\u00e9 (Write staging files *.new) : \nN'\u00e9crase pas les certificats de production ! \u00c9crit d'abord les nouveaux fichiers avec l'extension .new. Cela \u00e9vite qu'un crash r\u00e9seau au milieu de l'\u00e9criture ne corrompe le certificat actuel du serveur.\n\nValidation Cryptographique (Validate key matches cert) : \nV\u00e9rifie math\u00e9matiquement (via les modulus RSA) que la nouvelle cl\u00e9 priv\u00e9e correspond bien au nouveau certificat.\n\nPromotion Atomique (Promote staging atomically) : \nRenomme instantan\u00e9ment les .new en fichiers officiels. L'op\u00e9ration mv sous Linux est \"atomique\", signifiant qu'il n'y a pas de micro-coupure de lecture pour les applications qui utilisent ces fichiers.\n\nNettoyage (Housekeeping) : \nSupprime les vieilles archives de certificats qui ont plus de 90 jours pour \u00e9viter de saturer le disque."
+                        },
+                        {
+                            "type": "element",
+                            "name": "regen_broker_server.yml",
+                            "content": "Objectif : \nG\u00e9rer l'identit\u00e9 cryptographique de la Forteresse (la VM Mosquitto centrale) et s'assurer que le service utilise toujours des cl\u00e9s valides.\n\nCible : \nhosts: broker (La machine 51.15.64.139).\n\nLe d\u00e9roul\u00e9 pr\u00e9cis :\n\nPr\u00e9paration de l'environnement (vars) :\n\nCharge les variables d'environnement Vault.\n\nInjecte en m\u00e9moire le cascadya-root.crt depuis ton poste local (WSL).\n\nFixe le Common Name de mani\u00e8re statique : \nleaf_common_name: \"vm-broker.cascadya.local\". C'est l'identit\u00e9 officielle du serveur.\n\nD\u00e9finit le chemin de destination strict : \n/opt/mosquitto/ssl.\n\nPr\u00e9-v\u00e9rification (pre_tasks) : \nS'assure que le VAULT_TOKEN n'est pas vide.\n\nAppel du R\u00f4le PKI : \nLance toute la logique d\u00e9crite plus haut (audit, calcul, g\u00e9n\u00e9ration).\n\nApplication (Restart mosquitto container) : \nRed\u00e9marre le conteneur Docker.\n\nNote sur l'idempotence ici : \nActuellement, le conteneur red\u00e9marre \u00e0 chaque ex\u00e9cution du playbook. Pour une idempotence parfaite (ne red\u00e9marrer que si un certificat a chang\u00e9), cette \u00e9tape devrait \u00eatre transform\u00e9e en un handler Ansible qui n'est appel\u00e9 que si la t\u00e2che Promote staging atomically renvoie le statut changed."
+                        },
+                        {
+                            "type": "element",
+                            "name": "regen_edge_clients",
+                            "content": "Objectif : \nDistribuer des identit\u00e9s uniques et s\u00e9curis\u00e9es \u00e0 des centaines de capteurs, machines industrielles ou passerelles logicielles (comme ton WSL), de mani\u00e8re automatis\u00e9e.\n\nCible : \nhosts: edge (Ton WSL, tes Raspberry Pi, etc.).\n\nLe d\u00e9roul\u00e9 pr\u00e9cis :\n\nG\u00e9n\u00e9ration Dynamique d'Identit\u00e9 (vars) :\n\nC'est la t\u00e2che la plus importante : \nleaf_common_name: \"{{ inventory_hostname }}.cascadya.local\". Au lieu de coder en dur \"site-01\", Ansible lit le nom de la machine cible dans ton fichier hosts.ini et g\u00e9n\u00e8re un Common Name sur mesure. C'est ce qui te permet de lancer le script sur 50 machines et d'obtenir 50 certificats diff\u00e9rents.\n\nD\u00e9finit le chemin de destination : /opt/mosquitto/clients.\n\nD\u00e9finit des permissions plus strictes (0644 pour le cert, 0600 pour la cl\u00e9) adapt\u00e9es \u00e0 un environnement client potentiellement moins s\u00e9curis\u00e9 que le serveur central.\n\nAppel du R\u00f4le PKI (via tasks_from: edge.yml) : Lance la logique d'audit et de g\u00e9n\u00e9ration. L'idempotence ici est vitale : si tu ajoutes un 11\u00e8me site client \u00e0 ton inventaire et que tu lances ce playbook sur tout le groupe [edge], Ansible \"skippera\" les 10 premiers sites (car leurs certs sont valides) et ne g\u00e9n\u00e9rera un certificat que pour le 11\u00e8me. Gain de temps, de bande passante, et de charge sur le serveur Vault."
+                        },
+                        {
+                            "type": "element",
+                            "name": "Repo Structure",
+                            "content": "ansible-mosquitto-certificats  [Root]\n\u251c\u2500\u2500 files  [Folder]\n\u2502   \u251c\u2500\u2500 cascadya-intermediate.crt  [.CRT]\n\u2502   \u251c\u2500\u2500 cascadya-root.crt  [.CRT]\n\u2502   \u2514\u2500\u2500 full-chain.crt  [.CRT]\n\u251c\u2500\u2500 group_vars  [Folder]\n\u2502   \u251c\u2500\u2500 all  [Folder]\n\u2502   \u2502   \u2514\u2500\u2500 main.yml  [.YML]\n\u2502   \u251c\u2500\u2500 broker  [Folder]\n\u2502   \u2502   \u2514\u2500\u2500 main.yml  [.YML]\n\u2502   \u2514\u2500\u2500 edge  [Folder]\n\u2502       \u2514\u2500\u2500 main.yml  [.YML]\n\u251c\u2500\u2500 inventory  [Folder]\n\u2502   \u2514\u2500\u2500 hosts.ini  [.INI]\n\u251c\u2500\u2500 playbooks  [Folder]\n\u2502   \u251c\u2500\u2500 regen_broker_server.yml  [.YML]\n\u2502   \u251c\u2500\u2500 regen_client_server_combo.yml  [.YML]\n\u2502   \u2514\u2500\u2500 regen_edge_clients.yml  [.YML]\n\u251c\u2500\u2500 roles  [Folder]\n\u2502   \u2514\u2500\u2500 pki  [Folder]\n\u2502       \u2514\u2500\u2500 tasks  [Folder]\n\u2502           \u251c\u2500\u2500 broker.yml  [.YML]\n\u2502           \u251c\u2500\u2500 deps.yml  [.YML]\n\u2502           \u251c\u2500\u2500 edge.yml  [.YML]\n\u2502           \u2514\u2500\u2500 main.yml  [.YML]\n\u251c\u2500\u2500 templates  [Folder]\n\u2502   \u2514\u2500\u2500 vmq.acl.j2  [.J2]\n\u251c\u2500\u2500 ansible.cfg  [.CFG]\n\u251c\u2500\u2500 cascadya-root.crt  [.CRT]\n\u2514\u2500\u2500 site.yml  [.YML]\n"
+                        },
+                        {
+                            "type": "element",
+                            "name": "Prod Ready",
+                            "content": "R\u00e9silience face aux erreurs : \nSi ton serveur Vault tombe en panne ou si ton Token expire, Ansible le d\u00e9tecte au d\u00e9but (Assert) ou pendant le Staging (.new). Tes vieux certificats restent en place, tes machines continuent de fonctionner.\n\nScalabilit\u00e9 horizontale : \nTu n'as pas besoin de modifier tes playbooks pour ajouter des clients. Tu ajoutes simplement une ligne dans hosts.ini et tu lances regen_edge_clients.yml.\n\nTra\u00e7abilit\u00e9 et R\u00e9vocation : \nParce que chaque client re\u00e7oit un certificat g\u00e9n\u00e9r\u00e9 via {{ inventory_hostname }}, ton serveur Broker (et ThingsBoard) sait exactement quelle machine envoie quelle donn\u00e9e. En cas de vol d'un appareil, tu vas dans Vault, tu r\u00e9voques sp\u00e9cifiquement CN=edge-local.cascadya.local, et les autres machines continuent leur vie sans interruption."
+                        }
+                    ]
+                },
+                {
+                    "type": "group",
+                    "name": "mosquitto-certificates",
+                    "children": [
+                        {
+                            "type": "element",
+                            "name": "Repo Structure",
+                            "content": "Select a document element to edit..."
+                        },
+                        {
+                            "type": "element",
+                            "name": "vm-broker.yml",
+                            "content": "Objectif : \nC'est le chef d'orchestre. Il cible la machine virtuelle (la VM Broker), \u00e9l\u00e8ve ses privil\u00e8ges (become: true), charge les variables sp\u00e9cifiques au broker (../group_vars/broker.yml), et lance le r\u00f4le mosquitto.\n\nIdempotence : \nEx\u00e9cuter ce fichier ne d\u00e9truira jamais ton serveur. Il v\u00e9rifiera simplement que chaque composant est \u00e0 sa place."
+                        },
+                        {
+                            "type": "element",
+                            "name": "main.yml",
+                            "content": "Phase 1: System Prep (Pr\u00e9paration du Syst\u00e8me)\n\nCe qu'il fait : \nInstalle les paquets de base (docker.io, docker-compose, python3-pip) via APT, puis installe les biblioth\u00e8ques Python n\u00e9cessaires pour qu'Ansible puisse piloter Docker (docker<7.0, requests, urllib3<2.0). Enfin, il s'assure que le daemon Docker est d\u00e9marr\u00e9 et activ\u00e9 au boot.\n\nIdempotence : \nLes modules apt et pip v\u00e9rifient si les paquets sont d\u00e9j\u00e0 pr\u00e9sents et \u00e0 la bonne version. Le module systemd ne red\u00e9marre Docker que s'il est arr\u00eat\u00e9.\n\nPhase 2: Storage & Dirs (Cr\u00e9ation de l'Arborescence)\n\nCe qu'il fait : \nCr\u00e9e l'architecture de dossiers s\u00e9curis\u00e9s sur la VM (config, data, log pour Mosquitto, et le dossier racine pour Traefik).\n\nIdempotence : \nLe module file avec state: directory ne fait rien si le dossier existe d\u00e9j\u00e0 avec les bons propri\u00e9taires (mosquitto_uid/gid) et permissions (0755).\n\nPhase 3: Certificates (Importation de vault.yml)\n\nCe qu'il fait : \nC'est ici que la VM obtient son identit\u00e9 initiale.\n\nLit le certificat Root CA stock\u00e9 localement sur ton poste de contr\u00f4le (WSL) via delegate_to: localhost.\n\nDemande \u00e0 Vault (depuis ton WSL) de g\u00e9n\u00e9rer un certificat serveur avec le bon FQDN (broker_fqdn).\n\nPousse ces certificats (server.crt, server.key) sur la VM.\n\nConcat\u00e8ne le CA Interm\u00e9diaire (fourni par Vault) et le Root CA local pour cr\u00e9er la cha\u00eene de confiance compl\u00e8te (ca.crt).\n\nIdempotence : \nNote : Contrairement au playbook de gestion fine des certificats vu pr\u00e9c\u00e9demment, cette t\u00e2che de \"provisioning\" interroge Vault \u00e0 chaque ex\u00e9cution. C'est normal pour l'initialisation du serveur.\n\nPhase 4: Configuration & Stack (G\u00e9n\u00e9ration des Templates)\n\nCe qu'il fait : \nTransforme tes fichiers Jinja2 (.j2) en vrais fichiers de configuration en injectant les variables dynamiques.\n\nIdempotence : \nLe module template calcule le hash (MD5/SHA) du fichier cible. Si le fichier sur la VM est strictement identique \u00e0 ce qu'Ansible veut g\u00e9n\u00e9rer, il affiche \"OK\" et passe \u00e0 la suite. S'il y a une diff\u00e9rence, il le modifie (Changed) et d\u00e9clenche un handler pour red\u00e9marrer Mosquitto.\n\nPhase 5: Launch (Lancement des Conteneurs)\n\nCe qu'il fait : \nFait le m\u00e9nage en supprimant une ancienne instance de VerneMQ (si elle existe), puis lance ta stack de production avec docker-compose up -d --remove-orphans.\n\nIdempotence : \nDocker Compose est nativement idempotent. Si les conteneurs tournent d\u00e9j\u00e0 avec la bonne configuration, la commande ne fait absolument rien.\n\nPhase 6: Verification (Tests post-d\u00e9ploiement)\n\nCe qu'il fait : \nAnsible attend activement que le port 8883 s'ouvre. Ensuite, il lance un test local avec openssl s_client pour s'assurer que le serveur pr\u00e9sente bien les bons certificats mTLS.\n\nIdempotence : \nCes t\u00e2ches n'alt\u00e8rent pas le syst\u00e8me (changed_when: false), elles font juste office de garde-fou."
+                        },
+                        {
+                            "type": "element",
+                            "name": "docker-compose.yml.j2",
+                            "content": "Ce fichier (version 3.8)  d\u00e9ploie deux services cruciaux :\n\nTraefik (Le Portier) : \nIl \u00e9coute sur le port 8883. Sa particularit\u00e9 ici est le tls.passthrough=true. Traefik n'a pas besoin de certificats : il prend le flux chiffr\u00e9 brut et le passe tel quel \u00e0 Mosquitto.\n\nMosquitto (Le C\u0153ur) : \nIl monte les dossiers cr\u00e9\u00e9s en Phase 2 (volumes persistants) et se connecte au r\u00e9seau Traefik via des labels dynamiques."
+                        },
+                        {
+                            "type": "element",
+                            "name": "mosquitto.conf.j2",
+                            "content": "Ce fichier d\u00e9finit les r\u00e8gles de l'infrastructure :\n\nS\u00e9curit\u00e9 : \nIl active la persistance des donn\u00e9es  et force le port 8883 en mTLS (require_certificate true, use_identity_as_username true).\n\n\nLe Pont (Bridge) :\nIl configure une connexion invisible (bridge-to-tb) vers l'IP priv\u00e9e de ThingsBoard (thingsboard_private_ip) en utilisant le protocole mqttv311.\n\n\nAuthentification ThingsBoard : \nIl utilise ton Token comme remote_username ET comme remote_clientid pour garantir que ThingsBoard accepte la session.\n\n\nRoutage : \nIl mappe sp\u00e9cifiquement les topics telemetry et attributes vers le Cloud (ThingsBoard)."
+                        },
+                        {
+                            "type": "element",
+                            "name": "Prod Ready",
+                            "content": "Immuabilit\u00e9 (Infrastructure-as-Code) : \nSi ta VM plante ou est d\u00e9truite par erreur, tu n'as besoin que d'une seule machine vierge et d'ex\u00e9cuter ansible-playbook vm-broker.yml. En 3 minutes, l'int\u00e9gralit\u00e9 du syst\u00e8me (dossiers, certificats, r\u00e9seau, configuration, conteneurs) sera reconstruite \u00e0 l'identique.\n\nS\u00e9curit\u00e9 par S\u00e9paration (Passthrough) :\nTraefik g\u00e8re l'exposition r\u00e9seau (ce qui le prot\u00e8ge des attaques directes sur le port), tandis que Mosquitto, cach\u00e9 derri\u00e8re, g\u00e8re le d\u00e9chiffrement mTLS complexe.\n\nZ\u00e9ro Temps d'Arr\u00eat (Handlers) : \nGr\u00e2ce aux handlers Ansible (le notify: Restart Mosquitto Broker), le service n'est red\u00e9marr\u00e9 que si un changement a \u00e9t\u00e9 d\u00e9tect\u00e9 dans le fichier de configuration. Si tu relances le playbook 10 fois sans rien modifier, le broker ne red\u00e9marrera pas une seule fois."
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

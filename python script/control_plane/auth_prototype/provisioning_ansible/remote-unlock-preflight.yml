@@ -1,0 +1,341 @@
+---
+- name: Check remote unlock prerequisites on Cascadya IPC
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    remote_unlock_enable: true
+    remote_unlock_preflight_cert_dir_effective: "{{ remote_unlock_cert_dir | default('/etc/cascadya/unlock') }}"
+    remote_unlock_preflight_tpm_dir_effective: >-
+      {{ remote_unlock_tpm_dir | default(remote_unlock_preflight_cert_dir_effective ~ '/tpm') }}
+    remote_unlock_preflight_challenge_path_effective: "{{ remote_unlock_challenge_path | default('/challenge') }}"
+    remote_unlock_preflight_timeout_seconds_effective: "{{ remote_unlock_timeout_seconds | default(20) }}"
+    remote_unlock_preflight_challenge_request:
+      device_id: "{{ remote_unlock_device_id }}"
+      hostname: "{{ ansible_hostname }}"
+      wg_interface: "{{ remote_unlock_wg_interface }}"
+      management_interface: "{{ remote_unlock_management_interface }}"
+      uplink_interface: "{{ remote_unlock_uplink_interface }}"
+    remote_unlock_preflight_broker_host: >-
+      {{
+        remote_unlock_broker_url
+        | regex_replace('^https?://', '')
+        | regex_replace('/.*$', '')
+        | regex_replace(':.*$', '')
+      }}
+    remote_unlock_preflight_broker_is_ipv4: >-
+      {{
+        remote_unlock_preflight_broker_host
+        is match('^\\d+\\.\\d+\\.\\d+\\.\\d+$')
+      }}
+
+  tasks:
+    - name: Assert the remote unlock transport mode is supported
+      ansible.builtin.assert:
+        that:
+          - remote_unlock_transport_mode in ['wireguard', 'direct']
+        fail_msg: >-
+          Unsupported remote unlock transport mode: {{ remote_unlock_transport_mode }}.
+          Use `wireguard` for the canonical workflow or `direct` only for legacy diagnostics.
+
+    - name: Check management interface presence
+      ansible.builtin.command:
+        argv:
+          - ip
+          - -brief
+          - addr
+          - show
+          - "{{ remote_unlock_management_interface }}"
+      register: remote_unlock_preflight_mgmt
+      changed_when: false
+      when: remote_unlock_management_interface | length > 0
+
+    - name: Check uplink interface presence
+      ansible.builtin.command:
+        argv:
+          - ip
+          - -brief
+          - addr
+          - show
+          - "{{ remote_unlock_uplink_interface }}"
+      register: remote_unlock_preflight_uplink
+      changed_when: false
+      when: remote_unlock_uplink_interface | length > 0
+
+    - name: Read default route
+      ansible.builtin.command:
+        argv:
+          - ip
+          - route
+          - show
+          - default
+      register: remote_unlock_preflight_default_route
+      changed_when: false
+      failed_when: false
+
+    - name: Read resolv.conf
+      ansible.builtin.command:
+        argv:
+          - cat
+          - /etc/resolv.conf
+      register: remote_unlock_preflight_resolv_conf
+      changed_when: false
+      failed_when: false
+
+    - name: Check broker DNS resolution when the broker URL uses a hostname
+      ansible.builtin.command:
+        argv:
+          - getent
+          - hosts
+          - "{{ remote_unlock_preflight_broker_host }}"
+      register: remote_unlock_preflight_broker_dns
+      changed_when: false
+      failed_when: false
+      when:
+        - remote_unlock_preflight_broker_host | length > 0
+        - not remote_unlock_preflight_broker_is_ipv4
+
+    - name: Check remote unlock certificate bundle files
+      ansible.builtin.stat:
+        path: "{{ remote_unlock_preflight_cert_dir_effective }}/{{ item }}"
+      loop:
+        - ca.crt
+        - client.crt
+        - client.key
+      register: remote_unlock_preflight_cert_files
+
+    - name: Assert the remote unlock certificate bundle is present
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - (item.stat.size | default(0) | int) > 0
+        fail_msg: >-
+          Missing remote unlock certificate file:
+          {{ item.stat.path | default(remote_unlock_preflight_cert_dir_effective ~ '/' ~ item.item) }}
+      loop: "{{ remote_unlock_preflight_cert_files.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Check remote unlock TPM artifacts
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ remote_unlock_preflight_tpm_dir_effective }}/ak.pub.pem"
+        - "{{ remote_unlock_preflight_tpm_dir_effective }}/ak.name"
+      register: remote_unlock_preflight_tpm_files
+
+    - name: Assert the remote unlock TPM artifacts are present
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - (item.stat.size | default(0) | int) > 0
+        fail_msg: >-
+          Missing remote unlock TPM artifact:
+          {{ item.stat.path | default(item.item) }}
+      loop: "{{ remote_unlock_preflight_tpm_files.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Check if wg command exists
+      ansible.builtin.command:
+        argv:
+          - sh
+          - -c
+          - command -v wg
+      register: remote_unlock_preflight_wg_cmd
+      changed_when: false
+      failed_when: false
+      when: remote_unlock_transport_mode == "wireguard"
+
+    - name: Check WireGuard service status
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - is-active
+          - "wg-quick@{{ remote_unlock_wg_interface }}"
+      register: remote_unlock_preflight_wg_status
+      changed_when: false
+      failed_when: false
+      when: remote_unlock_transport_mode == "wireguard"
+
+    - name: Assert the WireGuard service is active
+      ansible.builtin.assert:
+        that:
+          - remote_unlock_preflight_wg_status.stdout == "active"
+        fail_msg: >-
+          The WireGuard service wg-quick@{{ remote_unlock_wg_interface }} is not active.
+          Current state: {{ remote_unlock_preflight_wg_status.stdout | default('unknown') }}.
+      when: remote_unlock_transport_mode == "wireguard"
+
+    - name: Read the route to the broker host
+      ansible.builtin.command:
+        argv:
+          - ip
+          - route
+          - get
+          - "{{ remote_unlock_preflight_broker_host }}"
+      register: remote_unlock_preflight_broker_route
+      changed_when: false
+      failed_when: false
+      when:
+        - remote_unlock_transport_mode == "wireguard"
+        - remote_unlock_preflight_broker_host | length > 0
+
+    - name: Assert the broker host is routed through the current network path
+      ansible.builtin.assert:
+        that:
+          - remote_unlock_preflight_broker_route.rc == 0
+        fail_msg: >-
+          No route to {{ remote_unlock_preflight_broker_host }}. Check the
+          WireGuard peer settings, AllowedIPs, and broker endpoint wiring before
+          retrying remote-unlock-preflight.yml.
+      when:
+        - remote_unlock_transport_mode == "wireguard"
+        - remote_unlock_preflight_broker_host | length > 0
+
+    - name: Assert the broker host route uses the WireGuard interface
+      ansible.builtin.assert:
+        that:
+          - remote_unlock_preflight_broker_route.stdout is regex('(^|\\s)dev\\s+' ~ remote_unlock_wg_interface ~ '(\\s|$)')
+        fail_msg: >-
+          The route to {{ remote_unlock_preflight_broker_host }} does not use
+          {{ remote_unlock_wg_interface }}. Current route: {{
+          remote_unlock_preflight_broker_route.stdout | default('unavailable')
+          }}. Check the WireGuard AllowedIPs and the broker URL before retrying.
+      when:
+        - remote_unlock_transport_mode == "wireguard"
+        - remote_unlock_preflight_broker_host | length > 0
+
+    - name: Capture WireGuard runtime
+      ansible.builtin.command:
+        argv:
+          - wg
+          - show
+          - "{{ remote_unlock_wg_interface }}"
+      register: remote_unlock_preflight_wg_runtime
+      changed_when: false
+      when: remote_unlock_transport_mode == "wireguard"
+
+    - name: Capture WireGuard latest handshakes
+      ansible.builtin.command:
+        argv:
+          - wg
+          - show
+          - "{{ remote_unlock_wg_interface }}"
+          - latest-handshakes
+      register: remote_unlock_preflight_wg_latest_handshakes
+      changed_when: false
+      when: remote_unlock_transport_mode == "wireguard"
+
+    - name: Check broker ICMP reachability through WireGuard
+      ansible.builtin.command:
+        argv:
+          - ping
+          - -c
+          - "3"
+          - -W
+          - "3"
+          - "{{ remote_unlock_preflight_broker_host }}"
+      register: remote_unlock_preflight_broker_ping
+      changed_when: false
+      when:
+        - remote_unlock_transport_mode == "wireguard"
+        - remote_unlock_preflight_broker_host | length > 0
+
+    - name: Assert the broker responds to ICMP through WireGuard
+      ansible.builtin.assert:
+        that:
+          - remote_unlock_preflight_broker_ping.rc == 0
+        fail_msg: >-
+          The broker host {{ remote_unlock_preflight_broker_host }} did not
+          respond to ping through {{ remote_unlock_wg_interface }}. Check the
+          WireGuard peer state, handshake freshness, and broker-side interface
+          reachability before retrying remote-unlock-preflight.yml.
+      when:
+        - remote_unlock_transport_mode == "wireguard"
+        - remote_unlock_preflight_broker_host | length > 0
+
+    - name: Check broker mTLS reachability through the configured path
+      ansible.builtin.command:
+        argv:
+          - curl
+          - --silent
+          - --show-error
+          - --fail
+          - --cert
+          - "{{ remote_unlock_preflight_cert_dir_effective }}/client.crt"
+          - --key
+          - "{{ remote_unlock_preflight_cert_dir_effective }}/client.key"
+          - --cacert
+          - "{{ remote_unlock_preflight_cert_dir_effective }}/ca.crt"
+          - --connect-timeout
+          - "{{ remote_unlock_preflight_timeout_seconds_effective | string }}"
+          - --max-time
+          - "{{ remote_unlock_preflight_timeout_seconds_effective | string }}"
+          - -H
+          - "Content-Type: application/json"
+          - --data
+          - "{{ remote_unlock_preflight_challenge_request | to_json }}"
+          - "{{ remote_unlock_broker_url | regex_replace('/+$', '') }}{{ remote_unlock_preflight_challenge_path_effective }}"
+      register: remote_unlock_preflight_broker_challenge_raw
+      changed_when: false
+
+    - name: Parse the broker challenge response
+      ansible.builtin.set_fact:
+        remote_unlock_preflight_broker_challenge: "{{ remote_unlock_preflight_broker_challenge_raw.stdout | from_json }}"
+
+    - name: Assert the broker challenge response is complete
+      ansible.builtin.assert:
+        that:
+          - remote_unlock_preflight_broker_challenge.challenge_id is defined
+          - remote_unlock_preflight_broker_challenge.nonce is defined
+        fail_msg: >-
+          The broker responded on {{ remote_unlock_broker_url }}, but the
+          challenge response was incomplete.
+
+    - name: Check remote unlock files
+      ansible.builtin.command:
+        argv:
+          - ls
+          - -l
+          - "{{ remote_unlock_preflight_cert_dir_effective }}"
+      register: remote_unlock_preflight_unlock_dir
+      changed_when: false
+
+    - name: Check remote unlock tpm directory
+      ansible.builtin.command:
+        argv:
+          - ls
+          - -l
+          - "{{ remote_unlock_preflight_tpm_dir_effective }}"
+      register: remote_unlock_preflight_tpm_dir
+      changed_when: false
+
+    - name: Summarize remote unlock preflight
+      ansible.builtin.debug:
+        msg:
+          - "Transport mode: {{ remote_unlock_transport_mode }}"
+          - "Broker URL: {{ remote_unlock_broker_url }}"
+          - "Broker host: {{ remote_unlock_preflight_broker_host }}"
+          - "Management interface: {{ remote_unlock_preflight_mgmt.stdout | default('not set') }}"
+          - "Uplink interface: {{ remote_unlock_preflight_uplink.stdout | default('not set') }}"
+          - "Default route: {{ remote_unlock_preflight_default_route.stdout | default('missing') }}"
+          - "resolv.conf: {{ remote_unlock_preflight_resolv_conf.stdout | default('unavailable') }}"
+          - >-
+            Broker DNS:
+            {{ remote_unlock_preflight_broker_dns.stdout | default('hostname lookup skipped for IP broker URL') }}
+          - "wg binary: {{ remote_unlock_preflight_wg_cmd.stdout | default('not required in direct mode') }}"
+          - "wg service: {{ remote_unlock_preflight_wg_status.stdout | default('not required in direct mode') }}"
+          - "wg route to broker: {{ remote_unlock_preflight_broker_route.stdout | default('not required in direct mode') }}"
+          - >-
+            wg latest handshakes:
+            {{ remote_unlock_preflight_wg_latest_handshakes.stdout | default('not required in direct mode') }}
+          - >-
+            Broker ping:
+            {{ remote_unlock_preflight_broker_ping.stdout | default('not required in direct mode') }}
+          - >-
+            Broker challenge:
+            {{ remote_unlock_preflight_broker_challenge.challenge_id | default('unavailable') }}
+          - "Unlock dir: {{ remote_unlock_preflight_unlock_dir.stdout }}"
+          - "TPM dir: {{ remote_unlock_preflight_tpm_dir.stdout }}"

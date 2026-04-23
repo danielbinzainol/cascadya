@@ -1,0 +1,94 @@
+---
+- name: Deploy Grafana nginx site
+  template:
+    src: grafana-nginx.conf.j2
+    dest: "/etc/nginx/sites-available/{{ monitoring_grafana_domain }}"
+    mode: "0644"
+  register: grafana_nginx_site
+  when: monitoring_grafana_tls_mode != 'disabled'
+
+- name: Deploy infracontrol nginx site
+  template:
+    src: infracontrol-nginx.conf.j2
+    dest: "/etc/nginx/sites-available/{{ monitoring_infracontrol_domain }}"
+    mode: "0644"
+  register: infracontrol_nginx_site
+  when: monitoring_infracontrol_enabled
+
+- name: Enable Grafana nginx site
+  file:
+    src: "/etc/nginx/sites-available/{{ monitoring_grafana_domain }}"
+    dest: "/etc/nginx/sites-enabled/{{ monitoring_grafana_domain }}"
+    state: link
+    force: true
+  register: grafana_nginx_site_link
+  when: monitoring_grafana_tls_mode != 'disabled'
+
+- name: Enable infracontrol nginx site
+  file:
+    src: "/etc/nginx/sites-available/{{ monitoring_infracontrol_domain }}"
+    dest: "/etc/nginx/sites-enabled/{{ monitoring_infracontrol_domain }}"
+    state: link
+    force: true
+  register: infracontrol_nginx_site_link
+  when: monitoring_infracontrol_enabled
+
+- name: Disable default nginx site
+  file:
+    path: "/etc/nginx/sites-enabled/default"
+    state: absent
+  register: grafana_nginx_default_site
+  when:
+    - monitoring_grafana_tls_mode != 'disabled' or monitoring_infracontrol_enabled
+
+- name: Remove legacy nginx enabled sites
+  file:
+    path: "/etc/nginx/sites-enabled/{{ item }}"
+    state: absent
+  loop: "{{ monitoring_nginx_legacy_sites }}"
+  register: monitoring_nginx_legacy_enabled_sites
+  when:
+    - monitoring_grafana_tls_mode != 'disabled' or monitoring_infracontrol_enabled
+
+- name: Remove legacy nginx available sites
+  file:
+    path: "/etc/nginx/sites-available/{{ item }}"
+    state: absent
+  loop: "{{ monitoring_nginx_legacy_sites }}"
+  register: monitoring_nginx_legacy_available_sites
+  when:
+    - monitoring_grafana_tls_mode != 'disabled' or monitoring_infracontrol_enabled
+
+- name: Validate nginx configuration
+  command:
+    argv:
+      - nginx
+      - -t
+  changed_when: false
+  when:
+    - monitoring_grafana_tls_mode != 'disabled' or monitoring_infracontrol_enabled
+
+- name: Ensure nginx is enabled and running
+  service:
+    name: nginx
+    enabled: true
+    state: started
+  when:
+    - monitoring_grafana_tls_mode != 'disabled' or monitoring_infracontrol_enabled
+
+- name: Reload nginx when Grafana proxy configuration changes
+  service:
+    name: nginx
+    state: reloaded
+  when:
+    - monitoring_grafana_tls_mode != 'disabled' or monitoring_infracontrol_enabled
+    - >
+      (grafana_nginx_site.changed | default(false))
+      or (infracontrol_nginx_site.changed | default(false))
+      or (grafana_nginx_site_link.changed | default(false))
+      or (infracontrol_nginx_site_link.changed | default(false))
+      or (grafana_nginx_default_site.changed | default(false))
+      or ((monitoring_nginx_legacy_enabled_sites.results | default([]) | selectattr('changed') | list | length) > 0)
+      or ((monitoring_nginx_legacy_available_sites.results | default([]) | selectattr('changed') | list | length) > 0)
+      or (grafana_tls_cert_generated.changed | default(false))
+      or (infracontrol_tls_cert_generated.changed | default(false))

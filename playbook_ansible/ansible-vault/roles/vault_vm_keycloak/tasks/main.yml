@@ -1,0 +1,65 @@
+---
+- name: Validate proxy mode
+  ansible.builtin.assert:
+    that:
+      - vault_vm_keycloak_proxy_mode in ['nginx', 'traefik']
+    fail_msg: "vault_vm_keycloak_proxy_mode must be either 'nginx' or 'traefik'."
+
+- name: Validate mandatory Keycloak secrets
+  ansible.builtin.assert:
+    that:
+      - vault_vm_keycloak_admin_username | length > 0
+      - vault_vm_keycloak_admin_password | length > 0
+      - vault_vm_keycloak_db_password | length > 0
+    fail_msg: "Set the Keycloak admin and PostgreSQL secrets in inventory/group_vars/vault_vm.yml."
+
+- name: Stop if local Traefik would collide with the existing Vault nginx
+  ansible.builtin.fail:
+    msg: >-
+      The cartography shows nginx already fronts Vault on 80/443 for secrets.cascadya.com.
+      Keep proxy_mode=nginx for phase 1, or migrate secrets.cascadya.com first and only then
+      rerun with vault_vm_keycloak_proxy_mode=traefik and vault_vm_keycloak_replace_existing_nginx=true.
+  when:
+    - vault_vm_keycloak_proxy_mode == 'traefik'
+    - not vault_vm_keycloak_replace_existing_nginx | bool
+
+- name: Install required packages
+  ansible.builtin.import_tasks: packages.yml
+  when: vault_vm_keycloak_manage_system_packages | bool
+
+- name: Prepare runtime layout
+  ansible.builtin.import_tasks: runtime.yml
+
+- name: Prepare TLS assets
+  ansible.builtin.import_tasks: certificates.yml
+  when: vault_vm_keycloak_manage_proxy | bool
+
+- name: Start or refresh the Keycloak stack
+  ansible.builtin.import_tasks: compose.yml
+
+- name: Configure nginx publishing for auth.cascadya.internal
+  ansible.builtin.import_tasks: proxy_nginx.yml
+  when:
+    - vault_vm_keycloak_manage_proxy | bool
+    - vault_vm_keycloak_proxy_mode == 'nginx'
+
+- name: Document non-implemented Traefik mode
+  ansible.builtin.import_tasks: proxy_traefik.yml
+  when:
+    - vault_vm_keycloak_manage_proxy | bool
+    - vault_vm_keycloak_proxy_mode == 'traefik'
+
+- name: Validate local service health
+  ansible.builtin.import_tasks: healthchecks.yml
+
+- name: Ensure configured OIDC clients exist in Keycloak
+  ansible.builtin.import_tasks: sync_clients.yml
+  when:
+    - vault_vm_keycloak_manage_clients | bool
+    - vault_vm_keycloak_clients | length > 0
+
+- name: Ensure configured realm roles exist in Keycloak
+  ansible.builtin.import_tasks: sync_realm_roles.yml
+  when:
+    - vault_vm_keycloak_manage_realm_roles | bool
+    - vault_vm_keycloak_realm_roles | length > 0

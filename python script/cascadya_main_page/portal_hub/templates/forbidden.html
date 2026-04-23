@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero">
+  <div class="hero-copy">
+    <p class="eyebrow">Access denied</p>
+    <h2>Your Keycloak login worked, but this portal session is still blocked.</h2>
+    <p>{{ message }}</p>
+    <p class="muted">
+      Current tags:
+      {% if user.tags %}
+      <strong>{{ user.tags|join(", ") }}</strong>
+      {% else %}
+      <strong>none exposed to the portal</strong>
+      {% endif %}
+    </p>
+  </div>
+  <div class="hero-side">
+    <div class="metric-card">
+      <span class="metric-label">Signed in as</span>
+      <strong>{{ user.display_name }}</strong>
+      <span class="metric-sub">{{ user.email or user.username }}</span>
+    </div>
+    <form action="{{ url_for('logout') }}" method="post">
+      <button class="primary-button" type="submit">Logout from portal</button>
+    </form>
+  </div>
+</section>
+{% endblock %}

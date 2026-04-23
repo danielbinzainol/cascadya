@@ -1,0 +1,51 @@
+---
+- name: Create runtime directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default('root') }}"
+    group: "{{ item.group | default('root') }}"
+    mode: "{{ item.mode }}"
+    recurse: "{{ item.recurse | default(false) }}"
+  loop:
+    - { path: "{{ vault_vm_keycloak_runtime_root }}", mode: "0750" }
+    - { path: "{{ vault_vm_keycloak_runtime_root }}/postgres", mode: "0750" }
+    - path: "{{ vault_vm_keycloak_runtime_root }}/postgres/data"
+      owner: "{{ vault_vm_keycloak_postgres_container_uid }}"
+      group: "{{ vault_vm_keycloak_postgres_container_gid }}"
+      mode: "0700"
+      recurse: true
+    - { path: "{{ vault_vm_keycloak_runtime_root }}/keycloak", mode: "0750" }
+    - path: "{{ vault_vm_keycloak_runtime_root }}/keycloak/data"
+      owner: "{{ vault_vm_keycloak_container_uid }}"
+      group: "{{ vault_vm_keycloak_container_gid }}"
+      mode: "0770"
+      recurse: true
+    - { path: "{{ vault_vm_keycloak_runtime_root }}/import", mode: "0750" }
+    - path: "{{ vault_vm_keycloak_client_sync_root }}"
+      owner: "{{ vault_vm_keycloak_container_uid }}"
+      group: "{{ vault_vm_keycloak_container_gid }}"
+      mode: "0750"
+
+- name: Render Keycloak realm import file
+  ansible.builtin.template:
+    src: keycloak-realm.json.j2
+    dest: "{{ vault_vm_keycloak_realm_file }}"
+    owner: root
+    group: root
+    mode: "0640"
+  when: vault_vm_keycloak_realm_import_enabled | bool
+
+- name: Remove realm import file when DB restore mode is used
+  ansible.builtin.file:
+    path: "{{ vault_vm_keycloak_realm_file }}"
+    state: absent
+  when: not vault_vm_keycloak_realm_import_enabled | bool
+
+- name: Render docker compose definition
+  ansible.builtin.template:
+    src: docker-compose.keycloak.yml.j2
+    dest: "{{ vault_vm_keycloak_compose_file }}"
+    owner: root
+    group: root
+    mode: "0640"

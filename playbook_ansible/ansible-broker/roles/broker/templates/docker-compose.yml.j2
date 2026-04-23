@@ -1,0 +1,60 @@
+services:
+
+  nats:
+    image: {{ nats_image }}
+    container_name: {{ nats_container_name }}
+    command:
+      - "-c"
+      - "/nats-server.conf"
+    ports:
+      - "{{ nats_client_port }}:4222"
+      - "{{ nats_monitoring_port }}:8222"
+    volumes:
+      - "{{ nats_host_config_path }}:/nats-server.conf:ro"
+      - "{{ nats_host_ca_cert_path }}:/certs/ca.crt:ro"
+      - "{{ nats_host_server_cert_path }}:/certs/server.crt:ro"
+      - "{{ nats_host_server_key_path }}:/certs/server.key:ro"
+      - "nats_data:/data"
+
+  nats-exporter:
+    image: {{ nats_exporter_image }}
+    container_name: {{ nats_exporter_container_name }}
+    command:
+      - "-varz"
+      - "-connz"
+      - "-routez"
+      - "-subz"
+      - "-leafz"
+      - "{{ nats_monitoring_target }}"
+    ports:
+      - "{{ nats_exporter_port }}:7777"
+    depends_on:
+      - nats
+
+  cadvisor:
+    image: {{ cadvisor_image }}
+    container_name: {{ cadvisor_container_name }}
+    ports:
+      - "{{ cadvisor_port }}:8080"
+    volumes:
+      - "/:/rootfs:ro"
+      - "/var/run:/var/run:rw"
+      - "/sys:/sys:ro"
+      - "/var/lib/docker:/var/lib/docker:ro"
+
+  prometheus:
+    image: {{ prometheus_image }}
+    container_name: {{ prometheus_container_name }}
+    ports:
+      - "{{ prometheus_port }}:9090"
+    volumes:
+      - "{{ broker_prometheus_dir }}/prometheus.yml:/etc/prometheus/prometheus.yml:ro"
+      - "prometheus_data:/prometheus"
+    depends_on:
+      - nats-exporter
+      - cadvisor
+
+volumes:
+  nats_data:
+    name: "{{ nats_data_volume_name }}"
+  prometheus_data:

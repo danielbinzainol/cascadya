@@ -1,0 +1,21 @@
+---
+network_enable_ip_forward: false
+network_manage_uplink_bootstrap: "{{ remote_unlock_manage_wireguard | default(false) }}"
+network_uplink_interface: "{{ remote_unlock_uplink_interface | default('') }}"
+network_uplink_address: ""
+network_uplink_gateway_ip: "{{ remote_unlock_gateway_ip | default('') }}"
+network_bootstrap_nameservers:
+  - 1.1.1.1
+  - 8.8.8.8
+network_wireguard_interface: wg0
+network_wireguard_address: ""
+network_wireguard_private_key: ""
+network_wireguard_peer_public_key: ""
+network_wireguard_endpoint: ""
+network_wireguard_allowed_ips:
+  - 10.30.0.1/32
+network_wireguard_persistent_keepalive: 25
+network_wireguard_dns: []
+network_wireguard_required_packages:
+  - wireguard-tools
+network_wireguard_extra_packages: []

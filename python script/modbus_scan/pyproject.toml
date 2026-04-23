@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "modbus-tcp-scanner-mvp"
+version = "0.1.0"
+description = "Read-only Modbus TCP scanner MVP with safe throughput profiling"
+requires-python = ">=3.10"
+
+[project.scripts]
+modbus-scan = "modbus_scan.cli:main"
+

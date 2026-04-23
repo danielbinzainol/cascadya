@@ -1,0 +1,59 @@
+---
+ipc_alloy_manage_repo: true
+ipc_alloy_repo_key_url: "https://apt.grafana.com/gpg-full.key"
+ipc_alloy_repo_key_path: "/etc/apt/keyrings/grafana.asc"
+ipc_alloy_repo: >-
+  deb [signed-by={{ ipc_alloy_repo_key_path }}]
+  https://apt.grafana.com stable main
+ipc_alloy_repo_filename: "grafana"
+
+ipc_alloy_apt_packages:
+  - ca-certificates
+  - gpg
+  - wget
+
+ipc_alloy_package_name: "alloy"
+ipc_alloy_service_name: "alloy"
+ipc_alloy_config_dir: "/etc/alloy"
+ipc_alloy_config_path: "/etc/alloy/config.alloy"
+ipc_alloy_cert_dir: "/etc/alloy/certs"
+ipc_alloy_validate_command: "alloy validate"
+
+ipc_alloy_node_exporter_package_name: "prometheus-node-exporter"
+ipc_alloy_node_exporter_service_name: "prometheus-node-exporter"
+ipc_alloy_node_exporter_port: 9100
+ipc_alloy_node_exporter_target: "127.0.0.1:9100"
+ipc_alloy_node_exporter_job: "node-exporter"
+
+ipc_alloy_http_listen_address: "127.0.0.1:12345"
+ipc_alloy_mimir_remote_write_url: "http://10.42.1.4:9009/api/v1/push"
+ipc_alloy_mimir_remote_write_host: "10.42.1.4"
+ipc_alloy_mimir_remote_write_port: 9009
+ipc_alloy_scrape_interval: "15s"
+ipc_alloy_scrape_timeout: "10s"
+ipc_alloy_mimir_tenant: "classic"
+ipc_alloy_mimir_tenant_label: "{{ ipc_alloy_mimir_tenant if (ipc_alloy_mimir_tenant | default('', true) | trim | length > 0) else 'classic' }}"
+ipc_alloy_retention_profile: "{{ ipc_alloy_mimir_tenant if (ipc_alloy_mimir_tenant | default('', true) | trim | length > 0) else 'classic' }}"
+ipc_alloy_allowed_tenants:
+  - "classic"
+  - "lts-1y"
+  - "lts-5y"
+ipc_alloy_send_tenant_header: true
+ipc_alloy_mimir_basic_auth_username: ""
+ipc_alloy_mimir_basic_auth_password: ""
+ipc_alloy_mimir_verify_tls: true
+ipc_alloy_mimir_ca_source_path: ""
+ipc_alloy_mimir_ca_dest_path: "/etc/alloy/certs/mimir-ca.crt"
+
+ipc_alloy_labels_source: "ipc"
+ipc_alloy_labels_role: "ipc"
+ipc_alloy_labels_node: "{{ inventory_hostname }}"
+ipc_alloy_labels_site: "unassigned"
+
+ipc_metrics_source: "{{ ipc_alloy_labels_source }}"
+ipc_metrics_role: "{{ ipc_alloy_labels_role }}"
+ipc_metrics_site: "{{ ipc_alloy_labels_site }}"
+ipc_metrics_node: "{{ ipc_alloy_labels_node }}"
+ipc_metrics_instance: "{{ ipc_metrics_node }}:{{ ipc_alloy_node_exporter_port }}"
+ipc_metrics_retention_profile: "{{ ipc_alloy_retention_profile }}"
+ipc_metrics_tenant_label: "{{ ipc_alloy_mimir_tenant_label }}"

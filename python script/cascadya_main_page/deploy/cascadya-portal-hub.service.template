@@ -1,0 +1,16 @@
+[Unit]
+Description=Cascadya Portal Hub
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=__REMOTE_APP_PATH__
+EnvironmentFile=__REMOTE_ENV_PATH__
+ExecStart=__REMOTE_APP_PATH__/.venv/bin/python __REMOTE_APP_PATH__/app.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

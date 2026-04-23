@@ -1,0 +1,50 @@
+---
+wireguard_public_interface: "ens2"
+wireguard_private_interface: "ens5"
+wireguard_private_ip: ""
+
+wireguard_private_cidrs:
+  - "10.42.0.0/16"
+
+wireguard_interfaces: []
+wireguard_forward_rules: []
+wireguard_nat_rules: []
+
+wireguard_enable_ip_forward: true
+wireguard_rp_filter_mode: 2
+wireguard_manage_firewall_rules: true
+wireguard_firewall_backend: "iptables"
+wireguard_firewall_persistence_method: "systemd"
+wireguard_cleanup_legacy_rules: true
+wireguard_disable_netfilter_persistent: false
+wireguard_remove_legacy_sysctl_files: []
+wireguard_legacy_cleanup_rules: []
+
+wireguard_debug_tools_enabled: true
+wireguard_debug_packages:
+  - curl
+  - tcpdump
+  - net-tools
+
+wireguard_packages:
+  - wireguard
+  - wireguard-tools
+
+wireguard_manage_dnsmasq: false
+wireguard_dns_package: "dnsmasq"
+wireguard_dns_service_name: "dnsmasq"
+wireguard_dns_config_dir: "/etc/dnsmasq.d"
+wireguard_dns_config_path: "/etc/dnsmasq.d/cascadya-internal.conf"
+wireguard_dns_interface: ""
+wireguard_dns_ip: ""
+wireguard_dns_cache_size: 1000
+wireguard_dns_upstreams: []
+wireguard_dns_records: []
+
+wireguard_routes_service_name: "wireguard-routes"
+wireguard_run_verify: true
+
+wireguard_verify_private_endpoint_url: ""
+wireguard_verify_private_endpoint_status_code: 200
+wireguard_verify_route_checks: []
+wireguard_verify_tcp_checks: []

@@ -1,0 +1,53 @@
+http:
+  middlewares:
+    control-panel-ip-allowlist:
+      ipAllowList:
+        sourceRange:
+{% for cidr in traefik_allowed_cidrs %}
+          - "{{ cidr }}"
+{% endfor %}
+    keycloak-ip-allowlist:
+      ipAllowList:
+        sourceRange:
+{% for cidr in traefik_allowed_cidrs %}
+          - "{{ cidr }}"
+{% endfor %}
+
+  routers:
+    control-panel-router:
+      rule: "Host(`{{ control_panel_domain }}`)"
+      entryPoints:
+        - websecure
+      middlewares:
+        - control-panel-ip-allowlist
+      service: control-panel-service
+      tls: {}
+    keycloak-router:
+      rule: "Host(`{{ keycloak_domain }}`)"
+      entryPoints:
+        - websecure
+      middlewares:
+        - keycloak-ip-allowlist
+      service: keycloak-service
+      tls: {}
+
+  services:
+    control-panel-service:
+      loadBalancer:
+        servers:
+          - url: "http://127.0.0.1:8000"
+    keycloak-service:
+      loadBalancer:
+        servers:
+          - url: "http://127.0.0.1:{{ keycloak_http_port }}"
+
+tls:
+  certificates:
+    - certFile: /etc/traefik/certs/{{ control_panel_domain }}.crt
+      keyFile: /etc/traefik/certs/{{ control_panel_domain }}.key
+    - certFile: /etc/traefik/certs/{{ keycloak_domain }}.crt
+      keyFile: /etc/traefik/certs/{{ keycloak_domain }}.key
+
+  options:
+    default:
+      minVersion: VersionTLS12

@@ -1,0 +1,18 @@
+[Interface]
+Address = {{ network_wireguard_address }}
+PrivateKey = {{ network_wireguard_private_key }}
+{% if network_wireguard_dns_normalized | length > 0 -%}
+DNS = {{ network_wireguard_dns_normalized | join(', ') }}
+{% endif -%}
+{% if network_uplink_interface | length > 0 -%}
+PreUp = ip link set dev {{ network_uplink_interface }} up
+{% endif -%}
+{% if network_uplink_interface | length > 0 and network_uplink_gateway_ip | length > 0 -%}
+PreUp = ip route replace default via {{ network_uplink_gateway_ip }} dev {{ network_uplink_interface }} onlink
+{% endif -%}
+
+[Peer]
+PublicKey = {{ network_wireguard_peer_public_key }}
+Endpoint = {{ network_wireguard_endpoint }}
+AllowedIPs = {{ network_wireguard_allowed_ips_normalized | join(', ') }}
+PersistentKeepalive = {{ network_wireguard_persistent_keepalive }}

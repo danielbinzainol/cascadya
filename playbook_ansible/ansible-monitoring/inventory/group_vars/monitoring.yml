@@ -1,0 +1,80 @@
+---
+monitoring_ipv4: "51.15.83.22"
+monitoring_private_ip: "10.42.1.4"
+monitoring_metrics_instance_name: "monitoring-DEV1-S"
+monitoring_grafana_domain: "grafana.cascadya.internal"
+monitoring_grafana_public_base_url: "https://grafana.cascadya.internal"
+monitoring_infracontrol_enabled: true
+monitoring_infracontrol_domain: "infracontrol.cascadya.internal"
+# The infracontrol web UI is served by the dedicated Vite frontend service.
+monitoring_infracontrol_root_redirect_path: ""
+monitoring_infracontrol_frontend_proxy_pass: "http://10.42.1.4:5173"
+monitoring_infracontrol_api_proxy_pass: "http://10.42.1.4:3001/api/"
+monitoring_infracontrol_health_proxy_pass: "http://10.42.1.4:3001/health"
+broker_private_ip: "10.42.1.6"
+
+mimir_bucket_name: "cascadya-mimir-dev-367e4835"
+mimir_bucket_endpoint: "https://s3.nl-ams.scw.cloud"
+mimir_bucket_region: "nl-ams"
+
+mimir_internal_url: "http://10.42.1.4:9009"
+loki_internal_url: "http://10.42.1.4:3100"
+
+monitoring_enable_alloy: true
+monitoring_enable_promtail: true
+monitoring_enable_cadvisor: true
+monitoring_enable_postgresql_datasource: true
+monitoring_enable_infinity_datasource: true
+monitoring_retention_profile: "classic"
+
+mimir_enable_multitenancy: true
+mimir_default_tenant: "classic"
+grafana_enable_mimir_tenant_datasources: true
+mimir_tenants:
+  - id: "classic"
+    retention_period: "30d"
+    grafana_datasource_name: "prometheus"
+    grafana_datasource_uid: "P1809F7CD0C75ACF3"
+  - id: "lts-1y"
+    retention_period: "365d"
+    grafana_datasource_name: "mimir-lts-1y"
+    grafana_datasource_uid: "mimir-lts-1y"
+  - id: "lts-5y"
+    retention_period: "1825d"
+    grafana_datasource_name: "mimir-lts-5y"
+    grafana_datasource_uid: "mimir-lts-5y"
+
+alloy_enable_http_ui: true
+alloy_http_listen_port: 12345
+alloy_collect_local_system_metrics: true
+alloy_scrape_local_node_exporter: false
+alloy_scrape_local_cadvisor: true
+alloy_scrape_remote_node_exporters: true
+alloy_remote_write_url: "http://mimir:9009/api/v1/push"
+alloy_remote_write_tenant: "classic"
+alloy_remote_node_exporter_targets:
+  - name: "c-market-Dev1-S"
+    address: "10.42.1.8"
+    site: "ams1"
+  - name: "wazuh-Dev1-S"
+    address: "10.42.1.7"
+    site: "ams1"
+  - name: "control-panel-DEV1-S"
+    address: "10.42.1.2"
+    site: "ams1"
+  - name: "broker-DEV1-S"
+    address: "10.42.1.6"
+    site: "ams1"
+  - name: "wireguard-DEV1-S"
+    address: "10.42.1.5"
+    site: "ams1"
+  - name: "docmost-DEV1-S"
+    address: "10.42.1.3"
+    site: "ams1"
+  - name: "vault-DEV1-S"
+    address: "10.42.2.4"
+    site: "ams1"
+
+grafana_postgresql_host: "10.42.2.2:5432"
+grafana_postgresql_user: "cascadya"
+grafana_postgresql_database: "cascadya_telemetry"

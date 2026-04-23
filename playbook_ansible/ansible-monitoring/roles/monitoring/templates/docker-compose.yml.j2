@@ -1,0 +1,117 @@
+services:
+  grafana:
+    image: {{ grafana_image }}
+    container_name: grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - {{ monitoring_data_root }}/grafana:/var/lib/grafana
+      - {{ monitoring_dir }}/grafana/provisioning:/etc/grafana/provisioning
+      - {{ monitoring_dir }}/grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+      GF_PLUGINS_PREINSTALL_SYNC: {{ grafana_preinstall_plugins | join(',') | quote }}
+      GRAFANA_POSTGRES_PASSWORD: ${GRAFANA_POSTGRES_PASSWORD}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_SERVER_DOMAIN: {{ monitoring_grafana_domain | quote }}
+      GF_SERVER_ROOT_URL: {{ monitoring_grafana_public_base_url | quote }}
+      GF_SERVER_ENFORCE_DOMAIN: "true"
+      GF_SECURITY_COOKIE_SECURE: "true"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: {{ grafana_default_home_dashboard_path | quote }}
+    depends_on:
+      - loki
+      - mimir
+    restart: unless-stopped
+
+  loki:
+    image: {{ loki_image }}
+    container_name: loki
+    command: -config.file=/etc/loki/config.yml
+    ports:
+      - "3100:3100"
+    volumes:
+      - {{ monitoring_dir }}/loki/config.yml:/etc/loki/config.yml:ro
+      - {{ monitoring_data_root }}/loki:/loki
+    restart: unless-stopped
+
+  mimir:
+    image: {{ mimir_image }}
+    container_name: mimir
+    command:
+      - -target=all
+      - -config.file=/etc/mimir/mimir.yml
+      - -config.expand-env=true
+    ports:
+      - "9009:9009"
+    volumes:
+      - {{ monitoring_dir }}/mimir/mimir.yml:/etc/mimir/mimir.yml:ro
+      - {{ mimir_runtime_config_path }}:/etc/mimir/runtime.yml:ro
+{% if mimir_enable_rule_provisioning %}
+      - {{ mimir_rules_root }}:/rules:ro
+{% endif %}
+      - {{ monitoring_data_root }}/mimir:/data
+    environment:
+      MIMIR_S3_BUCKET_NAME: ${MIMIR_S3_BUCKET_NAME}
+      MIMIR_S3_ENDPOINT: ${MIMIR_S3_ENDPOINT}
+      MIMIR_S3_REGION: ${MIMIR_S3_REGION}
+      MIMIR_S3_ACCESS_KEY_ID: ${MIMIR_S3_ACCESS_KEY_ID}
+      MIMIR_S3_SECRET_ACCESS_KEY: ${MIMIR_S3_SECRET_ACCESS_KEY}
+      MIMIR_S3_INSECURE: ${MIMIR_S3_INSECURE}
+    restart: unless-stopped
+
+{% if monitoring_enable_alloy %}
+  alloy:
+    image: {{ alloy_image }}
+    container_name: alloy
+    command:
+      - run
+{% if alloy_enable_http_ui %}
+      - --server.http.listen-addr=0.0.0.0:{{ alloy_http_listen_port }}
+{% endif %}
+      - --storage.path={{ alloy_storage_path }}
+      - /etc/alloy/config.alloy
+{% if alloy_enable_http_ui %}
+    ports:
+      - "{{ alloy_http_host_bind_address }}:{{ alloy_http_listen_port }}:{{ alloy_http_listen_port }}"
+{% endif %}
+    volumes:
+      - {{ monitoring_dir }}/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - {{ monitoring_data_root }}/alloy:/var/lib/alloy
+      - /:/rootfs:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /run/udev:/host/run/udev:ro
+{% if alloy_scrape_local_node_exporter %}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+{% endif %}
+    depends_on:
+      - mimir
+{% if monitoring_enable_cadvisor and alloy_scrape_local_cadvisor %}
+      - cadvisor
+{% endif %}
+    restart: unless-stopped
+{% endif %}
+
+{% if monitoring_enable_promtail %}
+  promtail:
+    image: {{ promtail_image }}
+    container_name: promtail
+    volumes:
+      - /var/log:/var/log
+      - {{ monitoring_dir }}/promtail-config.yml:/etc/promtail/config.yml:ro
+      - {{ monitoring_data_root }}/promtail:/var/lib/promtail
+    restart: unless-stopped
+{% endif %}
+
+{% if monitoring_enable_cadvisor %}
+  cadvisor:
+    image: {{ cadvisor_image }}
+    container_name: cadvisor
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    restart: unless-stopped
+{% endif %}

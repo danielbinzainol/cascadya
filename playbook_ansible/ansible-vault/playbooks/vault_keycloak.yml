@@ -1,0 +1,7 @@
+---
+- name: Deploy shared Keycloak on the Vault VM
+  hosts: vault_vm
+  become: true
+  gather_facts: false
+  roles:
+    - vault_vm_keycloak

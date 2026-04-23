@@ -1,0 +1,23 @@
+---
+- name: Render nginx site for auth.cascadya.internal
+  ansible.builtin.template:
+    src: nginx-auth-site.conf.j2
+    dest: "/etc/nginx/sites-available/{{ vault_vm_keycloak_nginx_site_name }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Enable nginx site for auth.cascadya.internal
+  ansible.builtin.file:
+    src: "/etc/nginx/sites-available/{{ vault_vm_keycloak_nginx_site_name }}"
+    dest: "/etc/nginx/sites-enabled/{{ vault_vm_keycloak_nginx_site_name }}"
+    state: link
+  notify: Reload nginx
+
+- name: Validate nginx configuration
+  ansible.builtin.command: nginx -t
+  changed_when: false
+
+- name: Flush nginx handlers before health checks
+  ansible.builtin.meta: flush_handlers

@@ -1,0 +1,56 @@
+services:
+  postgres-keycloak:
+    image: postgres:16
+    container_name: control-panel-postgres-keycloak
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: "{{ keycloak_db_name }}"
+      POSTGRES_USER: "{{ keycloak_db_user }}"
+      POSTGRES_PASSWORD: "{{ keycloak_db_password }}"
+    ports:
+      - "127.0.0.1:{{ keycloak_db_port }}:5432"
+    volumes:
+      - keycloak-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.1
+    container_name: control-panel-keycloak
+    restart: unless-stopped
+    depends_on:
+      postgres-keycloak:
+        condition: service_healthy
+    environment:
+      KC_DB: postgres
+      KC_DB_URL_HOST: postgres-keycloak
+      KC_DB_URL_PORT: 5432
+      KC_DB_URL_DATABASE: "{{ keycloak_db_name }}"
+      KC_DB_USERNAME: "{{ keycloak_db_user }}"
+      KC_DB_PASSWORD: "{{ keycloak_db_password }}"
+      KC_HEALTH_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_HTTP_ENABLED: "true"
+      KC_HTTP_PORT: 8080
+      KC_HOSTNAME: https://{{ keycloak_domain }}
+      KC_HOSTNAME_STRICT: "true"
+      KC_BOOTSTRAP_ADMIN_USERNAME: "{{ keycloak_admin_username }}"
+      KC_BOOTSTRAP_ADMIN_PASSWORD: "{{ keycloak_admin_password }}"
+    command:
+      - start
+      - --import-realm
+    ports:
+      - "127.0.0.1:{{ keycloak_http_port }}:8080"
+    volumes:
+      - ./realm-import:/opt/keycloak/data/import:ro
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  keycloak-postgres-data:

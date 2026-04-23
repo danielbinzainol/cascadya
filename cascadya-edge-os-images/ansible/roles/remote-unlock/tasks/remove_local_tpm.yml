@@ -1,0 +1,111 @@
+---
+- name: Assert local TPM removal was explicitly approved
+  ansible.builtin.assert:
+    that:
+      - remote_unlock_allow_remove_local_tpm | bool
+    fail_msg: >-
+      Refusing to remove the local TPM token without
+      remote_unlock_allow_remove_local_tpm=true.
+
+- name: Check the remote unlock validation marker
+  ansible.builtin.stat:
+    path: "{{ remote_unlock_validate_state_path }}"
+  register: remote_unlock_remove_validate_state_stat
+
+- name: Check the remote unlock cutover marker
+  ansible.builtin.stat:
+    path: "{{ remote_unlock_cutover_state_path }}"
+  register: remote_unlock_remove_cutover_state_stat
+
+- name: Assert validation and cutover markers are present
+  ansible.builtin.assert:
+    that:
+      - remote_unlock_remove_validate_state_stat.stat.exists
+      - remote_unlock_remove_cutover_state_stat.stat.exists
+    fail_msg: >-
+      Missing remote unlock state markers. Run remote-unlock-validate.yml and
+      remote-unlock-cutover.yml successfully before remote-unlock-remove-local-tpm.yml.
+
+- name: Read the remote unlock validation marker
+  ansible.builtin.slurp:
+    src: "{{ remote_unlock_validate_state_path }}"
+  register: remote_unlock_remove_validate_state_raw
+
+- name: Parse the remote unlock validation marker
+  ansible.builtin.set_fact:
+    remote_unlock_remove_validate_state: >-
+      {{ remote_unlock_remove_validate_state_raw.content | b64decode | from_json }}
+
+- name: Assert the validation marker is recent and matches the active transport mode
+  ansible.builtin.assert:
+    that:
+      - remote_unlock_remove_validate_state.validate_success | default(false)
+      - remote_unlock_remove_validate_state.transport_mode | default('') == remote_unlock_transport_mode
+      - >-
+        (
+          (ansible_date_time.epoch | int)
+          - (remote_unlock_remove_validate_state_stat.stat.mtime | int)
+        ) <= (remote_unlock_validate_success_max_age_seconds | int)
+    fail_msg: >-
+      The validation marker at {{ remote_unlock_validate_state_path }} is stale
+      or does not match the active transport mode. Re-run
+      remote-unlock-validate.yml before removing the local TPM token.
+
+- name: Read LUKS metadata before removing the local TPM token
+  ansible.builtin.command:
+    argv:
+      - cryptsetup
+      - luksDump
+      - "{{ remote_unlock_luks_device }}"
+  register: remote_unlock_luksdump_before_remove
+  changed_when: false
+
+- name: Detect whether a TPM token is still present
+  ansible.builtin.set_fact:
+    remote_unlock_tpm_token_present: >-
+      {{
+        (
+          remote_unlock_luksdump_before_remove.stdout
+          | regex_search('(?m)^\\s*\\d+:\\s+systemd-tpm2\\b')
+        ) is not none
+      }}
+
+- name: Remove the local TPM unlock token from the LUKS header
+  ansible.builtin.command:
+    argv:
+      - systemd-cryptenroll
+      - --wipe-slot=tpm2
+      - "{{ remote_unlock_luks_device }}"
+  register: remote_unlock_remove_tpm
+  changed_when: remote_unlock_tpm_token_present | bool
+  when: remote_unlock_tpm_token_present | bool
+
+- name: Read LUKS metadata after removing the local TPM token
+  ansible.builtin.command:
+    argv:
+      - cryptsetup
+      - luksDump
+      - "{{ remote_unlock_luks_device }}"
+  register: remote_unlock_luksdump_after_remove
+  changed_when: false
+
+- name: Assert that the local TPM token is gone
+  ansible.builtin.assert:
+    that:
+      - >
+        (
+          remote_unlock_luksdump_after_remove.stdout
+          | regex_search('(?m)^\\s*\\d+:\\s+systemd-tpm2\\b')
+        ) is none
+    fail_msg: The local TPM token is still present in the LUKS header.
+    success_msg: The local TPM token was removed from the LUKS header.
+
+- name: Report the local TPM removal guard context
+  ansible.builtin.debug:
+    msg:
+      - "Validation marker: {{ remote_unlock_validate_state_path }}"
+      - "Cutover marker: {{ remote_unlock_cutover_state_path }}"
+      - "Transport mode: {{ remote_unlock_transport_mode }}"
+      - >-
+        Boot-path proof remains a separate reboot validation milestone after the
+        local TPM token removal.

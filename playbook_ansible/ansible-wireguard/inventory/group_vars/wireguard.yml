@@ -1,0 +1,243 @@
+---
+wireguard_public_interface: "ens2"
+wireguard_private_interface: "ens5"
+wireguard_private_ip: "10.42.1.5"
+
+wireguard_private_cidrs:
+  - "10.42.0.0/16"
+
+wireguard_enable_ip_forward: true
+wireguard_rp_filter_mode: 2
+wireguard_manage_firewall_rules: true
+wireguard_firewall_backend: "iptables"
+wireguard_firewall_persistence_method: "systemd"
+wireguard_cleanup_legacy_rules: true
+wireguard_disable_netfilter_persistent: true
+wireguard_remove_legacy_sysctl_files:
+  - "/etc/sysctl.d/99-wireguard-forward.conf"
+  - "/etc/sysctl.d/99-wireguard.conf"
+wireguard_debug_tools_enabled: true
+wireguard_manage_dnsmasq: true
+wireguard_dns_interface: "wg0"
+wireguard_dns_ip: "10.8.0.1"
+wireguard_dns_upstreams:
+  - "1.1.1.1"
+  - "1.0.0.1"
+wireguard_dns_records:
+  - name: "control-panel.cascadya.internal"
+    address: "10.42.1.2"
+  - name: "auth.cascadya.internal"
+    address: "10.42.2.4"
+  - name: "wazuh.cascadya.internal"
+    address: "10.42.1.7"
+  - name: "grafana.cascadya.internal"
+    address: "10.42.1.4"
+  - name: "infracontrol.cascadya.internal"
+    address: "10.42.1.4"
+  - name: "portal.cascadya.internal"
+    address: "10.42.1.2"
+  - name: "features.cascadya.internal"
+    address: "10.42.1.2"
+  - name: "mosquitto.cascadya.internal"
+    address: "10.42.1.6"
+
+wireguard_interfaces:
+  - name: "wg0"
+    address: "10.8.0.1/16"
+    listen_port: 51820
+    private_key: "{{ lookup('ansible.builtin.env', 'WIREGUARD_WG0_PRIVATE_KEY') }}"
+    peers:
+      - name: "daniel"
+        public_key: "CfIJb+JE+XhHPv56yoO8vOY5N6vdfvtVkncWLjh2SFs="
+        address: "10.8.0.2/32"
+
+      - name: "mahmoud"
+        public_key: "hWUK1fbb1hhxbQuxG3ADRdMufLNNIid6ZHQ7E6C4XVo="
+        address: "10.8.0.3/32"
+
+      - name: "loris"
+        public_key: "+y8MTJ6zkfhc6t3GT7xOF8lNmevOVrhnHEE8Pd9tcHw="
+        address: "10.8.0.4/32"
+
+      - name: "luc"
+        public_key: "WdKmWbQrJcXUKfKN/vc1vxXR7mUgdrrgoq24sfikCjY="
+        address: "10.8.0.6/32"
+
+      - name: "dominique"
+        public_key: "Sighb7IGqCs6Vh7zPe+1dZ8eIFU4hccc8NjXTkauYTQ="
+        address: "10.8.0.7/32"
+
+      - name: "R640 Dedirack"
+        public_key: "tQN7tyIGLfroygqP76JcnsuPAq16XUpcxVGw8Qcc11M="
+        address: "10.8.0.254/32"
+
+  - name: "wg1"
+    address: "10.9.0.1/16"
+    listen_port: 51821
+    private_key: "{{ lookup('ansible.builtin.env', 'WIREGUARD_WG1_PRIVATE_KEY') }}"
+    peers:
+      - name: "teltonika-site-10"
+        public_key: "MEfwzbh2YrAd7bQ6ZxOD2fHcsq4+KyrQMzH9hiwd5m4="
+        address: "10.9.0.5/32"
+        routed_networks:
+          - "192.168.10.0/24"
+
+wireguard_forward_rules:
+  - description: "admins to private vpc"
+    in_interface: "wg0"
+    out_interface: "ens5"
+    source: "10.8.0.0/16"
+    destination: "10.42.0.0/16"
+
+  - description: "private vpc replies to admins"
+    in_interface: "ens5"
+    out_interface: "wg0"
+    source: "10.42.0.0/16"
+    destination: "10.8.0.0/16"
+    states:
+      - "RELATED"
+      - "ESTABLISHED"
+
+  - description: "admins to edge tunnel addresses"
+    in_interface: "wg0"
+    out_interface: "wg1"
+    source: "10.8.0.0/16"
+    destination: "10.9.0.0/16"
+
+  - description: "edge tunnel replies to admins"
+    in_interface: "wg1"
+    out_interface: "wg0"
+    source: "10.9.0.0/16"
+    destination: "10.8.0.0/16"
+    states:
+      - "RELATED"
+      - "ESTABLISHED"
+
+  - description: "admins to site lan"
+    in_interface: "wg0"
+    out_interface: "wg1"
+    source: "10.8.0.0/16"
+    destination: "192.168.10.0/24"
+
+  - description: "site lan replies to admins"
+    in_interface: "wg1"
+    out_interface: "wg0"
+    source: "192.168.10.0/24"
+    destination: "10.8.0.0/16"
+    states:
+      - "RELATED"
+      - "ESTABLISHED"
+
+  - description: "edge routers to private vpc"
+    in_interface: "wg1"
+    out_interface: "ens5"
+    source: "10.9.0.0/16"
+    destination: "10.42.0.0/16"
+
+  - description: "private vpc replies to edge routers"
+    in_interface: "ens5"
+    out_interface: "wg1"
+    source: "10.42.0.0/16"
+    destination: "10.9.0.0/16"
+    states:
+      - "RELATED"
+      - "ESTABLISHED"
+
+  - description: "site lan to private vpc"
+    in_interface: "wg1"
+    out_interface: "ens5"
+    source: "192.168.10.0/24"
+    destination: "10.42.0.0/16"
+
+  - description: "private vpc replies to site lan"
+    in_interface: "ens5"
+    out_interface: "wg1"
+    source: "10.42.0.0/16"
+    destination: "192.168.10.0/24"
+    states:
+      - "RELATED"
+      - "ESTABLISHED"
+
+wireguard_nat_rules:
+  - description: "admins to internet via ens2"
+    source: "10.8.0.0/16"
+    out_interface: "ens2"
+    action: "MASQUERADE"
+
+wireguard_legacy_cleanup_rules:
+  - table: "filter"
+    chain: "FORWARD"
+    rule: "-i wg0 -j ACCEPT"
+  - table: "filter"
+    chain: "FORWARD"
+    rule: "-o wg0 -j ACCEPT"
+  - table: "filter"
+    chain: "FORWARD"
+    rule: "-d 10.42.0.0/16 -i wg0 -j ACCEPT"
+  - table: "filter"
+    chain: "FORWARD"
+    rule: "-s 10.42.0.0/16 -o wg0 -j ACCEPT"
+  - table: "filter"
+    chain: "FORWARD"
+    rule: "-i wg0 -o ens5 -j ACCEPT"
+  - table: "filter"
+    chain: "FORWARD"
+    rule: "-i ens5 -o wg0 -m state --state RELATED,ESTABLISHED -j ACCEPT"
+  - table: "filter"
+    chain: "FORWARD"
+    rule: "-s 10.8.0.0/24 -d 10.42.0.0/16 -i wg0 -j ACCEPT"
+  - table: "filter"
+    chain: "FORWARD"
+    rule: "-s 10.42.0.0/16 -d 10.8.0.0/24 -o wg0 -j ACCEPT"
+  - table: "filter"
+    chain: "FORWARD"
+    rule: "-s 10.42.0.0/16 -d 192.168.10.0/24 -o wg0 -j ACCEPT"
+  - table: "filter"
+    chain: "FORWARD"
+    rule: "-s 192.168.10.0/24 -d 10.42.0.0/16 -i wg0 -m state --state RELATED,ESTABLISHED -j ACCEPT"
+  - table: "nat"
+    chain: "POSTROUTING"
+    rule: "-s 10.8.0.0/24 -o ens2 -j MASQUERADE"
+  - table: "nat"
+    chain: "POSTROUTING"
+    rule: "-o eth0 -j MASQUERADE"
+  - table: "nat"
+    chain: "POSTROUTING"
+    rule: "-s 10.42.0.0/16 -d 192.168.10.0/24 -o wg0 -j MASQUERADE"
+  - table: "nat"
+    chain: "POSTROUTING"
+    rule: "-o ens2 -j MASQUERADE"
+
+wireguard_verify_route_checks:
+  - description: "admins to monitoring over ens5"
+    destination: "10.42.1.4"
+    source: "10.8.0.2"
+    iif: "wg0"
+    expected_dev: "ens5"
+  - description: "admins to edge overlay over wg1"
+    destination: "10.9.0.5"
+    source: "10.8.0.2"
+    iif: "wg0"
+    expected_dev: "wg1"
+  - description: "admins to site ipc over wg1"
+    destination: "192.168.10.109"
+    source: "10.8.0.2"
+    iif: "wg0"
+    expected_dev: "wg1"
+  - description: "site ipc to wazuh private over ens5"
+    destination: "10.42.1.7"
+    source: "192.168.10.109"
+    iif: "wg1"
+    expected_dev: "ens5"
+
+wireguard_verify_tcp_checks:
+  - description: "wazuh manager 1514 from hub"
+    host: "10.42.1.7"
+    port: 1514
+  - description: "wazuh registration 1515 from hub"
+    host: "10.42.1.7"
+    port: 1515
+
+# Expected at runtime on the control machine:
+#   WIREGUARD_WG0_PRIVATE_KEY
+#   WIREGUARD_WG1_PRIVATE_KEY

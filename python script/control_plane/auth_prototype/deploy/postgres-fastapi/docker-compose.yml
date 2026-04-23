@@ -1,0 +1,19 @@
+services:
+  postgres-fastapi:
+    image: postgres:16
+    container_name: control-panel-postgres-fastapi
+    restart: unless-stopped
+    env_file:
+      - postgres-fastapi.env
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres-fastapi-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-fastapi-data:

@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="grid two">
+    <section class="card">
+        <div class="eyebrow">Identity Provider</div>
+        <h1>Connexion au Control Plane</h1>
+        <p>
+            Le flux cible passe par Keycloak OIDC, puis cree ou met a jour automatiquement
+            le compte miroir dans la base RBAC du backend.
+        </p>
+        {% if error %}
+        <p class="error">{{ error }}</p>
+        {% endif %}
+
+        {% if oidc_enabled and oidc_ready %}
+        <a class="button" href="{{ oidc_login_url }}">Se connecter avec Keycloak</a>
+        <p class="helper" style="margin-top: 14px;">
+            Issuer: <code>{{ oidc_issuer_url }}</code><br>
+            Redirection cible: <code>{{ next_path }}</code>
+        </p>
+        {% elif oidc_enabled %}
+        <p class="error">OIDC est active mais incomplete. Renseigne les variables Keycloak dans l'environnement.</p>
+        {% else %}
+        <p class="helper">
+            OIDC n'est pas encore active sur cet environnement. Le fallback local peut rester utile
+            uniquement pour le developpement.
+        </p>
+        {% endif %}
+    </section>
+
+    {% if legacy_login_enabled %}
+    <section class="card">
+        <div class="eyebrow">Fallback local</div>
+        <h2>Login de developpement</h2>
+        <p>
+            Ce formulaire existe uniquement comme filet de securite le temps de terminer le deploiement
+            Keycloak. Desactive-le ensuite avec <code>AUTH_PROTO_ENABLE_LEGACY_LOGIN=false</code>.
+        </p>
+        <form method="post" action="/auth/login">
+            <input type="hidden" name="next_path" value="{{ next_path }}">
+            <label for="username">Username</label>
+            <input id="username" name="username" autocomplete="username" placeholder="operator" required>
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" placeholder="operator123!" required>
+            <button type="submit">Se connecter en local</button>
+        </form>
+
+        <div class="eyebrow" style="margin-top: 18px;">Comptes de demo</div>
+        <ul class="list">
+            {% for demo_user in demo_users %}
+            <li>
+                <strong>{{ demo_user.username }}</strong>
+                <br>
+                roles: {{ demo_user.roles | join(", ") }}
+            </li>
+            {% endfor %}
+        </ul>
+        <pre>operator / operator123!
+admin / admin123!</pre>
+    </section>
+    {% endif %}
+</div>
+{% endblock %}

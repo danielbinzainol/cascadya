@@ -1,0 +1,156 @@
+---
+- name: Validate node_exporter and Grafana Alloy on a Cascadya IPC
+  hosts: all
+  become: false
+  gather_facts: true
+
+  vars:
+    ipc_alloy_service_name: "alloy"
+    ipc_alloy_package_name: "alloy"
+    ipc_alloy_node_exporter_service_name: "prometheus-node-exporter"
+    ipc_alloy_node_exporter_package_name: "prometheus-node-exporter"
+    ipc_alloy_validation_timeout_seconds: 120
+    ipc_alloy_validation_delay_seconds: 5
+
+  tasks:
+    - name: Assert the Mimir remote_write endpoint is configured
+      ansible.builtin.assert:
+        that:
+          - (ipc_alloy_mimir_remote_write_url | default('', true) | trim) | length > 0
+        fail_msg: "Renseigne ipc_alloy_mimir_remote_write_url avant de valider IPC Alloy."
+
+    - name: Assert the tenant / retention mapping is coherent
+      ansible.builtin.assert:
+        that:
+          - (ipc_alloy_mimir_tenant | default('', true) | trim) | length > 0
+          - ipc_alloy_mimir_tenant in ['classic', 'lts-1y', 'lts-5y']
+          - ipc_alloy_retention_profile == ipc_alloy_mimir_tenant
+          - ipc_alloy_mimir_tenant_label == ipc_alloy_mimir_tenant
+          - ipc_metrics_retention_profile == ipc_alloy_mimir_tenant
+          - ipc_metrics_tenant_label == ipc_alloy_mimir_tenant
+          - (ipc_metrics_node | default('', true) | trim) | length > 0
+          - (ipc_metrics_instance | default('', true) | trim) | length > 0
+        fail_msg: >-
+          Le profil Alloy IPC est incoherent.
+          Attendu: tenant parmi `classic`, `lts-1y`, `lts-5y`, avec retention_profile et labels metrics alignes.
+
+    - name: Collect package facts
+      ansible.builtin.package_facts:
+        manager: auto
+
+    - name: Assert the node_exporter and Alloy packages are installed
+      ansible.builtin.assert:
+        that:
+          - ipc_alloy_package_name in ansible_facts.packages
+          - ipc_alloy_node_exporter_package_name in ansible_facts.packages
+        fail_msg: >-
+          Les paquets attendus pour Alloy ne sont pas tous installes sur l'IPC.
+          Attendu: {{ [ipc_alloy_package_name, ipc_alloy_node_exporter_package_name] }}
+
+    - name: Collect systemd service facts
+      ansible.builtin.service_facts:
+
+    - name: Assert the node_exporter and Alloy systemd units are present
+      ansible.builtin.assert:
+        that:
+          - (ipc_alloy_service_name ~ '.service') in ansible_facts.services
+          - (ipc_alloy_node_exporter_service_name ~ '.service') in ansible_facts.services
+        fail_msg: >-
+          Les unites systemd attendues pour Alloy ne sont pas presentes sur l'IPC.
+          Attendu: {{ ipc_alloy_service_name }}.service et {{ ipc_alloy_node_exporter_service_name }}.service
+
+    - name: Wait for the node_exporter HTTP port locally
+      ansible.builtin.wait_for:
+        host: "127.0.0.1"
+        port: "{{ ipc_alloy_node_exporter_port | int }}"
+        timeout: 30
+        connect_timeout: 5
+      changed_when: false
+
+    - name: Wait for the Mimir remote_write endpoint from the IPC
+      ansible.builtin.wait_for:
+        host: "{{ ipc_alloy_mimir_remote_write_host }}"
+        port: "{{ ipc_alloy_mimir_remote_write_port | int }}"
+        timeout: 30
+        connect_timeout: 5
+      changed_when: false
+      when:
+        - (ipc_alloy_mimir_remote_write_host | default('', true) | trim) | length > 0
+
+    - name: Check Alloy service active state
+      ansible.builtin.command:
+        cmd: "systemctl is-active {{ ipc_alloy_service_name }}"
+      register: ipc_alloy_service_active
+      changed_when: false
+      failed_when: false
+      retries: 6
+      delay: 5
+      until: ipc_alloy_service_active.stdout.strip() == "active"
+
+    - name: Check Alloy service enabled state
+      ansible.builtin.command:
+        cmd: "systemctl is-enabled {{ ipc_alloy_service_name }}"
+      register: ipc_alloy_service_enabled
+      changed_when: false
+      failed_when: false
+
+    - name: Check node_exporter service active state
+      ansible.builtin.command:
+        cmd: "systemctl is-active {{ ipc_alloy_node_exporter_service_name }}"
+      register: ipc_alloy_node_exporter_service_active
+      changed_when: false
+      failed_when: false
+      retries: 6
+      delay: 5
+      until: ipc_alloy_node_exporter_service_active.stdout.strip() == "active"
+
+    - name: Check node_exporter service enabled state
+      ansible.builtin.command:
+        cmd: "systemctl is-enabled {{ ipc_alloy_node_exporter_service_name }}"
+      register: ipc_alloy_node_exporter_service_enabled
+      changed_when: false
+      failed_when: false
+
+    - name: Read Alloy journal tail
+      ansible.builtin.command:
+        cmd: "journalctl -u {{ ipc_alloy_service_name }} -n 25 --no-pager"
+      register: ipc_alloy_journal
+      changed_when: false
+      failed_when: false
+
+    - name: Read node_exporter journal tail
+      ansible.builtin.command:
+        cmd: "journalctl -u {{ ipc_alloy_node_exporter_service_name }} -n 25 --no-pager"
+      register: ipc_alloy_node_exporter_journal
+      changed_when: false
+      failed_when: false
+
+    - name: Assert Alloy runtime state
+      ansible.builtin.assert:
+        that:
+          - ipc_alloy_service_active.rc == 0
+          - ipc_alloy_service_active.stdout.strip() == "active"
+          - ipc_alloy_service_enabled.rc == 0
+          - ipc_alloy_service_enabled.stdout.strip() == "enabled"
+          - ipc_alloy_node_exporter_service_active.rc == 0
+          - ipc_alloy_node_exporter_service_active.stdout.strip() == "active"
+          - ipc_alloy_node_exporter_service_enabled.rc == 0
+          - ipc_alloy_node_exporter_service_enabled.stdout.strip() == "enabled"
+        fail_msg: >-
+          IPC Alloy n'est pas encore correctement demarre.
+          alloy={{ ipc_alloy_service_active.stdout | default('unknown') }}/{{ ipc_alloy_service_enabled.stdout | default('unknown') }}
+          node_exporter={{ ipc_alloy_node_exporter_service_active.stdout | default('unknown') }}/{{ ipc_alloy_node_exporter_service_enabled.stdout | default('unknown') }}
+
+    - name: Summarize Alloy validation
+      ansible.builtin.debug:
+        msg:
+          - "Mimir remote_write: {{ ipc_alloy_mimir_remote_write_url }}"
+          - "Tenant: {{ ipc_alloy_mimir_tenant }}"
+          - "Retention profile: {{ ipc_alloy_retention_profile }}"
+          - "Metrics node/instance: {{ ipc_metrics_node }} / {{ ipc_metrics_instance }}"
+          - "Metrics tenant label: {{ ipc_metrics_tenant_label }}"
+          - "node_exporter local target: 127.0.0.1:{{ ipc_alloy_node_exporter_port }}"
+          - "Service alloy: {{ ipc_alloy_service_active.stdout | default('unknown') }}/{{ ipc_alloy_service_enabled.stdout | default('unknown') }}"
+          - "Service node_exporter: {{ ipc_alloy_node_exporter_service_active.stdout | default('unknown') }}/{{ ipc_alloy_node_exporter_service_enabled.stdout | default('unknown') }}"
+          - "Journal alloy: {{ ipc_alloy_journal.stdout_lines | default([]) }}"
+          - "Journal node_exporter: {{ ipc_alloy_node_exporter_journal.stdout_lines | default([]) }}"

@@ -1,0 +1,9 @@
+---
+- name: Deploy broker stack
+  hosts: broker
+  become: yes
+  vars_files:
+    - ../group_vars/broker.yml
+
+  roles:
+    - role: ../roles/broker

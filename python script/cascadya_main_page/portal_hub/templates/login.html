@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero login-hero">
+  <div class="hero-copy">
+    <p class="eyebrow">Portal access</p>
+    <h2>Start from the portal, then let Keycloak handle identity.</h2>
+    <p>
+      This MVP keeps authentication on <code>auth.cascadya.internal</code> and uses the portal only as the
+      post-login navigation hub.
+    </p>
+    {% if required_tags %}
+    <p class="muted">
+      Recommended portal entry tags: <strong>{{ required_tags|join(", ") }}</strong>
+    </p>
+    {% endif %}
+    {% if login_error %}
+    <div class="callout callout-danger">{{ login_error }}</div>
+    {% endif %}
+  </div>
+
+  <div class="hero-side">
+    {% if oidc_ready %}
+    <a class="primary-button" href="{{ url_for('oidc_start', next=next_path) }}">Continue with Keycloak</a>
+    <p class="side-note">Callback target: <code>{{ url_for('auth_callback', _external=False) }}</code></p>
+    {% elif oidc_enabled %}
+    <div class="callout callout-warning">
+      OIDC is enabled but not fully configured yet. Check the issuer URL, client ID, client secret and TLS trust mode.
+    </div>
+    {% else %}
+    <div class="callout callout-neutral">
+      OIDC is currently disabled. Use the dev profiles below for local validation, then switch to Keycloak for deployment.
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+{% if dev_profiles %}
+<section class="section-block">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">Dev bootstrap</p>
+      <h3>Local demo profiles</h3>
+    </div>
+    <p class="section-note">These shortcuts stay off the happy path for production and exist only to validate the MVP locally.</p>
+  </div>
+
+  <div class="card-grid">
+    {% for profile in dev_profiles %}
+    <article class="app-card app-card-amber" data-stagger>
+      <div class="card-topline">
+        <span class="card-badge">Dev only</span>
+      </div>
+      <h4>{{ profile.label }}</h4>
+      <p>{{ profile.description }}</p>
+      <p class="card-host">Tags: {{ profile.roles|join(", ") }}</p>
+      <form action="{{ url_for('dev_login', profile_key=profile.key) }}" method="post">
+        <input type="hidden" name="next" value="{{ next_path }}" />
+        <button class="ghost-button" type="submit">Login as {{ profile.label }}</button>
+      </form>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section class="section-block compact-block">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">Deployment notes</p>
+      <h3>Expected production shape</h3>
+    </div>
+  </div>
+  <div class="notes-grid">
+    <div class="note-card">
+      <strong>Portal DNS</strong>
+      <p><code>portal.cascadya.internal</code> hosted on the Control Panel VM.</p>
+    </div>
+    <div class="note-card">
+      <strong>Identity DNS</strong>
+      <p><code>{{ oidc_issuer_url or "https://auth.cascadya.internal/realms/cascadya-corp" }}</code></p>
+    </div>
+    <div class="note-card">
+      <strong>Callback</strong>
+      <p><code>/auth/callback</code> on the portal DNS.</p>
+    </div>
+  </div>
+</section>
+{% endblock %}

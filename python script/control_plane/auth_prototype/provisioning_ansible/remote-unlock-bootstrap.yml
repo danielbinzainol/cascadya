@@ -1,0 +1,23 @@
+---
+- name: Bootstrap remote unlock prerequisites on Cascadya IPC
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    remote_unlock_enable: true
+    remote_unlock_phase: bootstrap
+
+  tasks:
+    - name: Optionally manage WireGuard before remote unlock bootstrap
+      ansible.builtin.include_role:
+        name: network
+      vars:
+        network_manage_uplink_bootstrap: "{{ remote_unlock_manage_wireguard | bool }}"
+        network_uplink_interface: "{{ remote_unlock_uplink_interface | default('') }}"
+        network_uplink_gateway_ip: "{{ remote_unlock_gateway_ip | default('') }}"
+      when: remote_unlock_manage_wireguard | bool
+
+    - name: Bootstrap the remote unlock role
+      ansible.builtin.include_role:
+        name: remote-unlock

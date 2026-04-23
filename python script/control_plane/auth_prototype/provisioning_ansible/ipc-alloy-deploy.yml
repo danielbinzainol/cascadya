@@ -1,0 +1,7 @@
+---
+- name: Deploy node_exporter and Grafana Alloy on a Cascadya IPC
+  hosts: all
+  become: true
+
+  roles:
+    - role: ipc-alloy

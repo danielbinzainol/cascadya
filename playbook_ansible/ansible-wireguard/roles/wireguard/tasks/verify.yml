@@ -1,0 +1,154 @@
+---
+- name: Check WireGuard service status
+  ansible.builtin.command: "systemctl is-active wg-quick@{{ item.name }}"
+  loop: "{{ wireguard_interfaces }}"
+  loop_control:
+    label: "{{ item.name }}"
+  changed_when: false
+
+- name: Check WireGuard service boot enablement
+  ansible.builtin.command: "systemctl is-enabled wg-quick@{{ item.name }}"
+  loop: "{{ wireguard_interfaces }}"
+  loop_control:
+    label: "{{ item.name }}"
+  changed_when: false
+
+- name: Check dnsmasq service status
+  ansible.builtin.command: "systemctl is-active {{ wireguard_dns_service_name }}"
+  register: wireguard_dnsmasq_active
+  changed_when: false
+  when: wireguard_manage_dnsmasq | bool
+
+- name: Check dnsmasq service boot enablement
+  ansible.builtin.command: "systemctl is-enabled {{ wireguard_dns_service_name }}"
+  register: wireguard_dnsmasq_enabled
+  changed_when: false
+  when: wireguard_manage_dnsmasq | bool
+
+- name: Check managed routing service status
+  ansible.builtin.command: "systemctl is-active {{ wireguard_routes_service_name }}"
+  register: wireguard_routes_service_active
+  changed_when: false
+  when: wireguard_manage_firewall_rules | bool
+
+- name: Check managed routing service boot enablement
+  ansible.builtin.command: "systemctl is-enabled {{ wireguard_routes_service_name }}"
+  register: wireguard_routes_service_enabled
+  changed_when: false
+  when: wireguard_manage_firewall_rules | bool
+
+- name: Check IPv4 forwarding
+  ansible.builtin.command: sysctl -n net.ipv4.ip_forward
+  register: wireguard_ip_forward
+  changed_when: false
+  failed_when: wireguard_ip_forward.stdout | trim != ('1' if wireguard_enable_ip_forward else '0')
+
+- name: Inspect all WireGuard peers
+  ansible.builtin.command: wg show all
+  register: wireguard_show
+  changed_when: false
+
+- name: Assert every configured peer is loaded
+  ansible.builtin.assert:
+    that:
+      - item.1.public_key in wireguard_show.stdout
+    fail_msg: "Peer {{ item.1.name | default(item.1.public_key) }} is missing from wg show output."
+  loop: "{{ query('subelements', wireguard_interfaces, 'peers', {'skip_missing': True}) }}"
+  loop_control:
+    label: "{{ item.0.name }} -> {{ item.1.name | default(item.1.public_key) }}"
+
+- name: Inspect interface address
+  ansible.builtin.command: "ip -br addr show {{ item.name }}"
+  loop: "{{ wireguard_interfaces }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: wireguard_addr_results
+  changed_when: false
+
+- name: Assert managed interface addresses
+  ansible.builtin.assert:
+    that:
+      - item.item.address.split('/')[0] in item.stdout
+    fail_msg: "Interface {{ item.item.name }} is missing address {{ item.item.address }}."
+  loop: "{{ wireguard_addr_results.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+
+- name: Inspect managed dnsmasq config
+  ansible.builtin.command: "cat {{ wireguard_dns_config_path }}"
+  register: wireguard_dns_config
+  changed_when: false
+  when: wireguard_manage_dnsmasq | bool
+
+- name: Assert managed dnsmasq listener settings
+  ansible.builtin.assert:
+    that:
+      - "'interface=' ~ wireguard_dns_interface in wireguard_dns_config.stdout"
+      - "'listen-address=' ~ wireguard_dns_ip in wireguard_dns_config.stdout"
+    fail_msg: "Managed dnsmasq listener settings are missing from {{ wireguard_dns_config_path }}."
+  when: wireguard_manage_dnsmasq | bool
+
+- name: Assert managed DNS records are rendered
+  ansible.builtin.assert:
+    that:
+      - "'address=/' ~ item.name ~ '/' ~ item.address in wireguard_dns_config.stdout"
+    fail_msg: "Managed DNS record {{ item.name }} -> {{ item.address }} is missing from {{ wireguard_dns_config_path }}."
+  loop: "{{ wireguard_dns_records }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: wireguard_manage_dnsmasq | bool
+
+- name: Inspect managed WireGuard FORWARD chain
+  ansible.builtin.command: iptables -S WIREGUARD-FORWARD
+  register: wireguard_forward_chain
+  changed_when: false
+  when: wireguard_manage_firewall_rules | bool
+
+- name: Inspect managed WireGuard POSTROUTING chain
+  ansible.builtin.command: iptables -t nat -S WIREGUARD-POSTROUTING
+  register: wireguard_postrouting_chain
+  changed_when: false
+  when: wireguard_manage_firewall_rules | bool
+
+- name: Run TCP reachability checks from the hub
+  ansible.builtin.wait_for:
+    host: "{{ item.host }}"
+    port: "{{ item.port }}"
+    timeout: 5
+    connect_timeout: 3
+    state: started
+  loop: "{{ wireguard_verify_tcp_checks }}"
+  loop_control:
+    label: "{{ item.description | default(item.host ~ ':' ~ item.port) }}"
+  when: wireguard_verify_tcp_checks | length > 0
+
+- name: Run route checks
+  ansible.builtin.command: >-
+    ip route get {{ item.destination }} from {{ item.source }} iif {{ item.iif }}
+  loop: "{{ wireguard_verify_route_checks }}"
+  loop_control:
+    label: "{{ item.description | default(item.destination) }}"
+  register: wireguard_route_checks
+  changed_when: false
+  when: wireguard_verify_route_checks | length > 0
+
+- name: Assert route checks
+  ansible.builtin.assert:
+    that:
+      - "'dev ' ~ item.item.expected_dev in item.stdout"
+    fail_msg: >-
+      Route check failed for {{ item.item.description | default(item.item.destination) }}:
+      {{ item.stdout }}
+  loop: "{{ wireguard_route_checks.results }}"
+  loop_control:
+    label: "{{ item.item.description | default(item.item.destination) }}"
+  when: wireguard_verify_route_checks | length > 0
+
+- name: Verify private endpoint reachability from the WireGuard VM
+  ansible.builtin.uri:
+    url: "{{ wireguard_verify_private_endpoint_url }}"
+    method: GET
+    return_content: false
+    status_code: "{{ wireguard_verify_private_endpoint_status_code }}"
+    timeout: 10
+  when: wireguard_verify_private_endpoint_url | trim | length > 0

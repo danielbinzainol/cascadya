@@ -1,0 +1,16 @@
+---
+- name: Restart WireGuard service with diagnostics
+  listen: Restart WireGuard
+  ansible.builtin.shell: |
+    set -e
+    systemctl daemon-reload
+    if ! systemctl restart "wg-quick@{{ network_wireguard_interface }}"; then
+      echo "systemctl status:"
+      systemctl status --no-pager "wg-quick@{{ network_wireguard_interface }}" || true
+      echo
+      echo "journalctl:"
+      journalctl --no-pager -u "wg-quick@{{ network_wireguard_interface }}" -n 80 || true
+      exit 1
+    fi
+  args:
+    executable: /bin/bash

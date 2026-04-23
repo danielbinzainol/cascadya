@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cascadya Features Review</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <aside class="composer-column reveal">
+        <section class="brand-card">
+          <p class="eyebrow">Cascadya Review</p>
+          <h1>Review multi-agents pour specs d'architecture et de delivery.</h1>
+          <p class="lede">
+            Collez une spec detaillee, lancez l'evaluation et relisez une synthese
+            exploitable par axe, par modele et par recommandation.
+          </p>
+          <div class="hero-chips">
+            <span class="chip">Flask + Waitress</span>
+            <span class="chip">WireGuard only</span>
+            <span class="chip">Traefik routed</span>
+          </div>
+        </section>
+
+        <section class="composer-card">
+          <div class="panel-heading">
+            <div>
+              <p class="section-kicker">Spec input</p>
+              <h2>Coller la spec</h2>
+            </div>
+            <p id="status-pill" class="status-pill">Pret.</p>
+          </div>
+
+          <textarea
+            id="spec-input"
+            class="spec-input"
+            placeholder="Objectif, probleme, scope, donnees, risques, dependances, rollback..."
+          ></textarea>
+
+          <div class="actions">
+            <button id="sample-button" class="secondary-button" type="button">Charger un exemple</button>
+            <button id="clear-button" class="ghost-button" type="button">Vider</button>
+            <button id="evaluate-button" class="primary-button" type="button">Lancer l'evaluation</button>
+          </div>
+        </section>
+
+        <section class="runtime-card">
+          <div class="panel-heading compact">
+            <div>
+              <p class="section-kicker">Runtime</p>
+              <h2>Etat de l'instance</h2>
+            </div>
+          </div>
+          <p id="runtime-text" class="runtime-text">Chargement du statut serveur...</p>
+          <div id="runtime-tags" class="runtime-tags"></div>
+        </section>
+      </aside>
+
+      <main class="review-column">
+        <section class="overview-card reveal">
+          <div class="panel-heading">
+            <div>
+              <p class="section-kicker">Synthese consolidee</p>
+              <h2 id="overview-title">Vue de review consolidee</h2>
+            </div>
+            <div class="badge-row">
+              <span id="consensus-badge" class="decision-badge consensus">Consensus modere</span>
+              <span id="decision-badge" class="decision-badge decision">POC cadre</span>
+            </div>
+          </div>
+
+          <div id="overview-callout" class="callout-card">
+            "La review consolidee apparait ici apres evaluation, avec un extrait court de consensus."
+          </div>
+
+          <p id="overview-summary" class="overview-summary">
+            Le front est pret a afficher une review native multi-modeles. Tant que le backend
+            renvoie la V1 heuristique, la page projette ce scoring dans une structure proche de
+            la cible produit pour faciliter les tests d'UX.
+          </p>
+
+          <div id="overview-metadata" class="metadata-grid"></div>
+        </section>
+
+        <section class="review-block reveal">
+          <div class="panel-heading compact">
+            <div>
+              <p class="section-kicker">Syntheses par modele</p>
+              <h2>Consensus, risques et prochaines etapes</h2>
+            </div>
+          </div>
+          <div id="model-review-list" class="model-review-list"></div>
+        </section>
+
+        <section class="scoreboard-card reveal">
+          <div class="panel-heading compact">
+            <div>
+              <p class="section-kicker">Scores agreges</p>
+              <h2>Lecture croisee par axe et par modele</h2>
+            </div>
+          </div>
+
+          <div class="table-shell">
+            <table class="score-table">
+              <thead id="score-table-head"></thead>
+              <tbody id="score-table-body"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/keys.js"></script>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

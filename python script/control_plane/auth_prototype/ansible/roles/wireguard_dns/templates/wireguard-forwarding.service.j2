@@ -1,0 +1,13 @@
+[Unit]
+Description=WireGuard forwarding rules for private network access
+After=network-online.target {{ wireguard_interface_service }}
+Wants=network-online.target
+Requires={{ wireguard_interface_service }}
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/configure-wireguard-forwarding.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

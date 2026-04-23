@@ -1,0 +1,45 @@
+groups:
+  - name: classic_downsampling_5min
+    interval: 5m
+    rules:
+      - record: cascadya:node_cpu_usage_percent:avg5m
+        expr: |
+          100 *
+          (
+            sum by (site) (
+              rate(node_cpu_seconds_total{mode!="idle"}[5m])
+            )
+            /
+            sum by (site) (
+              rate(node_cpu_seconds_total[5m])
+            )
+          )
+
+      - record: cascadya:node_memory_used_bytes:sum5m
+        expr: |
+          sum by (site) (
+            node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes
+          )
+
+      - record: cascadya:node_network_bytes_total:rate5m
+        expr: |
+          sum by (site) (
+            rate(node_network_transmit_bytes_total{device!~"lo|veth.*|docker.*|br.*"}[5m])
+            +
+            rate(node_network_receive_bytes_total{device!~"lo|veth.*|docker.*|br.*"}[5m])
+          )
+
+  - name: classic_downsampling_1h
+    interval: 1h
+    rules:
+      - record: cascadya:node_cpu_usage_percent:avg1h
+        expr: |
+          avg_over_time(cascadya:node_cpu_usage_percent:avg5m[1h])
+
+      - record: cascadya:node_memory_used_bytes:avg1h
+        expr: |
+          avg_over_time(cascadya:node_memory_used_bytes:sum5m[1h])
+
+      - record: cascadya:node_network_bytes_total:avg1h
+        expr: |
+          avg_over_time(cascadya:node_network_bytes_total:rate5m[1h])

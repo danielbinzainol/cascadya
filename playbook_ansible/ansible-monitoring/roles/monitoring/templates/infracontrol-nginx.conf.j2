@@ -1,0 +1,49 @@
+server {
+    listen 80;
+    server_name {{ monitoring_infracontrol_domain }};
+
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name {{ monitoring_infracontrol_domain }};
+
+    ssl_certificate {{ monitoring_infracontrol_tls_cert_path }};
+    ssl_certificate_key {{ monitoring_infracontrol_tls_key_path }};
+
+    location /api/ {
+        proxy_pass {{ monitoring_infracontrol_api_proxy_pass }};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
+    location = /health {
+        proxy_pass {{ monitoring_infracontrol_health_proxy_pass }};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
+{% if monitoring_infracontrol_root_redirect_path | default('') | trim | length > 0 %}
+    location = / {
+        return 302 https://$host{{ monitoring_infracontrol_root_redirect_path }}$is_args$args;
+    }
+
+{% endif %}
+    location / {
+        proxy_pass {{ monitoring_infracontrol_frontend_proxy_pass }};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}

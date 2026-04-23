@@ -1,0 +1,33 @@
+http:
+  middlewares:
+    features-ip-allowlist:
+      ipAllowList:
+        sourceRange:
+{% for cidr in features_traefik_allowed_cidrs %}
+          - "{{ cidr }}"
+{% endfor %}
+
+  routers:
+    features-router:
+      rule: "Host(`{{ features_domain }}`)"
+      entryPoints:
+        - websecure
+      middlewares:
+        - features-ip-allowlist
+      service: features-service
+      tls: {}
+
+  services:
+    features-service:
+      loadBalancer:
+        servers:
+          - url: "http://127.0.0.1:{{ features_port }}"
+
+tls:
+  certificates:
+    - certFile: /etc/traefik/certs/{{ features_domain }}.crt
+      keyFile: /etc/traefik/certs/{{ features_domain }}.key
+
+  options:
+    default:
+      minVersion: VersionTLS12

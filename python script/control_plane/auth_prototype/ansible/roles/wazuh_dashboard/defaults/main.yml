@@ -1,0 +1,11 @@
+wazuh_dashboard_domain: wazuh.cascadya.internal
+wazuh_dashboard_private_ip: 10.42.1.7
+wazuh_dashboard_service_name: wazuh-dashboard
+wazuh_dashboard_config_path: /etc/wazuh-dashboard/opensearch_dashboards.yml
+wazuh_dashboard_cert_dir: /etc/wazuh-dashboard/certs
+wazuh_dashboard_server_host: 0.0.0.0
+wazuh_dashboard_server_port: 443
+wazuh_dashboard_tls_enabled: true
+wazuh_dashboard_cert_group: wazuh-dashboard
+wazuh_dashboard_cert_key_path: "{{ wazuh_dashboard_cert_dir }}/{{ wazuh_dashboard_domain }}.key"
+wazuh_dashboard_cert_crt_path: "{{ wazuh_dashboard_cert_dir }}/{{ wazuh_dashboard_domain }}.crt"

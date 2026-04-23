@@ -1,0 +1,218 @@
+---
+# roles/pki/tasks/broker.yml
+# CORRIGÉ : Ajout du Root CA dans la chaîne de confiance
+
+- name: Assert required variables
+  assert:
+    that:
+      - vault_addr is defined and vault_addr | length > 0
+      - vault_token is defined and vault_token | length > 0
+      - vault_pki_mount is defined and vault_pki_mount | length > 0
+      - vault_role is defined and vault_role | length > 0
+      - leaf_common_name is defined and leaf_common_name | length > 0
+      - leaf_cert_dir is defined and leaf_cert_dir | length > 0
+      - leaf_cert_name is defined and leaf_cert_name | length > 0
+      - leaf_ca_name is defined and leaf_ca_name | length > 0
+      - leaf_ttl is defined and leaf_ttl | length > 0
+    fail_msg: "Variables PKI requises manquantes."
+
+- name: Set defaults
+  set_fact:
+    renew_before_days: "{{ renew_before_days | default(10) }}"
+    archive_retention_days: "{{ archive_retention_days | default(90) }}"
+    leaf_owner: "{{ leaf_owner | default('root') }}"
+    leaf_key_group: "{{ leaf_key_group | default('root') }}"
+    leaf_cert_mode: "{{ leaf_cert_mode | default('0644') }}"
+    leaf_key_mode: "{{ leaf_key_mode | default('0640') }}"
+    leaf_fix_owner: "{{ leaf_fix_owner | default(true) }}"
+    leaf_alt_names: "{{ leaf_alt_names | default([]) }}"
+    leaf_ip_sans: "{{ leaf_ip_sans | default([]) }}"
+    # IMPORTANT: Variable pour le contenu du Root CA (vide par défaut pour éviter erreur si non fourni)
+    pki_root_ca_content: "{{ pki_root_ca_content | default('') }}"
+
+- name: Ensure cert directory exists
+  file:
+    path: "{{ leaf_cert_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Ensure archive directory exists
+  file:
+    path: "{{ leaf_cert_dir }}/archive"
+    state: directory
+    mode: "0750"
+
+# -----------------------
+# Rotation conditionnelle
+# -----------------------
+- name: Stat current leaf cert
+  stat:
+    path: "{{ leaf_cert_dir }}/{{ leaf_cert_name }}.crt"
+  register: leaf_stat
+
+- name: Read notAfter from current cert
+  shell: |
+    set -euo pipefail
+    openssl x509 -in "{{ leaf_cert_dir }}/{{ leaf_cert_name }}.crt" -noout -enddate | cut -d= -f2
+  args:
+    executable: /bin/bash
+  register: leaf_notafter
+  changed_when: false
+  when: leaf_stat.stat.exists
+
+- name: Compute remaining days
+  shell: |
+    set -euo pipefail
+    end_epoch=$(date -u -d "{{ leaf_notafter.stdout }}" +%s)
+    now_epoch=$(date -u +%s)
+    echo $(( (end_epoch - now_epoch) / 86400 ))
+  args:
+    executable: /bin/bash
+  register: leaf_days_left
+  changed_when: false
+  when: leaf_stat.stat.exists
+
+- name: Decide renewal
+  set_fact:
+    do_renew: "{{ (not leaf_stat.stat.exists) or (leaf_days_left.stdout | int <= (renew_before_days | int)) }}"
+
+# -----------------------
+# Issue Vault
+# -----------------------
+- name: Issue leaf certificate from Vault
+  uri:
+    url: "{{ vault_addr }}/v1/{{ vault_pki_mount }}/issue/{{ vault_role }}"
+    method: POST
+    headers:
+      X-Vault-Token: "{{ vault_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      common_name: "{{ leaf_common_name }}"
+      ttl: "{{ leaf_ttl }}"
+      alt_names: "{{ (leaf_alt_names | join(',')) if (leaf_alt_names | length > 0) else omit }}"
+      ip_sans: "{{ (leaf_ip_sans   | join(',')) if (leaf_ip_sans   | length > 0) else omit }}"
+    return_content: true
+    status_code: 200
+  register: issue
+  no_log: true
+  when: do_renew
+
+- name: Fail if Vault returned errors
+  fail:
+    msg: "Vault issue failed: {{ issue.content }}"
+  when: do_renew and (issue.json is not defined or issue.json.data is not defined)
+
+# -----------------------
+# Staging *.new (CORRECTION ICI)
+# -----------------------
+- name: Write staging files (*.new)
+  no_log: true
+  copy:
+    dest: "{{ item.dest }}"
+    content: "{{ item.content }}"
+    owner: "{{ leaf_owner }}"
+    group: "{{ leaf_key_group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { dest: "{{ leaf_cert_dir }}/{{ leaf_cert_name }}.crt.new", content: "{{ issue.json.data.certificate }}", mode: "{{ leaf_cert_mode }}" }
+    - { dest: "{{ leaf_cert_dir }}/{{ leaf_cert_name }}.key.new", content: "{{ issue.json.data.private_key }}", mode: "{{ leaf_key_mode }}" }
+    # MODIFICATION CRITIQUE : Ajout explicite du Root CA après la chaîne Vault
+    - { dest: "{{ leaf_cert_dir }}/{{ leaf_ca_name }}.crt.new",   content: "{{ (issue.json.data.ca_chain | default([])) | join('\n') }}\n{{ pki_root_ca_content }}", mode: "{{ leaf_cert_mode }}" }
+  when: do_renew
+
+- name: Validate staging cert parses
+  shell: |
+    set -euo pipefail
+    openssl x509 -in "{{ leaf_cert_dir }}/{{ leaf_cert_name }}.crt.new" -noout >/dev/null
+  args:
+    executable: /bin/bash
+  changed_when: false
+  when: do_renew
+
+# -----------------------
+# Validation RSA
+# -----------------------
+- name: Validate key matches cert (RSA modulus)
+  shell: |
+    set -euo pipefail
+    c=$(openssl x509 -noout -modulus -in "{{ leaf_cert_dir }}/{{ leaf_cert_name }}.crt.new" | openssl md5)
+    k=$(openssl rsa  -noout -modulus -in "{{ leaf_cert_dir }}/{{ leaf_cert_name }}.key.new" | openssl md5)
+    test "$c" = "$k"
+  args:
+    executable: /bin/bash
+  changed_when: false
+  when: do_renew
+
+# -----------------------
+# Archivage + promotion
+# -----------------------
+- name: Compute UTC timestamp for archive
+  shell: "date -u +%Y%m%dT%H%M%SZ"
+  register: ts
+  changed_when: false
+  when: do_renew
+
+- name: Archive previous files
+  shell: |
+    set -euo pipefail
+    for f in "{{ leaf_cert_name }}.crt" "{{ leaf_cert_name }}.key" "{{ leaf_ca_name }}.crt"; do
+      if [ -f "{{ leaf_cert_dir }}/$f" ]; then
+        cp -a "{{ leaf_cert_dir }}/$f" "{{ leaf_cert_dir }}/archive/$f.{{ ts.stdout }}"
+      fi
+    done
+  args:
+    executable: /bin/bash
+  changed_when: true
+  when: do_renew
+
+- name: Promote staging atomically
+  shell: |
+    set -euo pipefail
+    mv -f "{{ leaf_cert_dir }}/{{ leaf_cert_name }}.crt.new" "{{ leaf_cert_dir }}/{{ leaf_cert_name }}.crt"
+    mv -f "{{ leaf_cert_dir }}/{{ leaf_cert_name }}.key.new" "{{ leaf_cert_dir }}/{{ leaf_cert_name }}.key"
+    mv -f "{{ leaf_cert_dir }}/{{ leaf_ca_name }}.crt.new"   "{{ leaf_cert_dir }}/{{ leaf_ca_name }}.crt"
+  args:
+    executable: /bin/bash
+  changed_when: true
+  when: do_renew
+
+# -----------------------
+# Permissions & Nettoyage
+# -----------------------
+- name: Fix ownership
+  file:
+    path: "{{ item }}"
+    owner: "{{ leaf_owner }}"
+    group: "{{ leaf_key_group }}"
+  loop:
+    - "{{ leaf_cert_dir }}/{{ leaf_cert_name }}.crt"
+    - "{{ leaf_cert_dir }}/{{ leaf_cert_name }}.key"
+    - "{{ leaf_cert_dir }}/{{ leaf_ca_name }}.crt"
+  when: do_renew and leaf_fix_owner | bool
+
+- name: Set final modes
+  file:
+    path: "{{ item.path }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ leaf_cert_dir }}/{{ leaf_ca_name }}.crt",   mode: "{{ leaf_cert_mode }}" }
+    - { path: "{{ leaf_cert_dir }}/{{ leaf_cert_name }}.crt", mode: "{{ leaf_cert_mode }}" }
+    - { path: "{{ leaf_cert_dir }}/{{ leaf_cert_name }}.key", mode: "{{ leaf_key_mode }}" }
+  when: do_renew
+
+- name: Housekeeping old archives
+  find:
+    paths: "{{ leaf_cert_dir }}/archive"
+    patterns: "{{ leaf_cert_name }}.*,{{ leaf_ca_name }}.*"
+    age: "{{ archive_retention_days }}d"
+    age_stamp: mtime
+  register: old_archives
+  when: do_renew
+
+- name: Delete old archives
+  file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ old_archives.files | default([]) }}"
+  when: do_renew and old_archives.matched | int > 0

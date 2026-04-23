@@ -1,0 +1,22 @@
+[Unit]
+Description=Cascadya remote unlock for /data
+{% if remote_unlock_transport_mode == 'wireguard' %}
+Wants=network-online.target wg-quick@{{ remote_unlock_wg_interface }}.service
+After=network-online.target wg-quick@{{ remote_unlock_wg_interface }}.service
+{% else %}
+Wants=network-online.target
+After=network-online.target
+{% endif %}
+Before=systemd-cryptsetup@{{ remote_unlock_mapper_name }}.service data.mount mender-data-dir.service mender-authd.service mender-updated.service
+ConditionPathExists={{ remote_unlock_env_path }}
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart={{ remote_unlock_script_path }}
+TimeoutStartSec={{ remote_unlock_systemd_timeout_seconds }}
+Restart={{ remote_unlock_systemd_restart_policy }}
+RestartSec={{ remote_unlock_systemd_restart_seconds }}
+
+[Install]
+WantedBy=multi-user.target

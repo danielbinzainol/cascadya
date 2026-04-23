@@ -1,0 +1,45 @@
+vault_addr: "{{ lookup('env', 'VAULT_ADDR') }}"
+vault_token: "{{ lookup('env', 'VAULT_TOKEN') }}"
+
+vault_pki_mount: "pki_int"
+vault_pki_role: "broker"
+
+broker_fqdn: "vm-broker.cascadya.local"
+broker_alt_names: "nats.cascadya.internal,vm-broker.cascadya.local,10.42.1.6,51.15.64.139"
+
+broker_root: "/opt/ansible-broker"
+broker_prometheus_dir: "{{ broker_root }}/prometheus"
+broker_compose_project_name: "ansible-broker"
+
+nats_image: "nats:latest"
+nats_exporter_image: "natsio/prometheus-nats-exporter:latest"
+cadvisor_image: "gcr.io/cadvisor/cadvisor:latest"
+prometheus_image: "prom/prometheus:latest"
+
+nats_container_name: "nats_broker"
+nats_exporter_container_name: "nats-exporter"
+cadvisor_container_name: "cadvisor"
+prometheus_container_name: "prometheus"
+
+nats_client_port: 4222
+nats_monitoring_port: 8222
+nats_exporter_port: 7777
+cadvisor_port: 8080
+prometheus_port: 9090
+nats_monitoring_target: "http://10.42.1.6:8222"
+nats_data_volume_name: "nats_data"
+
+nats_host_config_path: "/home/ubuntu/nats-server.conf"
+nats_host_server_cert_path: "/home/ubuntu/server.crt"
+nats_host_server_key_path: "/home/ubuntu/server.key"
+nats_host_ca_cert_path: "/home/ubuntu/ca.crt"
+
+renew_broker_certificates: false
+
+remove_legacy_mosquitto: true
+
+broker_managed_container_names:
+  - "{{ nats_container_name }}"
+  - "{{ nats_exporter_container_name }}"
+  - "{{ cadvisor_container_name }}"
+  - "{{ prometheus_container_name }}"

@@ -1,0 +1,51 @@
+http:
+  middlewares:
+    control-panel-ip-allowlist:
+      ipAllowList:
+        sourceRange:
+          - "10.8.0.0/24"
+          - "195.68.106.70/32"
+    keycloak-ip-allowlist:
+      ipAllowList:
+        sourceRange:
+          - "10.8.0.0/24"
+          - "195.68.106.70/32"
+
+  routers:
+    control-panel-router:
+      rule: "Host(`control-panel.cascadya.internal`)"
+      entryPoints:
+        - websecure
+      middlewares:
+        - control-panel-ip-allowlist
+      service: control-panel-service
+      tls: {}
+    keycloak-router:
+      rule: "Host(`auth.cascadya.internal`)"
+      entryPoints:
+        - websecure
+      middlewares:
+        - keycloak-ip-allowlist
+      service: keycloak-service
+      tls: {}
+
+  services:
+    control-panel-service:
+      loadBalancer:
+        servers:
+          - url: "http://127.0.0.1:8000"
+    keycloak-service:
+      loadBalancer:
+        servers:
+          - url: "http://127.0.0.1:8081"
+
+tls:
+  certificates:
+    - certFile: /etc/traefik/certs/control-panel.cascadya.internal.crt
+      keyFile: /etc/traefik/certs/control-panel.cascadya.internal.key
+    - certFile: /etc/traefik/certs/auth.cascadya.internal.crt
+      keyFile: /etc/traefik/certs/auth.cascadya.internal.key
+
+  options:
+    default:
+      minVersion: VersionTLS12

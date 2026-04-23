@@ -1,0 +1,7 @@
+[Unit]
+Wants=network-online.target
+After=network-online.target
+{% if network_uplink_interface | length > 0 -%}
+Wants=sys-subsystem-net-devices-{{ network_uplink_interface }}.device
+After=sys-subsystem-net-devices-{{ network_uplink_interface }}.device
+{% endif -%}

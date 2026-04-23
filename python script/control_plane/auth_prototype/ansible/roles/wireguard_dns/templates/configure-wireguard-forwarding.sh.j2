@@ -1,0 +1,21 @@
+#!/bin/sh
+set -eu
+
+iptables -C FORWARD -i {{ wireguard_interface }} -s {{ wireguard_client_cidr }} -d {{ wireguard_private_network_cidr }} -j ACCEPT 2>/dev/null || \
+iptables -A FORWARD -i {{ wireguard_interface }} -s {{ wireguard_client_cidr }} -d {{ wireguard_private_network_cidr }} -j ACCEPT
+
+iptables -C FORWARD -o {{ wireguard_interface }} -s {{ wireguard_private_network_cidr }} -d {{ wireguard_client_cidr }} -j ACCEPT 2>/dev/null || \
+iptables -A FORWARD -o {{ wireguard_interface }} -s {{ wireguard_private_network_cidr }} -d {{ wireguard_client_cidr }} -j ACCEPT
+
+{% for remote_lan_cidr in wireguard_remote_lan_cidrs | default([]) %}
+iptables -C FORWARD -o {{ wireguard_interface }} -s {{ wireguard_private_network_cidr }} -d {{ remote_lan_cidr }} -j ACCEPT 2>/dev/null || \
+iptables -A FORWARD -o {{ wireguard_interface }} -s {{ wireguard_private_network_cidr }} -d {{ remote_lan_cidr }} -j ACCEPT
+
+iptables -C FORWARD -i {{ wireguard_interface }} -s {{ remote_lan_cidr }} -d {{ wireguard_private_network_cidr }} -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || \
+iptables -A FORWARD -i {{ wireguard_interface }} -s {{ remote_lan_cidr }} -d {{ wireguard_private_network_cidr }} -m state --state RELATED,ESTABLISHED -j ACCEPT
+
+{% if wireguard_masquerade_private_to_remote_lans | default(true) %}
+iptables -t nat -C POSTROUTING -s {{ wireguard_private_network_cidr }} -d {{ remote_lan_cidr }} -o {{ wireguard_interface }} -j MASQUERADE 2>/dev/null || \
+iptables -t nat -A POSTROUTING -s {{ wireguard_private_network_cidr }} -d {{ remote_lan_cidr }} -o {{ wireguard_interface }} -j MASQUERADE
+{% endif %}
+{% endfor %}

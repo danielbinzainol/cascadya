@@ -1,0 +1,2 @@
+[cascadya_ipc]
+cascadya ansible_host=192.168.50.10 ansible_user=cascadya edge_agent_modbus_host=192.168.50.2 edge_agent_modbus_port=502 edge_agent_nats_url=tls://10.30.0.1:4222 edge_agent_nats_telemetry_subject=cascadya.telemetry.live edge_agent_nats_command_subject=cascadya.routing.command edge_agent_nats_ping_subject=cascadya.routing.ping

@@ -1,0 +1,11 @@
+services:
+  traefik:
+    image: traefik:v3.3
+    container_name: control-panel-traefik
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./dynamic:/etc/traefik/dynamic:ro
+      - ./certs:/etc/traefik/certs:ro
+      - ./logs:/var/log/traefik

@@ -1,0 +1,5 @@
+overrides:
+{% for tenant in mimir_tenants %}
+  {{ tenant.id }}:
+    compactor_blocks_retention_period: {{ tenant.retention_period | quote }}
+{% endfor %}

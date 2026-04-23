@@ -1,0 +1,19 @@
+# group_vars/app/apps.yml
+
+# Configuration Vault pour les Apps
+vault_pki_app_role: "devices-role"
+vault_pki_mount: "pki_int"
+
+# Configuration spécifique pour Loris / Cmarket
+loris_app:
+  name: "cmarket-loris"
+  # ON CHANGE EN .local ICI pour passer les gardes de Vault
+  common_name: "cmarket-loris.cascadya.local"
+  # On reste sur du standard autorisé par Vault pour les SANs
+  alt_names: "DNS:cmarket-loris.cascadya.local,DNS:vm-broker.cascadya.local"
+  ttl: "720h"
+
+# Dossier local sur ton WSL
+# Note : Utilise un chemin absolu pour éviter les surprises avec Ansible
+local_export_dir: "/home/daniel_bin_zainol/loris_pack"
+local_ca_path: "{{ playbook_dir }}/../files/cascadya-root.crt"

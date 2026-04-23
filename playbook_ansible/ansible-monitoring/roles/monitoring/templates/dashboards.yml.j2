@@ -1,0 +1,40 @@
+apiVersion: 1
+providers:
+  - name: "Cascadya Dashboards"
+    orgId: 1
+    folder: "SBC Plant"
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    options:
+      path: /var/lib/grafana/dashboards/sbc
+
+  - name: "nats-dashboards"
+    orgId: 1
+    folder: "NATS"
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards/nats
+
+  - name: "docker-dashboards"
+    orgId: 1
+    folder: ""
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards/docker
+
+  - name: "mimir-dashboards"
+    orgId: 1
+    folder: "Mimir"
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards/mimir

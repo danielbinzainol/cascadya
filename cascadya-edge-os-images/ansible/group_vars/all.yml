@@ -1,0 +1,45 @@
+---
+# User Configuration
+target_user: "cascadya"
+cascadya_data_dir: "/data/cascadya"
+
+# SSH Hardening
+ssh_permit_root_login: "no"
+ssh_allow_groups: "sudo"
+ssh_use_pam: "yes"
+security_hardening_disable_ssh_password_auth: false
+
+# TPM / LUKS
+enable_tpm_luks: false
+tpm_luks_device: "/dev/sda4"
+tpm_luks_crypttab_name: "cascadya_data"
+
+# Remote unlock via WireGuard + broker + Vault
+remote_unlock_enable: false
+remote_unlock_luks_device: "/dev/sda4"
+remote_unlock_mapper_name: "cascadya_data"
+remote_unlock_mountpoint: "/data"
+remote_unlock_wg_interface: "wg0"
+remote_unlock_manage_wireguard: false
+remote_unlock_management_interface: ""
+remote_unlock_uplink_interface: ""
+remote_unlock_gateway_ip: ""
+remote_unlock_broker_url: "https://unlock-broker.internal"
+remote_unlock_pcrs: "7"
+remote_unlock_cert_dir: "/etc/cascadya/unlock"
+remote_unlock_cert_src_dir: "{{ playbook_dir }}/.tmp/cascadya-remote-unlock"
+remote_unlock_device_id: "{{ inventory_hostname }}"
+remote_unlock_manual_passphrase: ""
+
+# OS Hardening
+os_security_users_allow: ['root', 'cascadya']
+sysctl_overwrite:
+  kernel.sysrq: 1
+
+# Network
+wireguard_port: 51820
+network_manage_uplink_bootstrap: false
+network_uplink_interface: ""
+network_uplink_address: ""
+network_uplink_gateway_ip: ""
+network_bootstrap_nameservers: []

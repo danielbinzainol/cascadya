@@ -1,0 +1,84 @@
+# Copier ce fichier vers inventory/group_vars/vault_vm.yml puis le completer.
+
+vault_vm_private_ip: 10.42.2.4
+
+vault_vm_keycloak_proxy_mode: nginx
+vault_vm_keycloak_replace_existing_nginx: false
+
+vault_vm_keycloak_domain: auth.cascadya.internal
+vault_vm_keycloak_public_base_url: https://auth.cascadya.internal
+vault_vm_keycloak_backchannel_base_url: http://10.42.2.4:8081
+
+vault_vm_keycloak_realm_name: cascadya-corp
+vault_vm_keycloak_realm_display_name: Cascadya Corp
+vault_vm_keycloak_realm_import_enabled: true
+
+vault_vm_keycloak_admin_username: change-me
+vault_vm_keycloak_admin_password: change-me
+
+vault_vm_keycloak_db_name: keycloak
+vault_vm_keycloak_db_user: keycloak
+vault_vm_keycloak_db_password: change-me
+
+vault_vm_keycloak_tls_mode: self_signed
+vault_vm_keycloak_tls_self_signed_days: 825
+
+vault_vm_keycloak_allowed_cidrs:
+  - 127.0.0.1/32
+  - 10.8.0.0/24
+  - 10.42.0.0/16
+  - 195.68.106.70/32
+
+vault_vm_keycloak_realm_roles:
+  - portal-access
+  - portal-admin
+  - control-panel-user
+  - monitoring-user
+  - grafana-user
+  - wazuh-user
+  - security-user
+
+vault_vm_keycloak_clients:
+  - client_id: control-panel-web
+    client_name: Control Panel Web
+    client_secret: change-me
+    access_type: confidential
+    redirect_uris:
+      - https://control-panel.cascadya.internal/auth/callback
+    post_logout_redirect_uris:
+      - https://control-panel.cascadya.internal/auth/login
+    web_origins:
+      - https://control-panel.cascadya.internal
+  - client_id: cascadya-features-web
+    client_name: Cascadya Features Web
+    client_secret: change-me
+    access_type: confidential
+    redirect_uris:
+      - https://features.cascadya.internal/oidc/callback
+    post_logout_redirect_uris:
+      - https://features.cascadya.internal/
+    web_origins:
+      - https://features.cascadya.internal
+  - client_id: grafana-monitoring
+    client_name: Grafana Monitoring
+    client_secret: change-me
+    access_type: confidential
+    redirect_uris:
+      - https://grafana.cascadya.internal/login/generic_oauth
+      - https://infracontrol.cascadya.internal/login/generic_oauth
+    post_logout_redirect_uris:
+      - https://grafana.cascadya.internal/logout
+      - https://infracontrol.cascadya.internal/logout
+    web_origins:
+      - https://grafana.cascadya.internal
+      - https://infracontrol.cascadya.internal
+  - client_id: cascadya-portal-web
+    client_name: Cascadya Portal Web
+    client_secret: change-me
+    access_type: confidential
+    redirect_uris:
+      - https://portal.cascadya.internal/auth/callback
+    post_logout_redirect_uris:
+      - https://portal.cascadya.internal/
+    web_origins:
+      - https://portal.cascadya.internal

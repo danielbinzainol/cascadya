@@ -1,0 +1,120 @@
+---
+- name: Generate a demo broker server certificate signed by the remote-unlock CA
+  hosts: localhost
+  gather_facts: false
+  become: false
+
+  vars:
+    remote_unlock_cert_src_dir: "{{ playbook_dir }}/.tmp/cascadya-remote-unlock"
+    remote_unlock_generate_demo_broker_certs_force: false
+    remote_unlock_demo_broker_name: demo-broker
+    remote_unlock_demo_broker_dir: "{{ remote_unlock_cert_src_dir }}/broker"
+    remote_unlock_demo_broker_key_path: "{{ remote_unlock_demo_broker_dir }}/server.key"
+    remote_unlock_demo_broker_csr_path: "{{ remote_unlock_demo_broker_dir }}/server.csr"
+    remote_unlock_demo_broker_cert_path: "{{ remote_unlock_demo_broker_dir }}/server.crt"
+    remote_unlock_demo_broker_ext_path: "{{ remote_unlock_demo_broker_dir }}/server.ext"
+    remote_unlock_demo_broker_cert_days: 825
+    remote_unlock_demo_broker_san_dns: ""
+    remote_unlock_demo_broker_san_ip: ""
+    remote_unlock_ca_dir: "{{ remote_unlock_cert_src_dir }}/ca"
+    remote_unlock_ca_key_path: "{{ remote_unlock_ca_dir }}/ca.key"
+    remote_unlock_ca_cert_path: "{{ remote_unlock_ca_dir }}/ca.crt"
+
+  tasks:
+    - name: Assert that at least one broker SAN value is provided
+      ansible.builtin.assert:
+        that:
+          - remote_unlock_demo_broker_san_dns | length > 0 or remote_unlock_demo_broker_san_ip | length > 0
+        fail_msg: >-
+          Set remote_unlock_demo_broker_san_dns or remote_unlock_demo_broker_san_ip
+          so the demo broker certificate matches the URL used by the IPC.
+
+    - name: Ensure the demo broker certificate directory exists
+      ansible.builtin.file:
+        path: "{{ remote_unlock_demo_broker_dir }}"
+        state: directory
+        mode: "0700"
+
+    - name: Remove the demo broker bundle when regeneration is forced
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ remote_unlock_demo_broker_key_path }}"
+        - "{{ remote_unlock_demo_broker_csr_path }}"
+        - "{{ remote_unlock_demo_broker_cert_path }}"
+        - "{{ remote_unlock_demo_broker_ext_path }}"
+      when: remote_unlock_generate_demo_broker_certs_force | bool
+
+    - name: Generate the demo broker private key
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - genrsa
+          - -out
+          - "{{ remote_unlock_demo_broker_key_path }}"
+          - "4096"
+      args:
+        creates: "{{ remote_unlock_demo_broker_key_path }}"
+
+    - name: Write the demo broker certificate extension file
+      ansible.builtin.copy:
+        dest: "{{ remote_unlock_demo_broker_ext_path }}"
+        mode: "0600"
+        content: |
+          basicConstraints=CA:FALSE
+          keyUsage=digitalSignature,keyEncipherment
+          extendedKeyUsage=serverAuth
+          subjectAltName={% if remote_unlock_demo_broker_san_dns | length > 0 %}DNS:{{ remote_unlock_demo_broker_san_dns }}{% endif %}{% if remote_unlock_demo_broker_san_dns | length > 0 and remote_unlock_demo_broker_san_ip | length > 0 %},{% endif %}{% if remote_unlock_demo_broker_san_ip | length > 0 %}IP:{{ remote_unlock_demo_broker_san_ip }}{% endif %}
+
+    - name: Generate the demo broker CSR
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - req
+          - -new
+          - -key
+          - "{{ remote_unlock_demo_broker_key_path }}"
+          - -out
+          - "{{ remote_unlock_demo_broker_csr_path }}"
+          - -subj
+          - "/CN={{ remote_unlock_demo_broker_name }}"
+      args:
+        creates: "{{ remote_unlock_demo_broker_csr_path }}"
+
+    - name: Sign the demo broker certificate
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - x509
+          - -req
+          - -in
+          - "{{ remote_unlock_demo_broker_csr_path }}"
+          - -CA
+          - "{{ remote_unlock_ca_cert_path }}"
+          - -CAkey
+          - "{{ remote_unlock_ca_key_path }}"
+          - -CAcreateserial
+          - -out
+          - "{{ remote_unlock_demo_broker_cert_path }}"
+          - -days
+          - "{{ remote_unlock_demo_broker_cert_days | string }}"
+          - -sha256
+          - -extfile
+          - "{{ remote_unlock_demo_broker_ext_path }}"
+      args:
+        creates: "{{ remote_unlock_demo_broker_cert_path }}"
+
+    - name: Copy the CA certificate into the demo broker bundle
+      ansible.builtin.copy:
+        src: "{{ remote_unlock_ca_cert_path }}"
+        dest: "{{ remote_unlock_demo_broker_dir }}/ca.crt"
+        mode: "0644"
+
+    - name: Show the demo broker bundle path
+      ansible.builtin.debug:
+        msg:
+          - "Demo broker bundle: {{ remote_unlock_demo_broker_dir }}"
+          - "Server certificate: {{ remote_unlock_demo_broker_cert_path }}"
+          - "Server key: {{ remote_unlock_demo_broker_key_path }}"
+          - "Trusted client CA: {{ remote_unlock_demo_broker_dir }}/ca.crt"

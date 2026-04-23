@@ -1,0 +1,12 @@
+---
+- name: Remove the local TPM unlock token after remote unlock validation
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    remote_unlock_enable: true
+    remote_unlock_phase: remove_local_tpm
+
+  roles:
+    - role: remote-unlock

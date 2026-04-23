@@ -1,0 +1,199 @@
+---
+- name: Generate an edge-agent client certificate bundle on the controller
+  hosts: all
+  connection: local
+  gather_facts: false
+  become: false
+
+  vars:
+    edge_agent_vault_token_env_var_effective: >-
+      {{ edge_agent_vault_token_env_var | default('EDGE_AGENT_VAULT_TOKEN') }}
+    edge_agent_vault_pki_mount: "{{ edge_agent_vault_pki_mount | default('pki_int') }}"
+    edge_agent_vault_role: "{{ edge_agent_vault_role | default('devices-role') }}"
+    edge_agent_cert_ttl: "{{ edge_agent_cert_ttl | default('720h') }}"
+    edge_agent_cert_common_name: >-
+      {{ edge_agent_cert_common_name | default(inventory_hostname ~ '.cascadya.local') }}
+    edge_agent_controller_bundle_root: >-
+      {{ playbook_dir }}/../generated/cascadya-edge-agent
+    edge_agent_cert_bundle_dir: >-
+      {{ edge_agent_controller_bundle_root }}/{{ inventory_hostname }}
+    edge_agent_nats_server_ca_cert_path_effective: >-
+      {{ edge_agent_nats_server_ca_cert_path | default('', true) }}
+
+  tasks:
+    - name: Resolve the edge-agent Vault token from vars or environment
+      ansible.builtin.set_fact:
+        edge_agent_vault_token_effective: >-
+          {{
+            edge_agent_vault_token
+            if (edge_agent_vault_token | default('') | length > 0)
+            else lookup('ansible.builtin.env', edge_agent_vault_token_env_var_effective)
+          }}
+      no_log: true
+
+    - name: Assert edge-agent certificate generation variables are set
+      ansible.builtin.assert:
+        that:
+          - edge_agent_vault_addr | default('') | length > 0
+          - edge_agent_vault_token_effective | length > 0
+          - edge_agent_vault_pki_mount | length > 0
+          - edge_agent_vault_role | length > 0
+          - edge_agent_cert_common_name | length > 0
+          - edge_agent_cert_ttl | length > 0
+        fail_msg: >-
+          Set edge_agent_vault_addr and provide a Vault token via
+          edge_agent_vault_token or the {{ edge_agent_vault_token_env_var_effective }}
+          environment variable.
+
+    - name: Ensure the controller-side edge-agent bundle root exists
+      ansible.builtin.file:
+        path: "{{ edge_agent_controller_bundle_root }}"
+        state: directory
+        mode: "0700"
+
+    - name: Ensure the controller-side edge-agent bundle directory exists
+      ansible.builtin.file:
+        path: "{{ edge_agent_cert_bundle_dir }}"
+        state: directory
+        mode: "0700"
+
+    - name: Check optional controller-side NATS server CA bundle
+      ansible.builtin.stat:
+        path: "{{ edge_agent_nats_server_ca_cert_path_effective }}"
+      register: edge_agent_nats_server_ca_cert_stat
+      when: edge_agent_nats_server_ca_cert_path_effective | length > 0
+
+    - name: Assert the optional controller-side NATS server CA bundle exists
+      ansible.builtin.assert:
+        that:
+          - edge_agent_nats_server_ca_cert_stat.stat.exists
+          - edge_agent_nats_server_ca_cert_stat.stat.isreg
+        fail_msg: >-
+          Missing edge-agent NATS server CA bundle:
+          {{ edge_agent_nats_server_ca_cert_path_effective }}
+      when: edge_agent_nats_server_ca_cert_path_effective | length > 0
+
+    - name: Normalize optional edge-agent SAN inputs
+      ansible.builtin.set_fact:
+        edge_agent_cert_alt_names_effective: >-
+          {{
+            []
+            if (edge_agent_cert_alt_names is not defined or edge_agent_cert_alt_names is none)
+            else edge_agent_cert_alt_names
+          }}
+        edge_agent_cert_ip_sans_effective: >-
+          {{
+            []
+            if (edge_agent_cert_ip_sans is not defined or edge_agent_cert_ip_sans is none)
+            else edge_agent_cert_ip_sans
+          }}
+
+    - name: Build the edge-agent Vault issue request body
+      ansible.builtin.set_fact:
+        edge_agent_vault_issue_request_body:
+          common_name: "{{ edge_agent_cert_common_name }}"
+          ttl: "{{ edge_agent_cert_ttl }}"
+
+    - name: Add edge-agent DNS SANs to the Vault issue request body when provided
+      ansible.builtin.set_fact:
+        edge_agent_vault_issue_request_body: >-
+          {{
+            edge_agent_vault_issue_request_body
+            | combine({"alt_names": edge_agent_cert_alt_names_effective | join(",")})
+          }}
+      when: edge_agent_cert_alt_names_effective | length > 0
+
+    - name: Add edge-agent IP SANs to the Vault issue request body when provided
+      ansible.builtin.set_fact:
+        edge_agent_vault_issue_request_body: >-
+          {{
+            edge_agent_vault_issue_request_body
+            | combine({"ip_sans": edge_agent_cert_ip_sans_effective | join(",")})
+          }}
+      when: edge_agent_cert_ip_sans_effective | length > 0
+
+    - name: Issue the edge-agent client certificate from Vault PKI
+      ansible.builtin.uri:
+        url: "{{ edge_agent_vault_addr | regex_replace('/+$', '') }}/v1/{{ edge_agent_vault_pki_mount }}/issue/{{ edge_agent_vault_role }}"
+        method: POST
+        headers:
+          X-Vault-Token: "{{ edge_agent_vault_token_effective }}"
+          Content-Type: "application/json"
+        body_format: json
+        body: "{{ edge_agent_vault_issue_request_body }}"
+        return_content: true
+        status_code: 200
+      register: edge_agent_cert_issue
+      no_log: true
+
+    - name: Assert Vault returned an edge-agent certificate and key
+      ansible.builtin.assert:
+        that:
+          - edge_agent_cert_issue.json is defined
+          - edge_agent_cert_issue.json.data is defined
+          - edge_agent_cert_issue.json.data.certificate is defined
+          - edge_agent_cert_issue.json.data.certificate | length > 0
+          - edge_agent_cert_issue.json.data.private_key is defined
+          - edge_agent_cert_issue.json.data.private_key | length > 0
+          - >-
+            (
+              edge_agent_cert_issue.json.data.ca_chain | default([]) | length > 0
+            ) or (
+              edge_agent_cert_issue.json.data.issuing_ca | default('') | length > 0
+            )
+        fail_msg: >-
+          Vault did not return the expected edge-agent certificate payload for
+          {{ edge_agent_cert_common_name }}.
+
+    - name: Write the controller-side edge-agent client certificate bundle
+      ansible.builtin.copy:
+        dest: "{{ item.dest }}"
+        content: "{{ item.content }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - dest: "{{ edge_agent_cert_bundle_dir }}/client.crt"
+          content: "{{ edge_agent_cert_issue.json.data.certificate }}"
+          mode: "0644"
+        - dest: "{{ edge_agent_cert_bundle_dir }}/client.key"
+          content: "{{ edge_agent_cert_issue.json.data.private_key }}"
+          mode: "0600"
+        - dest: "{{ edge_agent_cert_bundle_dir }}/ca.crt"
+          content: >-
+            {{
+              (
+                edge_agent_cert_issue.json.data.ca_chain | default([])
+              ) | join('\n')
+              if (edge_agent_cert_issue.json.data.ca_chain | default([]) | length > 0)
+              else edge_agent_cert_issue.json.data.issuing_ca
+            }}
+          mode: "0644"
+      no_log: true
+
+    - name: Copy the optional controller-side NATS server CA bundle
+      ansible.builtin.copy:
+        src: "{{ edge_agent_nats_server_ca_cert_path_effective }}"
+        dest: "{{ edge_agent_cert_bundle_dir }}/nats-ca.crt"
+        mode: "0644"
+      when: edge_agent_nats_server_ca_cert_path_effective | length > 0
+
+    - name: Validate the generated edge-agent client certificate parses cleanly
+      ansible.builtin.command:
+        cmd: "openssl x509 -in {{ edge_agent_cert_bundle_dir }}/client.crt -noout"
+      changed_when: false
+
+    - name: Report the controller-side edge-agent certificate bundle path
+      ansible.builtin.debug:
+        msg:
+          - "Edge-agent bundle dir: {{ edge_agent_cert_bundle_dir }}"
+          - "Client certificate: {{ edge_agent_cert_bundle_dir }}/client.crt"
+          - "Client key: {{ edge_agent_cert_bundle_dir }}/client.key"
+          - "CA certificate: {{ edge_agent_cert_bundle_dir }}/ca.crt"
+          - >-
+            NATS server CA:
+            {{
+              edge_agent_cert_bundle_dir ~ '/nats-ca.crt'
+              if (edge_agent_nats_server_ca_cert_path_effective | length > 0)
+              else 'not provided'
+            }}
+          - "Common name: {{ edge_agent_cert_common_name }}"
+          - "Vault PKI role: {{ edge_agent_vault_role }}"

@@ -1,0 +1,15 @@
+[Unit]
+Description=Route retour vers le reseau WireGuard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+{% set route_targets = [wireguard_client_cidr] + (wireguard_remote_lan_cidrs | default([])) %}
+{% for route_target in route_targets | unique %}
+ExecStart=/usr/sbin/ip route replace {{ route_target }} via {{ wireguard_private_ip }} dev {{ control_panel_private_interface }}
+{% endfor %}
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

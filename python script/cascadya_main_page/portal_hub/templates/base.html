@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+    <script defer src="{{ url_for('static', filename='app.js') }}"></script>
+  </head>
+  <body class="page page-{{ page_name|default('hub') }}">
+    <div class="page-bg" aria-hidden="true">
+      <div class="page-glow page-glow-a"></div>
+      <div class="page-glow page-glow-b"></div>
+      <div class="page-grid"></div>
+    </div>
+
+    <div class="shell">
+      <header class="topbar">
+        <div class="brand-block">
+          <a class="brand-mark" href="{{ url_for('home') }}">C</a>
+          <div class="brand-copy">
+            <p class="eyebrow">Cascadya platform hub</p>
+            <h1>{{ settings.app_name }}</h1>
+            <p class="subtitle">Keycloak remains the identity plane. The portal stays the human entry point.</p>
+          </div>
+        </div>
+
+        <div class="topbar-meta">
+          <span class="env-pill">{{ settings.environment_label }}</span>
+          {% if user %}
+          <div class="identity-chip">
+            <span class="identity-label">Signed in</span>
+            <strong>{{ user.display_name }}</strong>
+            <span class="identity-sub">{{ user.username }}</span>
+          </div>
+          <form action="{{ url_for('logout') }}" method="post">
+            <button class="ghost-button" type="submit">Logout</button>
+          </form>
+          {% endif %}
+        </div>
+      </header>
+
+      {% if nav_items %}
+      <nav class="portal-nav" aria-label="Portal navigation">
+        {% for item in nav_items %}
+        <a href="{{ item.href }}" class="nav-link{% if item.is_active %} is-active{% endif %}">
+          <span>{{ item.label }}</span>
+          <span class="nav-count">{{ item.count }}</span>
+        </a>
+        {% endfor %}
+      </nav>
+      {% endif %}
+
+      <main>
+        {% block content %}{% endblock %}
+      </main>
+
+      <footer class="page-footer">
+        <p>Portal hub MVP for post-login navigation across native Cascadya services.</p>
+        {% if user %}
+        <p>
+          Auth source: <strong>{{ user.auth_source }}</strong>
+          {% if user.tags %}
+          <span class="footer-sep">|</span>
+          Tags: {{ user.tags|join(", ") }}
+          {% endif %}
+        </p>
+        {% endif %}
+      </footer>
+    </div>
+  </body>
+</html>

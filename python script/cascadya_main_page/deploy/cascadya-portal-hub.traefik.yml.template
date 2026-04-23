@@ -1,0 +1,31 @@
+http:
+  middlewares:
+    portal-ip-allowlist:
+      ipAllowList:
+        sourceRange:
+__ALLOWED_CIDRS_BLOCK__
+
+  routers:
+    portal-router:
+      rule: "Host(`__DOMAIN_NAME__`)"
+      entryPoints:
+        - websecure
+      middlewares:
+        - portal-ip-allowlist
+      service: portal-service
+      tls: {}
+
+  services:
+    portal-service:
+      loadBalancer:
+        servers:
+          - url: "http://127.0.0.1:__APP_PORT__"
+
+tls:
+  certificates:
+    - certFile: /etc/traefik/certs/__DOMAIN_NAME__.crt
+      keyFile: /etc/traefik/certs/__DOMAIN_NAME__.key
+
+  options:
+    default:
+      minVersion: VersionTLS12

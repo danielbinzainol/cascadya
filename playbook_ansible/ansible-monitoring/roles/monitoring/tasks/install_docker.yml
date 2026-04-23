@@ -1,0 +1,89 @@
+---
+- name: Install dependencies
+  apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - python3-docker
+      - software-properties-common
+    lock_timeout: 300
+    update_cache: yes
+    cache_valid_time: 3600
+    state: present
+
+- name: Add Docker GPG key
+  apt_key:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    state: present
+
+- name: Add Docker repo
+  apt_repository:
+    repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu jammy stable"
+
+- name: Install Docker
+  apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+    lock_timeout: 300
+    update_cache: yes
+    state: present
+
+- name: Install Docker Compose
+  get_url:
+    url: "https://github.com/docker/compose/releases/download/v{{ docker_compose_version }}/docker-compose-linux-x86_64"
+    dest: /usr/local/bin/docker-compose
+    mode: "0755"
+
+- name: Ensure /etc/docker exists
+  file:
+    path: /etc/docker
+    state: directory
+    mode: "0755"
+
+- name: Configure Docker log rotation
+  copy:
+    dest: /etc/docker/daemon.json
+    content: |
+      {
+        "log-driver": "json-file",
+        "log-opts": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      }
+  register: docker_config
+
+- name: Restart Docker if configuration changed
+  service:
+    name: docker
+    state: restarted
+  when: docker_config.changed
+
+- name: Ensure Docker is enabled and running
+  service:
+    name: docker
+    enabled: true
+    state: started
+
+- name: Capture monitoring data mount facts
+  set_fact:
+    monitoring_data_mount_fact: "{{ (ansible_mounts | selectattr('mount', 'equalto', monitoring_data_root) | list | first) | default({}) }}"
+
+- name: Ensure monitoring data mount is present
+  assert:
+    that:
+      - monitoring_data_mount_fact | length > 0
+    fail_msg: "{{ monitoring_data_root }} must be mounted before deploying the monitoring stack."
+  when: monitoring_require_data_mount | bool
+
+- name: Ensure monitoring data mount has enough free space
+  assert:
+    that:
+      - (monitoring_data_mount_fact.size_available | default(0) | int) >= (monitoring_data_min_available_gb | int * 1024 * 1024 * 1024)
+    fail_msg: >-
+      {{ monitoring_data_root }} needs at least {{ monitoring_data_min_available_gb }} GB free
+      before deploying the monitoring stack.
+  when: monitoring_require_data_mount | bool

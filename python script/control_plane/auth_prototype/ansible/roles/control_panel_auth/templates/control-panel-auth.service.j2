@@ -1,0 +1,15 @@
+[Unit]
+Description=Control Panel Auth Prototype (behind Traefik)
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory={{ control_panel_repo_path }}
+EnvironmentFile={{ control_panel_auth_env_path }}
+ExecStart={{ control_panel_venv_path }}/bin/python -m uvicorn auth_prototype.app.main:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips=127.0.0.1
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,20 @@
+[Unit]
+Description=Return Flow MQTT Smart Dispatcher (Many-to-One)
+After=network.target docker.service
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/python_scripts
+# Le "-u" force Python à ne pas bufferiser la sortie pour avoir les logs en temps réel
+ExecStart=/usr/bin/python3 -u /home/ubuntu/python_scripts/dispatch_return.py
+
+# Logique de redémarrage automatique (Watchdog)
+Restart=always
+RestartSec=5
+
+# Gestion propre des logs par Systemd
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

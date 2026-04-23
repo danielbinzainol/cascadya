@@ -1,0 +1,291 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+ENV_FILE="{{ remote_unlock_env_path }}"
+
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "[remote-unlock] Missing environment file: $ENV_FILE" >&2
+  exit 1
+fi
+
+# shellcheck disable=SC1090
+set -a
+source "$ENV_FILE"
+set +a
+
+DRY_RUN=false
+if [[ "${1:-}" == "--dry-run" ]]; then
+  DRY_RUN=true
+fi
+
+log() {
+  echo "[remote-unlock] $*"
+}
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || {
+    log "Missing command: $1"
+    exit 1
+  }
+}
+
+require_cmd curl
+require_cmd python3
+require_cmd cryptsetup
+require_cmd findmnt
+require_cmd ip
+require_cmd mount
+require_cmd date
+require_cmd tpm2_quote
+require_cmd systemctl
+
+mkdir -p "$REMOTE_UNLOCK_MOUNTPOINT"
+
+if findmnt -rn "$REMOTE_UNLOCK_MOUNTPOINT" >/dev/null 2>&1 && [[ "$DRY_RUN" == "false" ]]; then
+  log "$REMOTE_UNLOCK_MOUNTPOINT is already mounted; nothing to do."
+  exit 0
+fi
+
+if [[ "${REMOTE_UNLOCK_TRANSPORT_MODE}" == "wireguard" ]]; then
+  if ! systemctl is-active --quiet "wg-quick@${REMOTE_UNLOCK_WG_INTERFACE}.service"; then
+    log "WireGuard interface ${REMOTE_UNLOCK_WG_INTERFACE} is not active."
+    exit 1
+  fi
+fi
+
+BROKER_HOST="$(python3 - <<'PY'
+import os
+import sys
+from urllib.parse import urlparse
+
+parsed = urlparse(os.environ["REMOTE_UNLOCK_BROKER_URL"])
+if not parsed.hostname:
+    print("[remote-unlock] REMOTE_UNLOCK_BROKER_URL does not include a hostname.", file=sys.stderr)
+    raise SystemExit(1)
+
+print(parsed.hostname)
+PY
+)"
+
+REQUEST_RETRY_WINDOW_SECONDS="${REMOTE_UNLOCK_TIMEOUT_SECONDS}"
+if [[ "$DRY_RUN" == "false" ]]; then
+  REQUEST_RETRY_WINDOW_SECONDS="${REMOTE_UNLOCK_BOOT_RETRY_WINDOW_SECONDS}"
+fi
+REQUEST_DEADLINE="$(( $(date +%s) + REQUEST_RETRY_WINDOW_SECONDS ))"
+
+curl_json_with_retry() {
+  local request_name="$1"
+  local request_body="$2"
+  local response_file="$3"
+  local request_url="$4"
+  local response_tmp="${response_file}.tmp"
+  local attempt=1
+  local curl_rc=0
+  local now=0
+  local route_output=""
+
+  while true; do
+    if [[ "${REMOTE_UNLOCK_TRANSPORT_MODE}" == "wireguard" ]]; then
+      route_output="$(ip route get "${BROKER_HOST}" 2>/dev/null || true)"
+      if [[ "$route_output" != *" dev ${REMOTE_UNLOCK_WG_INTERFACE} "* ]]; then
+        curl_rc=1
+        log "${request_name}: broker route is not yet using ${REMOTE_UNLOCK_WG_INTERFACE}; retrying in ${REMOTE_UNLOCK_RETRY_INTERVAL_SECONDS}s."
+      else
+        rm -f "${response_tmp}"
+        set +e
+        curl --silent --show-error --fail \
+          --cert "${REMOTE_UNLOCK_CERT_DIR}/client.crt" \
+          --key "${REMOTE_UNLOCK_CERT_DIR}/client.key" \
+          --cacert "${REMOTE_UNLOCK_CERT_DIR}/ca.crt" \
+          --connect-timeout "${REMOTE_UNLOCK_TIMEOUT_SECONDS}" \
+          --max-time "${REMOTE_UNLOCK_TIMEOUT_SECONDS}" \
+          -H "Content-Type: application/json" \
+          --data @"${request_body}" \
+          "${request_url}" \
+          > "${response_tmp}"
+        curl_rc=$?
+        set -e
+        if (( curl_rc == 0 )); then
+          mv "${response_tmp}" "${response_file}"
+          return 0
+        fi
+        rm -f "${response_tmp}"
+        log "${request_name}: curl attempt ${attempt} failed with exit ${curl_rc}; retrying in ${REMOTE_UNLOCK_RETRY_INTERVAL_SECONDS}s."
+      fi
+    else
+      rm -f "${response_tmp}"
+      set +e
+      curl --silent --show-error --fail \
+        --cert "${REMOTE_UNLOCK_CERT_DIR}/client.crt" \
+        --key "${REMOTE_UNLOCK_CERT_DIR}/client.key" \
+        --cacert "${REMOTE_UNLOCK_CERT_DIR}/ca.crt" \
+        --connect-timeout "${REMOTE_UNLOCK_TIMEOUT_SECONDS}" \
+        --max-time "${REMOTE_UNLOCK_TIMEOUT_SECONDS}" \
+        -H "Content-Type: application/json" \
+        --data @"${request_body}" \
+        "${request_url}" \
+        > "${response_tmp}"
+      curl_rc=$?
+      set -e
+      if (( curl_rc == 0 )); then
+        mv "${response_tmp}" "${response_file}"
+        return 0
+      fi
+      rm -f "${response_tmp}"
+      log "${request_name}: curl attempt ${attempt} failed with exit ${curl_rc}; retrying in ${REMOTE_UNLOCK_RETRY_INTERVAL_SECONDS}s."
+    fi
+
+    now="$(date +%s)"
+    if (( now >= REQUEST_DEADLINE )); then
+      log "${request_name}: broker path did not become ready within ${REQUEST_RETRY_WINDOW_SECONDS}s."
+      return "${curl_rc}"
+    fi
+
+    attempt=$((attempt + 1))
+    sleep "${REMOTE_UNLOCK_RETRY_INTERVAL_SECONDS}"
+  done
+}
+
+DEFAULT_GW=""
+GATEWAY_MAC=""
+if [[ "${REMOTE_UNLOCK_GATEWAY_AUDIT}" == "true" ]]; then
+  if [[ -n "${REMOTE_UNLOCK_GATEWAY_IP:-}" ]]; then
+    DEFAULT_GW="${REMOTE_UNLOCK_GATEWAY_IP}"
+  elif [[ -n "${REMOTE_UNLOCK_UPLINK_INTERFACE:-}" ]]; then
+    DEFAULT_GW="$(ip route show default dev "${REMOTE_UNLOCK_UPLINK_INTERFACE}" | awk '/default/ { print $3; exit }')"
+  else
+    DEFAULT_GW="$(ip route show default | awk '/default/ { print $3; exit }')"
+  fi
+  if [[ -n "$DEFAULT_GW" ]]; then
+    GATEWAY_MAC="$(ip neigh show "$DEFAULT_GW" | awk '{ print $5; exit }')"
+  fi
+fi
+export GATEWAY_MAC
+
+TMP_DIR="$(mktemp -d)"
+cleanup() {
+  rm -rf "$TMP_DIR"
+}
+trap cleanup EXIT
+
+CHALLENGE_RESPONSE="${TMP_DIR}/challenge.json"
+UNLOCK_REQUEST="${TMP_DIR}/unlock-request.json"
+UNLOCK_RESPONSE="${TMP_DIR}/unlock-response.json"
+QUOTE_FILE="${TMP_DIR}/quote.bin"
+SIGNATURE_FILE="${TMP_DIR}/signature.bin"
+PCR_FILE="${TMP_DIR}/pcr.bin"
+NONCE_FILE="${TMP_DIR}/nonce.bin"
+
+python3 - <<'PY' > "${TMP_DIR}/challenge-request.json"
+import json
+import os
+import sys
+
+payload = {
+    "device_id": os.environ["REMOTE_UNLOCK_DEVICE_ID"],
+    "hostname": os.uname().nodename,
+    "wg_interface": os.environ["REMOTE_UNLOCK_WG_INTERFACE"],
+    "management_interface": os.environ.get("REMOTE_UNLOCK_MANAGEMENT_INTERFACE", ""),
+    "uplink_interface": os.environ.get("REMOTE_UNLOCK_UPLINK_INTERFACE", ""),
+}
+
+gateway_mac = os.environ.get("GATEWAY_MAC", "").strip()
+if gateway_mac:
+    payload["gateway_mac"] = gateway_mac
+
+json.dump(payload, sys.stdout, sort_keys=True)
+PY
+
+curl_json_with_retry \
+  "challenge" \
+  "${TMP_DIR}/challenge-request.json" \
+  "${CHALLENGE_RESPONSE}" \
+  "${REMOTE_UNLOCK_BROKER_URL%/}${REMOTE_UNLOCK_CHALLENGE_PATH}"
+
+mapfile -t CHALLENGE_FIELDS < <(
+  python3 - "${CHALLENGE_RESPONSE}" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    data = json.load(handle)
+
+print(data["nonce"])
+print(data["challenge_id"])
+PY
+)
+
+NONCE="${CHALLENGE_FIELDS[0]}"
+CHALLENGE_ID="${CHALLENGE_FIELDS[1]}"
+export NONCE CHALLENGE_ID
+
+printf '%s' "${NONCE}" > "${NONCE_FILE}"
+
+tpm2_quote -Q \
+  -c "${REMOTE_UNLOCK_TPM_AK_HANDLE}" \
+  -l "sha256:${REMOTE_UNLOCK_PCRS}" \
+  -q "${NONCE_FILE}" \
+  -m "${QUOTE_FILE}" \
+  -s "${SIGNATURE_FILE}" \
+  -o "${PCR_FILE}"
+
+python3 - "${QUOTE_FILE}" "${SIGNATURE_FILE}" "${PCR_FILE}" "${REMOTE_UNLOCK_TPM_DIR}/ak.pub.pem" > "${UNLOCK_REQUEST}" <<'PY'
+import base64
+import json
+import os
+import sys
+
+def b64(path: str) -> str:
+    with open(path, "rb") as handle:
+        return base64.b64encode(handle.read()).decode("ascii")
+
+payload = {
+    "device_id": os.environ["REMOTE_UNLOCK_DEVICE_ID"],
+    "challenge_id": os.environ["CHALLENGE_ID"],
+    "nonce": os.environ["NONCE"],
+    "hostname": os.uname().nodename,
+    "wg_interface": os.environ["REMOTE_UNLOCK_WG_INTERFACE"],
+    "management_interface": os.environ.get("REMOTE_UNLOCK_MANAGEMENT_INTERFACE", ""),
+    "uplink_interface": os.environ.get("REMOTE_UNLOCK_UPLINK_INTERFACE", ""),
+    "quote_b64": b64(sys.argv[1]),
+    "signature_b64": b64(sys.argv[2]),
+    "pcr_b64": b64(sys.argv[3]),
+    "ak_pub_b64": b64(sys.argv[4]),
+}
+
+gateway_mac = os.environ.get("GATEWAY_MAC", "").strip()
+if gateway_mac:
+    payload["gateway_mac"] = gateway_mac
+
+json.dump(payload, sys.stdout, sort_keys=True)
+PY
+
+curl_json_with_retry \
+  "unlock" \
+  "${UNLOCK_REQUEST}" \
+  "${UNLOCK_RESPONSE}" \
+  "${REMOTE_UNLOCK_BROKER_URL%/}${REMOTE_UNLOCK_UNLOCK_PATH}"
+
+if [[ "$DRY_RUN" == "true" ]]; then
+  log "Dry-run remote unlock completed successfully."
+  exit 0
+fi
+
+if [[ ! -e "/dev/mapper/${REMOTE_UNLOCK_MAPPER_NAME}" ]]; then
+  python3 - "${UNLOCK_RESPONSE}" <<'PY' | \
+    cryptsetup open "${REMOTE_UNLOCK_LUKS_DEVICE}" "${REMOTE_UNLOCK_MAPPER_NAME}" --key-file=-
+import base64
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    data = json.load(handle)
+
+secret = base64.b64decode(data["secret_b64"])
+sys.stdout.buffer.write(secret)
+PY
+fi
+
+mount "${REMOTE_UNLOCK_MOUNTPOINT}"
+log "Remote unlock mounted ${REMOTE_UNLOCK_MOUNTPOINT}."

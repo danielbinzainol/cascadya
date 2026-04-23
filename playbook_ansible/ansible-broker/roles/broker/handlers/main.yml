@@ -1,0 +1,7 @@
+---
+- name: Recreate broker stack
+  shell: "docker-compose up -d --force-recreate --remove-orphans"
+  args:
+    chdir: "{{ broker_root }}"
+  environment:
+    COMPOSE_PROJECT_NAME: "{{ broker_compose_project_name }}"

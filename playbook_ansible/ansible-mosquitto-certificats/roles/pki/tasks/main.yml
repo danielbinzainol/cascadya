@@ -1,0 +1,24 @@
+---
+# roles/pki/tasks/main.yml
+#
+# Dispatch des tâches PKI selon le groupe d'hôte.
+# - broker -> broker.yml
+# - edge   -> edge.yml
+#
+# Note : si votre playbook appelle explicitement "tasks_from: broker.yml/edge.yml",
+# ce main.yml n'est pas utilisé. Il reste utile pour un "roles: - pki" sans tasks_from.
+
+- name: Include broker PKI tasks
+  include_tasks: broker.yml
+  when: "'broker' in group_names"
+
+- name: Include edge PKI tasks
+  include_tasks: edge.yml
+  when: "'edge' in group_names"
+
+- name: Fail if host is neither broker nor edge
+  fail:
+    msg: "Host is in neither 'broker' nor 'edge' group; cannot decide PKI tasks."
+  when:
+    - "'broker' not in group_names"
+    - "'edge' not in group_names"

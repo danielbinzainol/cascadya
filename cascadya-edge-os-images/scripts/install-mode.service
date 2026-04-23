@@ -1,0 +1,30 @@
+[Unit]
+Description=Cascadya Zero-Touch Auto Installer
+# --- CORRECTION ---
+# On supprime 'network.target'. On garde uniquement le système de fichiers.
+# Le script se lancera dès que le disque est prêt, sans attendre Internet.
+After=local-fs.target systemd-user-sessions.service
+
+# On bloque le login pour garder l'écran
+Before=getty@tty1.service plymouth-quit.service
+Conflicts=getty@tty1.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/default/install-to-disk
+ExecStart=/usr/local/bin/install-to-disk.sh
+
+# --- AFFICHAGE ---
+# Vos réglages ici étaient parfaits, on les garde !
+StandardInput=tty
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+
+# On force l'écran 1
+ExecStartPre=/usr/bin/chvt 1
+
+[Install]
+WantedBy=multi-user.target

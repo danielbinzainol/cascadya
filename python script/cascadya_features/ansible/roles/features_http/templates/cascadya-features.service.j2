@@ -1,0 +1,16 @@
+[Unit]
+Description=Cascadya Features HTTP service
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory={{ features_repo_path }}
+EnvironmentFile={{ features_env_path }}
+ExecStart={{ features_venv_path }}/bin/python {{ features_repo_path }}/app.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+

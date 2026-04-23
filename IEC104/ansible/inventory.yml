@@ -1,0 +1,19 @@
+---
+all:
+  children:
+    iec104_bridge:
+      hosts:
+        iec104-gtw:
+          ansible_host: 10.10.19.2             # IP of your Debian target
+          ansible_user: cascadya               # SSH user (must have sudo)
+          ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+
+        # Add more hosts here if needed
+        # edge-pc-02:
+        #   ansible_host: 192.168.1.101
+        #   ansible_user: admin
+
+      vars:
+        # Override any playbook defaults per-group here
+        # log_level: DEBUG
+        # iec104_ca: 2

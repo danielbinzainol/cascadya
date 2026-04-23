@@ -1,0 +1,53 @@
+---
+- name: "Génération du Pack Certificats pour Loris (Cmarket)"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  # On charge manuellement les variables si on n'utilise pas d'inventaire spécifique
+  vars_files:
+    - "../group_vars/app/apps.yml"
+
+  vars:
+    vault_addr: "{{ lookup('env','VAULT_ADDR') | default('https://secrets.cascadya.com', true) }}"
+    vault_token: "{{ lookup('env','VAULT_TOKEN') }}"
+
+  tasks:
+    - name: "Vérifier la présence du Token Vault"
+      assert:
+        that: vault_token | length > 0
+        fail_msg: "ERREUR : VAULT_TOKEN manquant dans l'environnement."
+
+    - name: "Créer le dossier d'export"
+      file:
+        path: "{{ local_export_dir }}"
+        state: directory
+        mode: '0700'
+
+    - name: "Requête mTLS auprès de Vault"
+      uri:
+        url: "{{ vault_addr }}/v1/{{ vault_pki_mount }}/issue/{{ vault_pki_app_role }}"
+        method: POST
+        headers:
+          X-Vault-Token: "{{ vault_token }}"
+        body_format: json
+        body:
+          common_name: "{{ loris_app.common_name }}"
+          alt_names: "{{ loris_app.alt_names }}"
+          ttl: "{{ loris_app.ttl }}"
+        return_content: yes
+      register: vault_response
+
+    - name: "Écriture des fichiers pour le pack"
+      copy:
+        content: "{{ item.content }}"
+        dest: "{{ local_export_dir }}/{{ item.name }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - { name: "client.crt", content: "{{ vault_response.json.data.certificate }}", mode: "0644" }
+        - { name: "client.key", content: "{{ vault_response.json.data.private_key }}", mode: "0600" }
+        - { name: "ca.crt", content: "{{ vault_response.json.data.issuing_ca }}\n{{ lookup('file', local_ca_path) }}", mode: "0644" }
+
+    - name: "Succès"
+      debug:
+        msg: "Le pack pour Loris est prêt ici : {{ local_export_dir }}"

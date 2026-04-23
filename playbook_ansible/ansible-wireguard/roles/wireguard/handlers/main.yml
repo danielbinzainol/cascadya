@@ -1,0 +1,22 @@
+---
+- name: Restart dnsmasq
+  ansible.builtin.systemd:
+    name: "{{ wireguard_dns_service_name }}"
+    enabled: true
+    state: restarted
+
+- name: Restart managed wireguard interfaces
+  ansible.builtin.systemd:
+    name: "wg-quick@{{ item.name }}"
+    enabled: true
+    state: restarted
+  loop: "{{ wireguard_interfaces }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Restart wireguard routes
+  ansible.builtin.systemd:
+    name: "{{ wireguard_routes_service_name }}"
+    enabled: true
+    state: restarted
+    daemon_reload: true

@@ -1,0 +1,138 @@
+- name: Assert Wazuh dashboard configuration file exists
+  ansible.builtin.stat:
+    path: "{{ wazuh_dashboard_config_path }}"
+  register: wazuh_dashboard_config_stat
+  tags: ["wazuh", "dashboard", "tls"]
+
+- name: Stop if the Wazuh dashboard config file is missing
+  ansible.builtin.assert:
+    that:
+      - wazuh_dashboard_config_stat.stat.exists
+    fail_msg: >-
+      Le fichier {{ wazuh_dashboard_config_path }} est absent.
+      Verifie que la VM Wazuh dashboard est bien installee avant d'appliquer ce role.
+  tags: ["wazuh", "dashboard", "tls"]
+
+- name: Ensure OpenSSL is installed
+  ansible.builtin.apt:
+    name: openssl
+    state: present
+    update_cache: true
+  tags: ["wazuh", "dashboard", "tls"]
+
+- name: Ensure Wazuh dashboard certificate directory exists
+  ansible.builtin.file:
+    path: "{{ wazuh_dashboard_cert_dir }}"
+    state: directory
+    owner: root
+    group: "{{ wazuh_dashboard_cert_group }}"
+    mode: "0750"
+  tags: ["wazuh", "dashboard", "tls"]
+
+- name: Generate Wazuh dashboard private key if missing
+  ansible.builtin.command:
+    cmd: "openssl genrsa -out {{ wazuh_dashboard_cert_key_path }} 2048"
+    creates: "{{ wazuh_dashboard_cert_key_path }}"
+  notify: restart wazuh-dashboard
+  tags: ["wazuh", "dashboard", "tls"]
+
+- name: Generate Wazuh dashboard self-signed certificate if missing
+  ansible.builtin.command:
+    cmd: >-
+      openssl req -x509 -new
+      -key {{ wazuh_dashboard_cert_key_path }}
+      -out {{ wazuh_dashboard_cert_crt_path }}
+      -days 365
+      -subj /CN={{ wazuh_dashboard_domain }}
+      -addext subjectAltName=DNS:{{ wazuh_dashboard_domain }}
+    creates: "{{ wazuh_dashboard_cert_crt_path }}"
+  notify: restart wazuh-dashboard
+  tags: ["wazuh", "dashboard", "tls"]
+
+- name: Fix Wazuh dashboard certificate permissions
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    owner: root
+    group: "{{ wazuh_dashboard_cert_group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ wazuh_dashboard_cert_key_path }}", mode: "0640" }
+    - { path: "{{ wazuh_dashboard_cert_crt_path }}", mode: "0644" }
+  tags: ["wazuh", "dashboard", "tls"]
+
+- name: Set Wazuh dashboard server name
+  ansible.builtin.lineinfile:
+    path: "{{ wazuh_dashboard_config_path }}"
+    regexp: "^server\\.name:"
+    line: "server.name: \"{{ wazuh_dashboard_domain }}\""
+  notify: restart wazuh-dashboard
+  tags: ["wazuh", "dashboard", "tls"]
+
+- name: Set Wazuh dashboard listen address
+  ansible.builtin.lineinfile:
+    path: "{{ wazuh_dashboard_config_path }}"
+    regexp: "^server\\.host:"
+    line: "server.host: \"{{ wazuh_dashboard_server_host }}\""
+  notify: restart wazuh-dashboard
+  tags: ["wazuh", "dashboard", "tls"]
+
+- name: Set Wazuh dashboard listen port
+  ansible.builtin.lineinfile:
+    path: "{{ wazuh_dashboard_config_path }}"
+    regexp: "^server\\.port:"
+    line: "server.port: {{ wazuh_dashboard_server_port }}"
+  notify: restart wazuh-dashboard
+  tags: ["wazuh", "dashboard", "tls"]
+
+- name: Enable HTTPS on the Wazuh dashboard
+  ansible.builtin.lineinfile:
+    path: "{{ wazuh_dashboard_config_path }}"
+    regexp: "^server\\.ssl\\.enabled:"
+    line: "server.ssl.enabled: {{ 'true' if wazuh_dashboard_tls_enabled else 'false' }}"
+  notify: restart wazuh-dashboard
+  tags: ["wazuh", "dashboard", "tls"]
+
+- name: Set Wazuh dashboard HTTPS certificate path
+  ansible.builtin.lineinfile:
+    path: "{{ wazuh_dashboard_config_path }}"
+    regexp: "^server\\.ssl\\.certificate:"
+    line: "server.ssl.certificate: \"{{ wazuh_dashboard_cert_crt_path }}\""
+  notify: restart wazuh-dashboard
+  tags: ["wazuh", "dashboard", "tls"]
+
+- name: Set Wazuh dashboard HTTPS key path
+  ansible.builtin.lineinfile:
+    path: "{{ wazuh_dashboard_config_path }}"
+    regexp: "^server\\.ssl\\.key:"
+    line: "server.ssl.key: \"{{ wazuh_dashboard_cert_key_path }}\""
+  notify: restart wazuh-dashboard
+  tags: ["wazuh", "dashboard", "tls"]
+
+- name: Ensure secure cookies are enabled on the Wazuh dashboard
+  ansible.builtin.lineinfile:
+    path: "{{ wazuh_dashboard_config_path }}"
+    regexp: "^opensearch_security\\.cookie\\.secure:"
+    line: "opensearch_security.cookie.secure: true"
+  notify: restart wazuh-dashboard
+  tags: ["wazuh", "dashboard", "tls"]
+
+- name: Ensure the Wazuh dashboard service is enabled and running
+  ansible.builtin.systemd:
+    name: "{{ wazuh_dashboard_service_name }}"
+    enabled: true
+    state: started
+  when: not ansible_check_mode
+  tags: ["wazuh", "dashboard", "tls"]
+
+- name: Flush Wazuh dashboard handlers
+  ansible.builtin.meta: flush_handlers
+  when: not ansible_check_mode
+  tags: ["wazuh", "dashboard", "tls"]
+
+- name: Wait for the Wazuh dashboard HTTPS port
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ wazuh_dashboard_server_port }}"
+    timeout: 60
+  when: not ansible_check_mode
+  tags: ["wazuh", "dashboard", "verify"]

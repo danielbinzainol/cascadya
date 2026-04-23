@@ -1,0 +1,17 @@
+- name: reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: restart control-panel-auth
+  ansible.builtin.systemd:
+    name: control-panel-auth.service
+    state: restarted
+    daemon_reload: true
+  when: not ansible_check_mode
+
+- name: restart control-panel-wireguard-route
+  ansible.builtin.systemd:
+    name: control-panel-wireguard-route.service
+    state: restarted
+    daemon_reload: true
+  when: not ansible_check_mode

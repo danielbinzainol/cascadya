@@ -1,0 +1,30 @@
+---
+- name: Include bootstrap phase
+  ansible.builtin.include_tasks: bootstrap.yml
+  when:
+    - remote_unlock_enable | bool
+    - remote_unlock_phase == "bootstrap"
+
+- name: Include certificate staging phase
+  ansible.builtin.include_tasks: stage_certs.yml
+  when:
+    - remote_unlock_enable | bool
+    - remote_unlock_phase == "stage_certs"
+
+- name: Include cutover phase
+  ansible.builtin.include_tasks: cutover.yml
+  when:
+    - remote_unlock_enable | bool
+    - remote_unlock_phase == "cutover"
+
+- name: Include validate phase
+  ansible.builtin.include_tasks: validate.yml
+  when:
+    - remote_unlock_enable | bool
+    - remote_unlock_phase == "validate"
+
+- name: Include remove-local-tpm phase
+  ansible.builtin.include_tasks: remove_local_tpm.yml
+  when:
+    - remote_unlock_enable | bool
+    - remote_unlock_phase == "remove_local_tpm"

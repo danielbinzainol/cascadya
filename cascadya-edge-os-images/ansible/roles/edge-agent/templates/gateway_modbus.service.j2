@@ -1,0 +1,22 @@
+[Unit]
+Description=Cascadya SteamSwitch - Edge Gateway (Commandes)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ edge_agent_service_user }}
+WorkingDirectory={{ edge_agent_app_dir }}
+Environment="PYTHONUNBUFFERED=1"
+Environment="EDGE_AGENT_CERTS_DIR={{ edge_agent_certs_dir }}"
+Environment="MODBUS_HOST={{ edge_agent_modbus_host }}"
+Environment="MODBUS_PORT={{ edge_agent_modbus_port }}"
+Environment="NATS_URL={{ edge_agent_nats_url }}"
+Environment="NATS_COMMAND_SUBJECT={{ edge_agent_nats_command_subject }}"
+Environment="NATS_PING_SUBJECT={{ edge_agent_nats_ping_subject }}"
+ExecStart={{ edge_agent_venv_dir }}/bin/python3 {{ edge_agent_app_dir }}/gateway_modbus_sbc.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

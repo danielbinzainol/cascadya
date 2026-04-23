@@ -1,0 +1,154 @@
+---
+- name: Prepare desired state for client {{ vault_vm_keycloak_client.client_id }}
+  ansible.builtin.set_fact:
+    vault_vm_keycloak_client_secret_value: "{{ vault_vm_keycloak_client.client_secret | default('') }}"
+    vault_vm_keycloak_manage_client_secret: >-
+      {{
+        (vault_vm_keycloak_client.access_type | default('confidential')) == 'public'
+        or not (
+          (vault_vm_keycloak_client.client_secret | default('') | length == 0)
+          or ((vault_vm_keycloak_client.client_secret | default('') | lower).startswith('change-me'))
+        )
+      }}
+
+- name: Build desired payload for client {{ vault_vm_keycloak_client.client_id }}
+  ansible.builtin.set_fact:
+    vault_vm_keycloak_client_payload: >-
+      {{
+        {
+          'clientId': vault_vm_keycloak_client.client_id,
+          'name': (vault_vm_keycloak_client.client_name | default(vault_vm_keycloak_client.client_id)),
+          'enabled': true,
+          'protocol': 'openid-connect',
+          'publicClient': ((vault_vm_keycloak_client.access_type | default('confidential')) == 'public'),
+          'standardFlowEnabled': true,
+          'directAccessGrantsEnabled': false,
+          'serviceAccountsEnabled': false,
+          'frontchannelLogout': true,
+          'redirectUris': (vault_vm_keycloak_client.redirect_uris | default([])),
+          'webOrigins': (vault_vm_keycloak_client.web_origins | default([])),
+          'attributes': {
+            'post.logout.redirect.uris': ((vault_vm_keycloak_client.post_logout_redirect_uris | default([]) | first | default('')))
+          }
+        }
+        | combine(
+            {'secret': (vault_vm_keycloak_client.client_secret | default(''))}
+            if vault_vm_keycloak_manage_client_secret else {}
+          )
+      }}
+
+- name: Query existing Keycloak client {{ vault_vm_keycloak_client.client_id }}
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - "{{ vault_vm_keycloak_container_name }}"
+      - /opt/keycloak/bin/kcadm.sh
+      - get
+      - clients
+      - -r
+      - "{{ vault_vm_keycloak_realm_name }}"
+      - -q
+      - "clientId={{ vault_vm_keycloak_client.client_id }}"
+  register: vault_vm_keycloak_client_query
+  changed_when: false
+
+- name: Parse existing Keycloak client {{ vault_vm_keycloak_client.client_id }}
+  ansible.builtin.set_fact:
+    vault_vm_keycloak_existing_client: "{{ (vault_vm_keycloak_client_query.stdout | from_json | first | default({})) }}"
+
+- name: Build comparable current state for client {{ vault_vm_keycloak_client.client_id }}
+  ansible.builtin.set_fact:
+    vault_vm_keycloak_current_client_state: >-
+      {{
+        (
+          {
+            'clientId': vault_vm_keycloak_existing_client.clientId | default(''),
+            'name': vault_vm_keycloak_existing_client.name | default(''),
+            'enabled': vault_vm_keycloak_existing_client.enabled | default(false) | bool,
+            'protocol': vault_vm_keycloak_existing_client.protocol | default(''),
+            'publicClient': vault_vm_keycloak_existing_client.publicClient | default(false) | bool,
+            'standardFlowEnabled': vault_vm_keycloak_existing_client.standardFlowEnabled | default(false) | bool,
+            'directAccessGrantsEnabled': vault_vm_keycloak_existing_client.directAccessGrantsEnabled | default(false) | bool,
+            'serviceAccountsEnabled': vault_vm_keycloak_existing_client.serviceAccountsEnabled | default(false) | bool,
+            'frontchannelLogout': vault_vm_keycloak_existing_client.frontchannelLogout | default(false) | bool,
+            'redirectUris': vault_vm_keycloak_existing_client.redirectUris | default([]),
+            'webOrigins': vault_vm_keycloak_existing_client.webOrigins | default([]),
+            'attributes': {
+              'post.logout.redirect.uris': ((vault_vm_keycloak_existing_client.attributes | default({})).get('post.logout.redirect.uris', ''))
+            }
+          }
+          | combine(
+              {'secret': vault_vm_keycloak_existing_client.secret | default('')}
+              if vault_vm_keycloak_manage_client_secret else {}
+            )
+        )
+        if (vault_vm_keycloak_existing_client | length > 0)
+        else {}
+      }}
+
+- name: Decide whether client {{ vault_vm_keycloak_client.client_id }} needs sync
+  ansible.builtin.set_fact:
+    vault_vm_keycloak_client_needs_sync: >-
+      {{
+        (vault_vm_keycloak_existing_client | length == 0)
+        or (vault_vm_keycloak_current_client_state != vault_vm_keycloak_client_payload)
+      }}
+
+- name: Refuse to create a missing confidential client without a real secret
+  ansible.builtin.fail:
+    msg: >-
+      Client {{ vault_vm_keycloak_client.client_id }} is missing in realm {{ vault_vm_keycloak_realm_name }}
+      but its secret is empty or still set to a CHANGE-ME placeholder in inventory/group_vars/vault_vm.yml.
+      Set the real secret first, then rerun the playbook.
+  when:
+    - vault_vm_keycloak_existing_client | length == 0
+    - (vault_vm_keycloak_client.access_type | default('confidential')) != 'public'
+    - not vault_vm_keycloak_manage_client_secret
+
+- name: Render payload for client {{ vault_vm_keycloak_client.client_id }}
+  ansible.builtin.copy:
+    dest: "{{ vault_vm_keycloak_client_sync_root }}/{{ vault_vm_keycloak_client.client_id }}.json"
+    content: "{{ vault_vm_keycloak_client_payload | to_nice_json }}"
+    owner: "{{ vault_vm_keycloak_container_uid }}"
+    group: "{{ vault_vm_keycloak_container_gid }}"
+    mode: "0640"
+  when: vault_vm_keycloak_client_needs_sync | bool
+
+- name: Create missing Keycloak client {{ vault_vm_keycloak_client.client_id }}
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - "{{ vault_vm_keycloak_container_name }}"
+      - /opt/keycloak/bin/kcadm.sh
+      - create
+      - clients
+      - -r
+      - "{{ vault_vm_keycloak_realm_name }}"
+      - -f
+      - "{{ vault_vm_keycloak_client_sync_mount_path }}/{{ vault_vm_keycloak_client.client_id }}.json"
+  when:
+    - vault_vm_keycloak_client_needs_sync | bool
+    - vault_vm_keycloak_existing_client | length == 0
+  register: vault_vm_keycloak_client_create
+  changed_when: true
+
+- name: Update existing Keycloak client {{ vault_vm_keycloak_client.client_id }}
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - "{{ vault_vm_keycloak_container_name }}"
+      - /opt/keycloak/bin/kcadm.sh
+      - update
+      - "clients/{{ vault_vm_keycloak_existing_client.id }}"
+      - -r
+      - "{{ vault_vm_keycloak_realm_name }}"
+      - -f
+      - "{{ vault_vm_keycloak_client_sync_mount_path }}/{{ vault_vm_keycloak_client.client_id }}.json"
+  when:
+    - vault_vm_keycloak_client_needs_sync | bool
+    - vault_vm_keycloak_existing_client | length > 0
+  register: vault_vm_keycloak_client_update
+  changed_when: true

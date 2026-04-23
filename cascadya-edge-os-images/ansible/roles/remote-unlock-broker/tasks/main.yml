@@ -1,0 +1,175 @@
+---
+- name: Resolve the broker Vault token from vars or environment
+  ansible.builtin.set_fact:
+    remote_unlock_broker_vault_token_effective: >-
+      {{
+        remote_unlock_broker_vault_token
+        if (remote_unlock_broker_vault_token | length > 0)
+        else lookup('ansible.builtin.env', remote_unlock_broker_vault_token_env_var)
+      }}
+
+- name: Assert broker deployment variables are set
+  ansible.builtin.assert:
+    that:
+      - remote_unlock_broker_enable | bool
+      - remote_unlock_broker_vault_addr | length > 0
+      - remote_unlock_broker_vault_token_effective | length > 0
+    fail_msg: >-
+      Set remote_unlock_broker_vault_addr and provide a Vault token via
+      remote_unlock_broker_vault_token or the
+      {{ remote_unlock_broker_vault_token_env_var }} environment variable
+      before deploying the remote unlock broker.
+
+- name: Check Docker CLI availability on the broker host
+  ansible.builtin.command:
+    argv:
+      - docker
+      - version
+      - --format
+      - "{{ '{{.Server.Version}}' }}"
+  register: remote_unlock_broker_docker_version
+  changed_when: false
+
+- name: Check Docker Compose plugin availability on the broker host
+  ansible.builtin.command:
+    argv:
+      - docker
+      - compose
+      - version
+  register: remote_unlock_broker_compose_version
+  changed_when: false
+  failed_when: false
+
+- name: Check docker-compose availability on the broker host
+  ansible.builtin.command:
+    argv:
+      - docker-compose
+      - version
+  register: remote_unlock_broker_legacy_compose_version
+  changed_when: false
+  failed_when: false
+
+- name: Select the available Docker Compose command
+  ansible.builtin.set_fact:
+    remote_unlock_broker_compose_cmd: >-
+      {{ ['docker', 'compose']
+         if remote_unlock_broker_compose_version.rc == 0
+         else ['docker-compose'] }}
+    remote_unlock_broker_compose_version_text: >-
+      {{ remote_unlock_broker_compose_version.stdout
+         if remote_unlock_broker_compose_version.rc == 0
+         else remote_unlock_broker_legacy_compose_version.stdout }}
+
+- name: Assert Docker Compose is available on the broker host
+  ansible.builtin.assert:
+    that:
+      - remote_unlock_broker_compose_version.rc == 0 or remote_unlock_broker_legacy_compose_version.rc == 0
+    fail_msg: >-
+      The broker host needs either the Docker Compose plugin (`docker compose`)
+      or the legacy `docker-compose` binary.
+
+- name: Ensure remote unlock broker directories exist
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    mode: "{{ item.mode }}"
+  loop:
+    - path: "{{ remote_unlock_broker_app_dir }}"
+      mode: "0755"
+    - path: "{{ remote_unlock_broker_cert_dir }}"
+      mode: "0700"
+
+- name: Check remote unlock broker certificate bundle on the controller
+  ansible.builtin.stat:
+    path: "{{ remote_unlock_broker_cert_src_dir }}/{{ item.filename }}"
+  loop: "{{ remote_unlock_broker_cert_specs }}"
+  register: remote_unlock_broker_controller_bundle
+  delegate_to: localhost
+  become: false
+
+- name: Fail when the remote unlock broker certificate bundle is missing on the controller
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - (item.stat.size | default(0) | int) > 0
+    fail_msg: >-
+      Missing controller-side broker certificate file:
+      {{ item.stat.path | default(remote_unlock_broker_cert_src_dir ~ '/' ~ item.item.filename) }}
+  loop: "{{ remote_unlock_broker_controller_bundle.results }}"
+  loop_control:
+    label: "{{ item.item.filename }}"
+
+- name: Copy the remote unlock broker certificate bundle to the broker host
+  ansible.builtin.copy:
+    src: "{{ remote_unlock_broker_cert_src_dir }}/{{ item.filename }}"
+    dest: "{{ remote_unlock_broker_cert_dir }}/{{ item.filename }}"
+    mode: "{{ item.mode }}"
+  loop: "{{ remote_unlock_broker_cert_specs }}"
+
+- name: Deploy the remote unlock broker Python service
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/demo/remote_unlock_demo_broker.py"
+    dest: "{{ remote_unlock_broker_script_path }}"
+    mode: "0644"
+
+- name: Deploy the remote unlock broker Dockerfile
+  ansible.builtin.template:
+    src: Dockerfile.remote-unlock-broker.j2
+    dest: "{{ remote_unlock_broker_dockerfile_path }}"
+    mode: "0644"
+
+- name: Deploy the remote unlock broker environment file
+  ansible.builtin.template:
+    src: broker.env.j2
+    dest: "{{ remote_unlock_broker_env_path }}"
+    mode: "0600"
+
+- name: Deploy the remote unlock broker compose file
+  ansible.builtin.template:
+    src: docker-compose.remote-unlock-broker.yml.j2
+    dest: "{{ remote_unlock_broker_compose_path }}"
+    mode: "0644"
+
+- name: Build and start the remote unlock broker
+  ansible.builtin.command:
+    argv: "{{ remote_unlock_broker_compose_cmd + ['up', '-d', '--build', '--remove-orphans'] }}"
+  args:
+    chdir: "{{ remote_unlock_broker_app_dir }}"
+  register: remote_unlock_broker_compose_up
+  changed_when: >-
+    'Creating' in (remote_unlock_broker_compose_up.stdout | default('')) or
+    'Recreating' in (remote_unlock_broker_compose_up.stdout | default('')) or
+    'Starting' in (remote_unlock_broker_compose_up.stdout | default('')) or
+    'Building' in (remote_unlock_broker_compose_up.stdout | default('')) or
+    'Created' in (remote_unlock_broker_compose_up.stderr | default('')) or
+    'Started' in (remote_unlock_broker_compose_up.stderr | default(''))
+
+- name: Wait for the remote unlock broker TCP port
+  ansible.builtin.wait_for:
+    host: "{{ remote_unlock_broker_wait_host }}"
+    port: "{{ remote_unlock_broker_bind_port | int }}"
+    timeout: "{{ remote_unlock_broker_wait_timeout | int }}"
+    state: started
+
+- name: Capture remote unlock broker container state
+  ansible.builtin.command:
+    argv: "{{ remote_unlock_broker_compose_cmd + ['ps'] }}"
+  args:
+    chdir: "{{ remote_unlock_broker_app_dir }}"
+  register: remote_unlock_broker_compose_ps
+  changed_when: false
+
+- name: Report remote unlock broker deployment summary
+  ansible.builtin.debug:
+    msg:
+      - "Remote unlock broker app dir: {{ remote_unlock_broker_app_dir }}"
+      - "Remote unlock broker port: {{ remote_unlock_broker_bind_port }}"
+      - "Vault addr: {{ remote_unlock_broker_vault_addr }}"
+      - "Vault KV path: {{ remote_unlock_broker_vault_kv_mount }}/{{ remote_unlock_broker_vault_kv_prefix }}"
+      - >-
+        Vault token source:
+        {{ 'inventory/vars' if (remote_unlock_broker_vault_token | length > 0) else remote_unlock_broker_vault_token_env_var }}
+      - "Docker version: {{ remote_unlock_broker_docker_version.stdout }}"
+      - "Compose command: {{ remote_unlock_broker_compose_cmd | join(' ') }}"
+      - "Compose version: {{ remote_unlock_broker_compose_version_text }}"
+      - "Compose status: {{ remote_unlock_broker_compose_ps.stdout_lines }}"

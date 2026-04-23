@@ -1,0 +1,8 @@
+---
+- name: Configure TPM2 auto-unlock for Cascadya data volume
+  hosts: all
+  become: true
+  gather_facts: true
+
+  roles:
+    - role: tpm-luks-unlock

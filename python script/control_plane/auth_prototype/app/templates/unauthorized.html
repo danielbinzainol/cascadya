@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="card">
+    <div class="eyebrow">Acces refuse</div>
+    <h1>Le compte est authentifie, mais pas autorise</h1>
+    <p>
+        {{ message }}
+    </p>
+    {% if required_permission %}
+    <p class="helper">Permission attendue: <code>{{ required_permission }}</code></p>
+    {% endif %}
+    <a class="button secondary" href="/ui/app">Retour au dashboard</a>
+</section>
+{% endblock %}

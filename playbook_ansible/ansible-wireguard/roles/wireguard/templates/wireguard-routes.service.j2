@@ -1,0 +1,13 @@
+[Unit]
+Description=Managed WireGuard routing and firewall rules
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/wireguard-routes
+ExecReload=/usr/local/sbin/wireguard-routes
+
+[Install]
+WantedBy=multi-user.target

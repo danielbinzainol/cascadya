@@ -1,0 +1,23 @@
+---
+- name: Provisioning Cascadya Edge (Industrial Release)
+  hosts: all
+  become: true
+
+  pre_tasks:
+    - name: Update APT Cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+  roles:
+    - role: common
+    - role: network
+    - role: edge-agent
+    - role: security-hardening
+    - role: tpm-luks-unlock
+
+  post_tasks:
+    - name: Final Cleanup
+      ansible.builtin.apt:
+        autoremove: true
+        clean: true

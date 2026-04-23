@@ -1,0 +1,124 @@
+---
+- name: Install Docker and system utilities
+  apt:
+    name:
+      - docker.io
+      - docker-compose
+      - ca-certificates
+      - curl
+    update_cache: yes
+    state: present
+
+- name: Start docker service
+  systemd:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Create broker directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ broker_root }}"
+    - "{{ broker_prometheus_dir }}"
+
+- import_tasks: vault.yml
+
+- name: Deploy NATS server configuration
+  template:
+    src: nats-server.conf.j2
+    dest: "{{ nats_host_config_path }}"
+    mode: "0644"
+  notify: Recreate broker stack
+
+- name: Deploy Prometheus configuration
+  template:
+    src: prometheus.yml.j2
+    dest: "{{ broker_prometheus_dir }}/prometheus.yml"
+    mode: "0644"
+  notify: Recreate broker stack
+
+- name: Deploy docker-compose file
+  template:
+    src: docker-compose.yml.j2
+    dest: "{{ broker_root }}/docker-compose.yml"
+    mode: "0644"
+  notify: Recreate broker stack
+
+- name: Remove legacy Mosquitto container
+  shell: "docker container inspect mosquitto_broker >/dev/null 2>&1 && docker rm -f mosquitto_broker || true"
+  register: remove_mosquitto
+  changed_when: "'mosquitto_broker' in remove_mosquitto.stdout"
+  when: remove_legacy_mosquitto
+
+- name: Check whether broker containers are already Compose-managed
+  shell: |
+    if ! docker container inspect {{ item }} >/dev/null 2>&1; then
+      echo absent
+      exit 0
+    fi
+    project="$(docker inspect --format '{% raw %}{{ index .Config.Labels "com.docker.compose.project" }}{% endraw %}' {{ item }} 2>/dev/null || true)"
+    if [ "$project" = "{{ broker_compose_project_name }}" ]; then
+      echo managed
+    else
+      echo manual
+    fi
+  args:
+    executable: /bin/bash
+  loop: "{{ broker_managed_container_names }}"
+  register: broker_container_management_state
+  changed_when: false
+
+- name: Remove pre-existing manual broker containers before Compose adoption
+  shell: "docker rm -f {{ item.item }}"
+  loop: "{{ broker_container_management_state.results }}"
+  when: item.stdout == 'manual'
+  register: removed_manual_broker_containers
+  changed_when: true
+
+- name: Ensure broker stack is running
+  shell: "docker-compose up -d --remove-orphans"
+  args:
+    chdir: "{{ broker_root }}"
+  environment:
+    COMPOSE_PROJECT_NAME: "{{ broker_compose_project_name }}"
+  register: compose_output
+  changed_when: >
+    'Creating' in compose_output.stdout or
+    'Recreating' in compose_output.stdout or
+    'Starting' in compose_output.stdout or
+    'Creating' in compose_output.stderr or
+    'Recreating' in compose_output.stderr or
+    'Starting' in compose_output.stderr
+
+- name: Wait for NATS client port to be available
+  wait_for:
+    port: "{{ nats_client_port }}"
+    delay: 5
+    timeout: 30
+
+- name: Wait for NATS monitoring port to be available
+  wait_for:
+    port: "{{ nats_monitoring_port }}"
+    delay: 2
+    timeout: 30
+
+- name: Wait for NATS exporter to be available
+  wait_for:
+    port: "{{ nats_exporter_port }}"
+    delay: 2
+    timeout: 30
+
+- name: Wait for cAdvisor to be available
+  wait_for:
+    port: "{{ cadvisor_port }}"
+    delay: 2
+    timeout: 30
+
+- name: Wait for Prometheus to be available
+  wait_for:
+    port: "{{ prometheus_port }}"
+    delay: 2
+    timeout: 30

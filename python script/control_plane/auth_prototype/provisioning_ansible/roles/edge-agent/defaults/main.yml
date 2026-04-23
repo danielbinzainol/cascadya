@@ -1,0 +1,78 @@
+---
+edge_agent_app_dir: "{{ cascadya_data_dir }}/agent"
+edge_agent_certs_dir: "{{ edge_agent_app_dir }}/certs"
+edge_agent_venv_dir: "{{ cascadya_data_dir }}/venv"
+edge_agent_systemd_dir: /etc/systemd/system
+edge_agent_service_user: "{{ target_user }}"
+
+edge_agent_apt_packages:
+  - python3
+  - python3-pip
+  - python3-venv
+
+edge_agent_virtualenv_command: python3 -m venv
+
+edge_agent_modbus_host: "192.168.50.2"
+edge_agent_modbus_port: 502
+edge_agent_operation_mode: "simulation"
+edge_agent_operation_mode_state_file: "{{ edge_agent_app_dir }}/operation_mode.json"
+edge_agent_modbus_sim_host: "{{ edge_agent_modbus_host }}"
+edge_agent_modbus_sim_port: "{{ edge_agent_modbus_port }}"
+edge_agent_modbus_sim_process_offset: 9200
+edge_agent_modbus_real_host: "192.168.1.52"
+edge_agent_modbus_real_port: 502
+edge_agent_modbus_float_word_order: "low_word_first"
+edge_agent_modbus_u32_word_order: "low_word_first"
+edge_agent_modbus_real_pressure_base: 388
+edge_agent_modbus_real_pressure_error: 390
+edge_agent_modbus_real_pressure_percent: 392
+edge_agent_modbus_real_pressure_regulation_base: 508
+edge_agent_modbus_real_demand_base: 512
+edge_agent_modbus_real_pressure_setpoint: 514
+edge_agent_modbus_real_pressure_boost: 516
+edge_agent_modbus_real_heater_feedback_base: 574
+edge_agent_modbus_real_heater_feedback_error: 576
+edge_agent_watchdog_strict_simulation: "false"
+edge_agent_watchdog_strict_real: "true"
+edge_agent_watchdog_freeze_threshold_sec: 30
+edge_agent_operation_mode_real_confirmation: "LCI LIVE"
+edge_agent_nats_url: "tls://10.30.0.1:4222"
+edge_agent_nats_telemetry_subject: "cascadya.telemetry.live"
+edge_agent_nats_command_subject: "cascadya.routing.command"
+edge_agent_nats_ping_subject: "cascadya.routing.ping"
+
+edge_agent_directories:
+  - path: "{{ edge_agent_app_dir }}"
+    mode: "0750"
+  - path: "{{ edge_agent_certs_dir }}"
+    mode: "0700"
+  - path: "{{ edge_agent_venv_dir }}"
+    mode: "0750"
+
+edge_agent_source_files:
+  - gateway_modbus_sbc.py
+  - models.py
+  - telemetry_publisher.py
+
+edge_agent_services:
+  - gateway_modbus
+  - telemetry_publisher
+
+edge_agent_legacy_services:
+  - cascadya-agent.service
+  - cascadya-gateway.service
+  - cascadya-telemetry.service
+
+edge_agent_dynamic_cert_specs:
+  - filename: client.crt
+    mode: "0600"
+  - filename: client.key
+    mode: "0600"
+
+edge_agent_controller_bundle_root: >-
+  {{ playbook_dir }}/../generated/cascadya-edge-agent
+edge_agent_local_cert_dir: >-
+  {{ edge_agent_controller_bundle_root }}/{{ inventory_hostname }}
+edge_agent_local_nats_server_ca_cert_filename: "nats-ca.crt"
+edge_agent_local_ca_cert_filename: "ca.crt"
+edge_agent_static_ca_cert_src: "certs/ca.crt"

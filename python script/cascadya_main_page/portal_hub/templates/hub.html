@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero">
+  <div class="hero-copy">
+    <p class="eyebrow">{{ page_intro }}</p>
+    <h2>{{ hero_title }}</h2>
+    <p>{{ hero_copy }}</p>
+  </div>
+  <div class="hero-side">
+    <div class="metric-card">
+      <span class="metric-label">Environment</span>
+      <strong>{{ settings.environment_label }}</strong>
+      <span class="metric-sub">Portal keeps native DNS entry points for each tool.</span>
+    </div>
+    <div class="metric-card">
+      <span class="metric-label">Identity</span>
+      <strong>{{ user.display_name }}</strong>
+      <span class="metric-sub">
+        {{ user.email or user.username }}
+        {% if user.roles %}
+        <br />Roles: {{ user.roles|join(", ") }}
+        {% endif %}
+      </span>
+    </div>
+  </div>
+</section>
+
+{% for section in sections %}
+<section class="section-block">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">{{ section.strapline }}</p>
+      <h3>{{ section.title }}</h3>
+      <p>{{ section.description }}</p>
+    </div>
+    <div class="section-stats">
+      <span>{{ section.accessible_count }} open</span>
+      {% if section.locked_count %}
+      <span>{{ section.locked_count }} locked</span>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if section.cards %}
+  <div class="card-grid">
+    {% for card in section.cards %}
+    {% if card.is_accessible %}
+    <a class="app-card app-card-{{ card.accent }}" href="{{ card.href }}" data-stagger>
+      <div class="card-topline">
+        <span class="card-badge">{{ card.badge }}</span>
+        <span class="card-host">{{ card.host }}</span>
+      </div>
+      <h4>{{ card.title }}</h4>
+      <p>{{ card.description }}</p>
+      <p class="card-audience">{{ card.audience }}</p>
+      <span class="card-cta">Open native tool</span>
+    </a>
+    {% else %}
+    <article class="app-card app-card-locked app-card-{{ card.accent }}" data-stagger>
+      <div class="card-topline">
+        <span class="card-badge">Access gated</span>
+        <span class="card-host">{{ card.host }}</span>
+      </div>
+      <h4>{{ card.title }}</h4>
+      <p>{{ card.description }}</p>
+      <p class="card-audience">Required tags: {{ card.required_tags|join(", ") }}</p>
+      <span class="card-cta">Visible, but locked for this session</span>
+    </article>
+    {% endif %}
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <p>No cards are visible on this page for the current session.</p>
+    <p class="muted">If this looks wrong, check the Keycloak role or group mappers used by the portal client.</p>
+  </div>
+  {% endif %}
+</section>
+{% endfor %}
+{% endblock %}

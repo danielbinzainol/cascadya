@@ -1,0 +1,24 @@
+features_domain: features.cascadya.internal
+features_private_ip: 10.42.1.2
+features_repo_path: /opt/cascadya_features
+features_venv_path: /opt/cascadya_features/.venv
+features_env_dir: /etc/cascadya-features
+features_env_path: /etc/cascadya-features/cascadya-features.env
+features_service_name: cascadya-features
+features_bind_host: 127.0.0.1
+features_port: 8766
+features_traefik_root: /opt/traefik-control-panel
+
+features_keys_database_url: ""
+features_keys_sql: "select content from web_assets where name = 'keys.js' order by updated_at desc limit 1"
+features_keys_file_path: ""
+features_extra_env: {}
+
+features_traefik_allowed_cidrs:
+  - 10.8.0.0/24
+  - 10.42.1.5/32
+
+wireguard_dns_ip: 10.8.0.1
+features_dns_records:
+  - name: "{{ features_domain }}"
+    address: "{{ features_private_ip }}"

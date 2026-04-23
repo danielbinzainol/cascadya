@@ -1,0 +1,232 @@
+---
+- name: Normalize WireGuard bootstrap nameservers
+  ansible.builtin.set_fact:
+    network_bootstrap_nameservers_normalized: >-
+      {{
+        (network_bootstrap_nameservers | from_yaml)
+        if (network_bootstrap_nameservers is string)
+        else network_bootstrap_nameservers
+      }}
+
+- name: Normalize WireGuard allowed IPs
+  ansible.builtin.set_fact:
+    network_wireguard_allowed_ips_normalized: >-
+      {{
+        (network_wireguard_allowed_ips | from_yaml)
+        if (network_wireguard_allowed_ips is string)
+        else network_wireguard_allowed_ips
+      }}
+
+- name: Normalize WireGuard DNS servers
+  ansible.builtin.set_fact:
+    network_wireguard_dns_normalized: >-
+      {{
+        (network_wireguard_dns | from_yaml)
+        if (network_wireguard_dns is string)
+        else network_wireguard_dns
+      }}
+
+- name: Request the uplink interface to be administratively up
+  ansible.builtin.command:
+    argv:
+      - ip
+      - link
+      - set
+      - dev
+      - "{{ network_uplink_interface }}"
+      - up
+  changed_when: false
+  when:
+    - network_manage_uplink_bootstrap | bool
+    - network_uplink_interface | length > 0
+
+- name: Ensure the uplink interface has the expected IPv4 address
+  ansible.builtin.command:
+    argv:
+      - ip
+      - addr
+      - replace
+      - "{{ network_uplink_address }}"
+      - dev
+      - "{{ network_uplink_interface }}"
+  changed_when: false
+  when:
+    - network_manage_uplink_bootstrap | bool
+    - network_uplink_interface | length > 0
+    - network_uplink_address | length > 0
+
+- name: Read uplink interface state
+  ansible.builtin.command:
+    argv:
+      - ip
+      - -brief
+      - link
+      - show
+      - "{{ network_uplink_interface }}"
+  register: network_uplink_state
+  changed_when: false
+  when:
+    - network_manage_uplink_bootstrap | bool
+    - network_uplink_interface | length > 0
+
+- name: Fail when the uplink interface is not carrier-up
+  ansible.builtin.assert:
+    that:
+      - "' UP ' in network_uplink_state.stdout"
+    fail_msg: >-
+      The uplink interface {{ network_uplink_interface }} is not up.
+      Current state: {{ network_uplink_state.stdout | default('unknown') }}.
+      Remote unlock cannot install WireGuard packages until the Internet-sharing
+      link is up on this interface.
+  when:
+    - network_manage_uplink_bootstrap | bool
+    - network_uplink_interface | length > 0
+
+- name: Ensure the uplink interface has a default route for package installation
+  ansible.builtin.command:
+    argv:
+      - ip
+      - route
+      - replace
+      - default
+      - via
+      - "{{ network_uplink_gateway_ip }}"
+      - dev
+      - "{{ network_uplink_interface }}"
+  changed_when: false
+  when:
+    - network_manage_uplink_bootstrap | bool
+    - network_uplink_interface | length > 0
+    - network_uplink_gateway_ip | length > 0
+
+- name: Configure temporary resolv.conf for the uplink bootstrap
+  ansible.builtin.copy:
+    dest: /etc/resolv.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      {% for nameserver in network_bootstrap_nameservers_normalized %}
+      nameserver {{ nameserver }}
+      {% endfor %}
+  when:
+    - network_manage_uplink_bootstrap | bool
+    - network_bootstrap_nameservers_normalized is sequence
+    - network_bootstrap_nameservers_normalized is not string
+    - network_bootstrap_nameservers_normalized | length > 0
+
+- name: Gather installed package facts for WireGuard
+  ansible.builtin.package_facts:
+    manager: auto
+
+- name: Resolve missing WireGuard packages
+  ansible.builtin.set_fact:
+    network_wireguard_missing_packages: >-
+      {{
+        (
+          network_wireguard_required_packages
+          + network_wireguard_extra_packages
+        )
+        | reject('in', ansible_facts.packages.keys() | list)
+        | list
+      }}
+
+- name: Install WireGuard packages
+  ansible.builtin.apt:
+    name: "{{ network_wireguard_missing_packages }}"
+    state: present
+    update_cache: false
+    cache_valid_time: 3600
+  when: (network_wireguard_missing_packages | length) > 0
+
+- name: Assert required WireGuard variables are set
+  ansible.builtin.assert:
+    that:
+      - network_wireguard_address | length > 0
+      - network_wireguard_private_key | length > 0
+      - network_wireguard_peer_public_key | length > 0
+      - network_wireguard_endpoint | length > 0
+      - network_wireguard_allowed_ips_normalized is sequence
+      - network_wireguard_allowed_ips_normalized is not string
+      - (network_wireguard_allowed_ips_normalized | length) > 0
+      - network_wireguard_dns_normalized is sequence
+      - network_wireguard_dns_normalized is not string
+    fail_msg: >-
+      Missing one or more required WireGuard variables:
+      network_wireguard_address, network_wireguard_private_key,
+      network_wireguard_peer_public_key, network_wireguard_endpoint.
+      Also provide network_wireguard_allowed_ips and network_wireguard_dns as
+      structured lists, not plain strings.
+
+- name: Ensure WireGuard configuration directory exists
+  ansible.builtin.file:
+    path: /etc/wireguard
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Optionally enable IP forwarding for WireGuard routing use cases
+  ansible.builtin.command:
+    argv:
+      - sysctl
+      - -n
+      - net.ipv4.ip_forward
+  register: network_ip_forward_runtime
+  changed_when: false
+  failed_when: false
+  when: network_enable_ip_forward | bool
+
+- name: Apply IP forwarding at runtime for WireGuard routing use cases
+  ansible.builtin.command:
+    argv:
+      - sysctl
+      - -w
+      - net.ipv4.ip_forward=1
+  when:
+    - network_enable_ip_forward | bool
+    - (network_ip_forward_runtime.stdout | trim) != '1'
+
+- name: Persist IP forwarding for WireGuard routing use cases
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-cascadya-network.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      net.ipv4.ip_forward = 1
+  when: network_enable_ip_forward | bool
+
+- name: Deploy WireGuard Config
+  ansible.builtin.template:
+    src: wg0.conf.j2
+    dest: "/etc/wireguard/{{ network_wireguard_interface }}.conf"
+    mode: '0600'
+    owner: root
+    group: root
+  notify: Restart WireGuard
+  no_log: true
+
+- name: Ensure WireGuard systemd override directory exists
+  ansible.builtin.file:
+    path: "/etc/systemd/system/wg-quick@{{ network_wireguard_interface }}.service.d"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy WireGuard systemd override
+  ansible.builtin.template:
+    src: wg-quick-override.conf.j2
+    dest: "/etc/systemd/system/wg-quick@{{ network_wireguard_interface }}.service.d/override.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart WireGuard
+
+- name: Enable WireGuard Service
+  ansible.builtin.systemd:
+    name: "wg-quick@{{ network_wireguard_interface }}"
+    enabled: true
+    state: started
+    daemon_reload: true

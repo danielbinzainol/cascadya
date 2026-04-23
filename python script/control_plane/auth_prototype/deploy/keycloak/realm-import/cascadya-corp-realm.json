@@ -1,0 +1,32 @@
+{
+  "realm": "cascadya-corp",
+  "enabled": true,
+  "displayName": "Cascadya Corp",
+  "loginWithEmailAllowed": true,
+  "registrationAllowed": false,
+  "resetPasswordAllowed": true,
+  "rememberMe": true,
+  "clients": [
+    {
+      "clientId": "control-panel-web",
+      "name": "Control Panel Web",
+      "protocol": "openid-connect",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "replace-me-before-import",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "redirectUris": [
+        "https://control-panel.cascadya.internal/auth/callback"
+      ],
+      "webOrigins": [
+        "https://control-panel.cascadya.internal"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "https://control-panel.cascadya.internal/auth/login"
+      }
+    }
+  ]
+}

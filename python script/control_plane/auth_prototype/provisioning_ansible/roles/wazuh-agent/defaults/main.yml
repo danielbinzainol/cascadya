@@ -1,0 +1,33 @@
+wazuh_agent_manage_repo: true
+wazuh_agent_apt_packages:
+  - apt-transport-https
+  - curl
+  - gnupg
+
+wazuh_agent_repo_key_url: "https://packages.wazuh.com/key/GPG-KEY-WAZUH"
+wazuh_agent_repo_key_tmp_path: "/tmp/wazuh-archive-keyring.asc"
+wazuh_agent_repo_keyring_path: "/usr/share/keyrings/wazuh.gpg"
+wazuh_agent_repo: >-
+  deb [signed-by={{ wazuh_agent_repo_keyring_path }}]
+  https://packages.wazuh.com/4.x/apt/ stable main
+wazuh_agent_repo_filename: "wazuh"
+
+wazuh_agent_package_name: "wazuh-agent"
+wazuh_agent_package_state: "present"
+wazuh_agent_hold_package: true
+wazuh_agent_service_name: "wazuh-agent"
+wazuh_agent_ossec_conf_path: "/var/ossec/etc/ossec.conf"
+wazuh_agent_registration_password_path: "/var/ossec/etc/authd.pass"
+
+wazuh_agent_manager_address: ""
+wazuh_agent_manager_port: 1514
+wazuh_agent_protocol: "tcp"
+wazuh_agent_registration_enabled: true
+wazuh_agent_registration_server: ""
+wazuh_agent_registration_port: 1515
+wazuh_agent_name: "{{ inventory_hostname }}"
+wazuh_agent_group: ""
+wazuh_agent_registration_password: ""
+wazuh_agent_delay_after_enrollment: 20
+wazuh_agent_registration_ca_source_path: ""
+wazuh_agent_registration_ca_path: "/var/ossec/etc/rootCA.pem"

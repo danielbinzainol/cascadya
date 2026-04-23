@@ -1,0 +1,66 @@
+.mono {
+  font-family: var(--font-mono);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.muted-2 {
+  color: var(--muted-2);
+}
+
+.page-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.page-heading h1 {
+  font-size: clamp(2rem, 2vw + 1rem, 3.15rem);
+  line-height: 0.95;
+}
+
+.section-title {
+  margin-bottom: 1rem;
+  color: var(--white-soft);
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.action-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  min-height: 3.2rem;
+  padding: 0.7rem 1.35rem;
+  border-radius: 1.25rem;
+  border: 2px solid rgba(255, 255, 255, 0.82);
+  background: transparent;
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 600;
+  transition:
+    transform 150ms ease,
+    border-color 150ms ease,
+    background 150ms ease;
+}
+
+.action-button:hover {
+  transform: translateY(-1px);
+  border-color: var(--red-soft);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.stack-card {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.panel-list {
+  display: grid;
+  gap: 1.25rem;
+}

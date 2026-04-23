@@ -1,0 +1,292 @@
+{
+  "schema_version": "1.0",
+  "profile_id": "lci_rev02",
+  "profile_variant": "real",
+  "display_name": "LCI Rev02 - Physical Plant",
+  "vendor": "LCI",
+  "revision": "Rev02",
+  "source_document": "Table d'echange concept - Rev 02 du 2026 04 15.xlsm",
+  "status": "documentation_executable_not_runtime_loaded_yet",
+  "encoding": {
+    "endianness": "big",
+    "word_order": "low_word_first",
+    "float_word_order": "low_word_first",
+    "u32_word_order": "low_word_first",
+    "real_format": "IEEE754_FLOAT32"
+  },
+  "transport": {
+    "type": "modbus_tcp",
+    "host": "192.168.1.52",
+    "port": 502,
+    "unit_id": 1,
+    "target_role": "physical_plc"
+  },
+  "safety": {
+    "environment_badge": "LIVE: PHYSICAL PLANT (LCI)",
+    "watchdog_strict": true,
+    "watchdog_freeze_threshold_sec": 30,
+    "real_mode_confirmation_required": true,
+    "real_mode_confirmation_phrase": "LCI LIVE",
+    "process_register_policy": "native_lci_registers",
+    "write_policy": "allow_command_contract_only",
+    "allowed_write_ranges": [
+      {
+        "name": "order_preparation",
+        "base": 1000,
+        "words": 44
+      },
+      {
+        "name": "upsert_trigger",
+        "base": 1044,
+        "words": 1
+      },
+      {
+        "name": "delete_trigger",
+        "base": 1056,
+        "words": 1
+      },
+      {
+        "name": "reset_trigger",
+        "base": 1068,
+        "words": 1
+      }
+    ],
+    "forbidden_write_ranges": [
+      {
+        "name": "process_telemetry_read_only",
+        "base": 0,
+        "words": 900
+      },
+      {
+        "name": "planner_readback",
+        "base": 8100,
+        "words": 480
+      }
+    ]
+  },
+  "fixed_rev02_contract": {
+    "remote_mode": {
+      "address": 238,
+      "bit": 0,
+      "name": "EX10_DISTANT",
+      "access": "read"
+    },
+    "planner_enabled": {
+      "address": 245,
+      "bit": 8,
+      "name": "EX10_PLANIF",
+      "access": "read"
+    },
+    "clock": {
+      "base": 250,
+      "words": 6,
+      "access": "read",
+      "fields": [
+        {"offset": 0, "name": "GE00_ANNEE", "type": "UINT16", "unit": "year"},
+        {"offset": 1, "name": "GE00_MOIS", "type": "UINT16", "unit": "month"},
+        {"offset": 2, "name": "GE00_JOUR", "type": "UINT16", "unit": "day"},
+        {"offset": 3, "name": "GE00_HEURE", "type": "UINT16", "unit": "hour"},
+        {"offset": 4, "name": "GE00_MINUTE", "type": "UINT16", "unit": "minute"},
+        {"offset": 5, "name": "GE00_SECONDE", "type": "UINT16", "unit": "second"}
+      ]
+    },
+    "watchdog": {
+      "address": 256,
+      "name": "GE00_WATCHDOG",
+      "type": "UINT16",
+      "access": "read"
+    },
+    "clock_write_reserved": {
+      "base": 600,
+      "words": 6,
+      "access": "reserved",
+      "note": "DT00_* exists in Rev02 but must not be used without explicit LCI approval."
+    }
+  },
+  "order_contract": {
+    "preparation_buffer": {
+      "base": 1000,
+      "words": 44,
+      "access": "write",
+      "fields": [
+        {"offset": 0, "name": "ORDER_ID_LO", "type": "UDINT_LO"},
+        {"offset": 1, "name": "ORDER_ID_HI", "type": "UDINT_HI"},
+        {"offset": 2, "name": "EXECUTE_DAY", "type": "UINT16"},
+        {"offset": 3, "name": "EXECUTE_MONTH", "type": "UINT16"},
+        {"offset": 4, "name": "EXECUTE_YEAR", "type": "UINT16"},
+        {"offset": 5, "name": "EXECUTE_HOUR", "type": "UINT16"},
+        {"offset": 6, "name": "EXECUTE_MINUTE", "type": "UINT16"},
+        {"offset": 7, "name": "EXECUTE_SECOND", "type": "UINT16"},
+        {"offset": 8, "name": "C1_ATT1_PROFILE", "type": "UINT16", "allowed": [2, 3, 4, 5, 6]},
+        {"offset": 10, "name": "C1_ATT2_POWER_LIMIT", "type": "REAL32_BE_WORD_SWAP", "unit": "kW", "min": 0, "max": 50},
+        {"offset": 12, "name": "C1_ATT3_ELEC_PRESSURE", "type": "REAL32_BE_WORD_SWAP", "unit": "bar", "min": 0, "max": 18},
+        {"offset": 14, "name": "C1_ATT4_RESERVED", "type": "UINT16", "required": 0},
+        {"offset": 15, "name": "C1_ATT5_RESERVED", "type": "UINT16", "required": 0},
+        {"offset": 16, "name": "C1_ATT6_RESERVED", "type": "UINT16", "required": 0},
+        {"offset": 18, "name": "C2_ATT1_MET_ACTIVATION", "type": "UINT16"},
+        {"offset": 20, "name": "C2_ATT2_MET_TYPE", "type": "REAL32_BE_WORD_SWAP", "allowed": [0, 2]},
+        {"offset": 22, "name": "C2_ATT3_MET_PRESSURE", "type": "REAL32_BE_WORD_SWAP", "unit": "bar", "min": 0, "max": 18},
+        {"offset": 24, "name": "C2_ATT4_RESERVED", "type": "UINT16", "required": 0},
+        {"offset": 25, "name": "C2_ATT5_RESERVED", "type": "UINT16", "required": 0},
+        {"offset": 26, "name": "C2_ATT6_RESERVED", "type": "UINT16", "required": 0},
+        {"offset": 28, "name": "C3_ATT1_SECOURS", "type": "UINT16", "allowed": [0, 1]},
+        {"offset": 29, "name": "C3_ATT2_RESERVED", "type": "UINT16", "required": 0},
+        {"offset": 30, "name": "C3_ATT3_RESERVED", "type": "UINT16", "required": 0},
+        {"offset": 31, "name": "C3_ATT4_RESERVED", "type": "UINT16", "required": 0},
+        {"offset": 32, "name": "C3_ATT5_RESERVED", "type": "UINT16", "required": 0},
+        {"offset": 33, "name": "C3_ATT6_RESERVED", "type": "UINT16", "required": 0},
+        {"offset": 34, "name": "RESERVED_0_9", "type": "UINT16[10]", "required": 0}
+      ]
+    },
+    "operations": {
+      "upsert": {
+        "trigger": {"address": 1044, "bit": 0, "access": "write"},
+        "status": {"address": 1045, "access": "read"}
+      },
+      "delete": {
+        "trigger": {"address": 1056, "bit": 0, "access": "write"},
+        "status": {"address": 1057, "access": "read"}
+      },
+      "reset": {
+        "trigger": {"address": 1068, "bit": 0, "access": "write"},
+        "status": {"address": 1069, "access": "read"}
+      }
+    },
+    "planner": {
+      "header": {
+        "base": 8100,
+        "words": 3,
+        "access": "read",
+        "fields": [
+          {"offset": 0, "name": "PLANNER_STATE", "type": "UINT16"},
+          {"offset": 1, "name": "PLANNER_CRC16", "type": "UINT16"},
+          {"offset": 2, "name": "PLANNER_CRC_STATE", "type": "UINT16"}
+        ]
+      },
+      "queue": {
+        "base": 8120,
+        "slot_count": 10,
+        "slot_stride": 46,
+        "slot_words": 46,
+        "last_slot_base": 8534,
+        "crc_word_count": 460,
+        "access": "read"
+      }
+    }
+  },
+  "profile_rules": {
+    "2": {
+      "label": "2.5.*",
+      "c1_2_power_limit_kw": {"min": 0, "max": 50},
+      "c1_3_elec_pressure_bar": {"min": 0, "max": 18},
+      "c2_1_met_activation": 5,
+      "c2_2_met_type": [0, 2],
+      "c2_3_met_pressure_bar": {"min": 0, "max": 18},
+      "c3_1_secours": [0, 1]
+    },
+    "3": {
+      "label": "3.0.0",
+      "c1_2_power_limit_kw": {"min": 0, "max": 50},
+      "c1_3_elec_pressure_bar": {"min": 0, "max": 18},
+      "c2_1_met_activation": 0,
+      "c2_2_met_type": [0],
+      "c2_3_met_pressure_bar": {"required": 0},
+      "c3_1_secours": [0]
+    },
+    "4": {
+      "label": "4.0.0",
+      "c1_2_power_limit_kw": {"min": 0, "max": 50},
+      "c1_3_elec_pressure_bar": {"min": 0, "max": 18},
+      "c2_1_met_activation": 0,
+      "c2_2_met_type": [0],
+      "c2_3_met_pressure_bar": {"required": 0},
+      "c3_1_secours": [0]
+    },
+    "5": {
+      "label": "5.5.*",
+      "c1_2_power_limit_kw": {"min": 0, "max": 50},
+      "c1_3_elec_pressure_bar": {"min": 0, "max": 18},
+      "c2_1_met_activation": 5,
+      "c2_2_met_type": [0, 2],
+      "c2_3_met_pressure_bar": {"min": 0, "max": 18},
+      "c3_1_secours": [0, 1]
+    },
+    "6": {
+      "label": "6.0.0",
+      "c1_2_power_limit_kw": {"required": 0},
+      "c1_3_elec_pressure_bar": {"required": 0},
+      "c2_1_met_activation": 0,
+      "c2_2_met_type": [0],
+      "c2_3_met_pressure_bar": {"required": 0},
+      "c3_1_secours": [0]
+    }
+  },
+  "process_telemetry": {
+    "plc_health": {
+      "base": 257,
+      "words": 4,
+      "access": "read",
+      "fields": [
+        {"offset": 0, "name": "GE00_DEFAUT", "type": "BITFIELD"},
+        {"offset": 1, "name": "GE00_NBDEFAUT", "type": "UINT16"},
+        {"offset": 2, "name": "GE00_ALARME", "type": "BITFIELD"},
+        {"offset": 3, "name": "GE00_NBALARME", "type": "UINT16"}
+      ]
+    },
+    "steam_pressure": {
+      "canonical": "STEAM_PRESSURE",
+      "variable": "PT01_MESURE",
+      "address": 388,
+      "words": 2,
+      "format": "REAL32_BE_WORD_SWAP",
+      "unit": "bar",
+      "access": "read"
+    },
+    "steam_pressure_error": {
+      "variable": "PT01_ERREUR",
+      "address": 390,
+      "bit": 0,
+      "format": "BOOL",
+      "access": "read"
+    },
+    "steam_pressure_percent": {
+      "variable": "PT01_MESUREPRCT",
+      "address": 392,
+      "words": 2,
+      "format": "REAL32_BE_WORD_SWAP",
+      "unit": "%",
+      "access": "read"
+    },
+    "pressure_regulation": {
+      "base": 508,
+      "words": 9,
+      "access": "read",
+      "fields": [
+        {"address": 508, "bit": 0, "name": "ETAT_THERMO", "type": "BOOL"},
+        {"address": 508, "bit": 8, "name": "MINI_TECHNIQUE", "type": "BOOL"},
+        {"address": 509, "bit": 0, "name": "POS_LIMITEUR", "type": "BOOL"},
+        {"address": 509, "bit": 8, "name": "RP08_AUTO", "type": "BOOL"},
+        {"address": 510, "bit": 0, "name": "RP08_MANU", "type": "BOOL"},
+        {"address": 510, "bit": 8, "name": "RP08_DESACTIVE", "type": "BOOL"},
+        {"address": 512, "name": "RP08_CHARGE", "type": "REAL32_BE_WORD_SWAP", "unit": "%"},
+        {"address": 514, "name": "RP08_CONSIGNE", "type": "REAL32_BE_WORD_SWAP", "unit": "bar"},
+        {"address": 516, "bit": 0, "name": "RP08_BOOST", "type": "BOOL"}
+      ]
+    },
+    "heater_feedback": {
+      "base": 574,
+      "words": 3,
+      "access": "read",
+      "fields": [
+        {"address": 574, "name": "ZT16_MESURE", "type": "REAL32_BE_WORD_SWAP", "unit": "%"},
+        {"address": 576, "bit": 0, "name": "ZT16_ERREUR", "type": "BOOL"}
+      ]
+    }
+  },
+  "hal_status": {
+    "runtime_loader": "not_implemented_yet",
+    "recommended_first_use": "comparison_only",
+    "must_match_current_python_constants": true,
+    "real_connectivity_status": "pending_lci_network_access"
+  }
+}

@@ -1,0 +1,73 @@
+---
+- name: Validate supported firewall backend
+  ansible.builtin.assert:
+    that:
+      - wireguard_firewall_backend == "iptables"
+      - wireguard_firewall_persistence_method == "systemd"
+    fail_msg: >-
+      This role currently supports wireguard_firewall_backend=iptables
+      with wireguard_firewall_persistence_method=systemd.
+
+- name: Gather service facts
+  ansible.builtin.service_facts:
+
+- name: Disable netfilter-persistent when WireGuard owns firewall persistence
+  ansible.builtin.systemd:
+    name: netfilter-persistent
+    enabled: false
+    state: stopped
+  when:
+    - wireguard_disable_netfilter_persistent | bool
+    - "'netfilter-persistent.service' in ansible_facts.services"
+
+- name: Remove legacy WireGuard sysctl files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ wireguard_remove_legacy_sysctl_files }}"
+  register: wireguard_legacy_sysctl_cleanup
+  when: wireguard_remove_legacy_sysctl_files | length > 0
+
+- name: Persist routing sysctl settings
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-wireguard-routing.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      net.ipv4.ip_forward={{ 1 if wireguard_enable_ip_forward else 0 }}
+      net.ipv4.conf.all.rp_filter={{ wireguard_rp_filter_mode }}
+      net.ipv4.conf.default.rp_filter={{ wireguard_rp_filter_mode }}
+  register: wireguard_sysctl_file
+
+- name: Apply sysctl settings
+  ansible.builtin.command: sysctl --system
+  when:
+    - wireguard_sysctl_file.changed
+      or (wireguard_legacy_sysctl_cleanup.results | default([]) | selectattr('changed') | list | length > 0)
+  changed_when: true
+
+- name: Install managed WireGuard routing script
+  ansible.builtin.template:
+    src: wireguard-routes.sh.j2
+    dest: /usr/local/sbin/wireguard-routes
+    owner: root
+    group: root
+    mode: "0750"
+  notify: Restart wireguard routes
+
+- name: Install managed WireGuard routing service
+  ansible.builtin.template:
+    src: wireguard-routes.service.j2
+    dest: "/etc/systemd/system/{{ wireguard_routes_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart wireguard routes
+
+- name: Ensure managed WireGuard routing service is enabled and started
+  ansible.builtin.systemd:
+    name: "{{ wireguard_routes_service_name }}"
+    enabled: true
+    state: started
+    daemon_reload: true

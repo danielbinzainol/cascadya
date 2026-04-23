@@ -1,0 +1,180 @@
+---
+- name: Generate a local remote-unlock CA and per-host client certificates
+  hosts: all
+  gather_facts: false
+  become: false
+
+  vars:
+    remote_unlock_generate_certs_force: false
+    remote_unlock_ca_dir: "{{ remote_unlock_cert_src_dir }}/ca"
+    remote_unlock_ca_key_path: "{{ remote_unlock_ca_dir }}/ca.key"
+    remote_unlock_ca_cert_path: "{{ remote_unlock_ca_dir }}/ca.crt"
+    remote_unlock_host_cert_dir: "{{ remote_unlock_cert_src_dir }}/{{ inventory_hostname }}"
+    remote_unlock_host_key_path: "{{ remote_unlock_host_cert_dir }}/client.key"
+    remote_unlock_host_csr_path: "{{ remote_unlock_host_cert_dir }}/client.csr"
+    remote_unlock_host_cert_path: "{{ remote_unlock_host_cert_dir }}/client.crt"
+    remote_unlock_host_ext_path: "{{ remote_unlock_host_cert_dir }}/client.ext"
+    remote_unlock_ca_common_name: "Cascadya Remote Unlock CA"
+    remote_unlock_client_cert_days: 825
+
+  tasks:
+    - name: Ensure controller-side CA directory exists
+      ansible.builtin.file:
+        path: "{{ remote_unlock_ca_dir }}"
+        state: directory
+        mode: "0700"
+      delegate_to: localhost
+      run_once: true
+
+    - name: Ensure controller-side host certificate directory exists
+      ansible.builtin.file:
+        path: "{{ remote_unlock_host_cert_dir }}"
+        state: directory
+        mode: "0700"
+      delegate_to: localhost
+
+    - name: Remove the per-host bundle when regeneration is forced
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ remote_unlock_host_key_path }}"
+        - "{{ remote_unlock_host_csr_path }}"
+        - "{{ remote_unlock_host_cert_path }}"
+        - "{{ remote_unlock_host_ext_path }}"
+      delegate_to: localhost
+      when: remote_unlock_generate_certs_force | bool
+
+    - name: Generate controller CA private key
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - genrsa
+          - -out
+          - "{{ remote_unlock_ca_key_path }}"
+          - "4096"
+      args:
+        creates: "{{ remote_unlock_ca_key_path }}"
+      delegate_to: localhost
+      run_once: true
+
+    - name: Generate controller CA certificate
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - req
+          - -x509
+          - -new
+          - -nodes
+          - -key
+          - "{{ remote_unlock_ca_key_path }}"
+          - -sha256
+          - -days
+          - "3650"
+          - -out
+          - "{{ remote_unlock_ca_cert_path }}"
+          - -subj
+          - "/CN={{ remote_unlock_ca_common_name }}"
+      args:
+        creates: "{{ remote_unlock_ca_cert_path }}"
+      delegate_to: localhost
+      run_once: true
+
+    - name: Generate per-host client private key
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - genrsa
+          - -out
+          - "{{ remote_unlock_host_key_path }}"
+          - "4096"
+      args:
+        creates: "{{ remote_unlock_host_key_path }}"
+      delegate_to: localhost
+
+    - name: Write per-host client certificate extension file
+      ansible.builtin.copy:
+        dest: "{{ remote_unlock_host_ext_path }}"
+        mode: "0600"
+        content: |
+          basicConstraints=CA:FALSE
+          keyUsage=digitalSignature,keyEncipherment
+          extendedKeyUsage=clientAuth
+          subjectAltName=DNS:{{ inventory_hostname }}{% if ansible_host is defined %},IP:{{ ansible_host }}{% endif %}
+      delegate_to: localhost
+
+    - name: Generate per-host CSR
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - req
+          - -new
+          - -key
+          - "{{ remote_unlock_host_key_path }}"
+          - -out
+          - "{{ remote_unlock_host_csr_path }}"
+          - -subj
+          - "/CN={{ remote_unlock_device_id | default(inventory_hostname) }}"
+      args:
+        creates: "{{ remote_unlock_host_csr_path }}"
+      delegate_to: localhost
+
+    - name: Check the current per-host certificate on the controller
+      ansible.builtin.stat:
+        path: "{{ remote_unlock_host_cert_path }}"
+      delegate_to: localhost
+      register: remote_unlock_host_cert_stat
+
+    - name: Sign per-host client certificate with the local CA
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - x509
+          - -req
+          - -in
+          - "{{ remote_unlock_host_csr_path }}"
+          - -CA
+          - "{{ remote_unlock_ca_cert_path }}"
+          - -CAkey
+          - "{{ remote_unlock_ca_key_path }}"
+          - -CAcreateserial
+          - -out
+          - "{{ remote_unlock_host_cert_path }}"
+          - -days
+          - "{{ remote_unlock_client_cert_days | string }}"
+          - -sha256
+          - -extfile
+          - "{{ remote_unlock_host_ext_path }}"
+      delegate_to: localhost
+      when:
+        - not remote_unlock_host_cert_stat.stat.exists or (remote_unlock_host_cert_stat.stat.size | default(0)) == 0
+
+    - name: Re-read the per-host certificate after signing
+      ansible.builtin.stat:
+        path: "{{ remote_unlock_host_cert_path }}"
+      delegate_to: localhost
+      register: remote_unlock_host_cert_stat_after_sign
+
+    - name: Assert that the per-host certificate is non-empty
+      ansible.builtin.assert:
+        that:
+          - remote_unlock_host_cert_stat_after_sign.stat.exists
+          - remote_unlock_host_cert_stat_after_sign.stat.size | int > 0
+        fail_msg: "The generated client certificate is missing or empty: {{ remote_unlock_host_cert_path }}"
+      delegate_to: localhost
+
+    - name: Copy CA certificate into the per-host bundle
+      ansible.builtin.copy:
+        src: "{{ remote_unlock_ca_cert_path }}"
+        dest: "{{ remote_unlock_host_cert_dir }}/ca.crt"
+        mode: "0644"
+      delegate_to: localhost
+
+    - name: Show generated certificate bundle path
+      ansible.builtin.debug:
+        msg:
+          - "CA: {{ remote_unlock_ca_cert_path }}"
+          - "Host bundle: {{ remote_unlock_host_cert_dir }}"
+          - "Client certificate: {{ remote_unlock_host_cert_path }}"
+          - "Client certificate size: {{ remote_unlock_host_cert_stat_after_sign.stat.size }}"
+          - "Client key: {{ remote_unlock_host_key_path }}"

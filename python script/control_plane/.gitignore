@@ -1,0 +1,6 @@
+auth_prototype/generated/
+auth_prototype/provisioning_ansible/.tmp/
+auth_prototype/frontend/node_modules/
+auth_prototype/frontend/dist/
+__pycache__/
+*.pyc

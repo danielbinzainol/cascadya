@@ -1,0 +1,52 @@
+---
+- name: Ensure remote unlock certificate directories exist
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ remote_unlock_cert_dir }}", mode: "0700" }
+    - { path: "{{ remote_unlock_tpm_dir }}", mode: "0700" }
+
+- name: Check remote unlock certificates on the controller
+  ansible.builtin.stat:
+    path: "{{ remote_unlock_local_cert_dir }}/{{ item.filename }}"
+  delegate_to: localhost
+  become: false
+  loop: "{{ remote_unlock_cert_specs }}"
+  loop_control:
+    label: "{{ item.filename }}"
+  register: remote_unlock_local_cert_stats
+
+- name: Fail when remote unlock certificates are missing on the controller
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - item.stat.isreg
+      - item.stat.size | int > 0
+    fail_msg: >-
+      Missing or empty {{ item.item.filename }} in {{ remote_unlock_local_cert_dir }}
+      on the Ansible controller.
+  loop: "{{ remote_unlock_local_cert_stats.results }}"
+  loop_control:
+    label: "{{ item.item.filename }}"
+
+- name: Deploy remote unlock certificates
+  ansible.builtin.copy:
+    src: "{{ remote_unlock_local_cert_dir }}/{{ item.filename }}"
+    dest: "{{ remote_unlock_cert_dir }}/{{ item.filename }}"
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop: "{{ remote_unlock_cert_specs }}"
+  loop_control:
+    label: "{{ item.filename }}"
+  no_log: true
+
+- name: Report remote unlock certificate staging
+  ansible.builtin.debug:
+    msg:
+      - "Remote unlock certificates copied to {{ remote_unlock_cert_dir }}"
+      - "Controller bundle used: {{ remote_unlock_local_cert_dir }}"

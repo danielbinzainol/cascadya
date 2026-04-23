@@ -1,0 +1,7 @@
+---
+- name: Deploy the Wazuh agent on a Cascadya IPC
+  hosts: all
+  become: true
+
+  roles:
+    - role: wazuh-agent

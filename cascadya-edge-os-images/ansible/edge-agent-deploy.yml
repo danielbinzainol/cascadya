@@ -1,0 +1,7 @@
+---
+- name: Deploy edge-agent telemetry services on Cascadya IPC
+  hosts: all
+  become: true
+
+  roles:
+    - role: edge-agent

@@ -1,0 +1,45 @@
+[Unit]
+Description=Cascadya SteamSwitch - Edge Gateway (Commandes)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ edge_agent_service_user }}
+WorkingDirectory={{ edge_agent_app_dir }}
+Environment="PYTHONUNBUFFERED=1"
+Environment="EDGE_AGENT_CERTS_DIR={{ edge_agent_certs_dir }}"
+Environment="EDGE_AGENT_INSTANCE_ID={{ inventory_hostname }}"
+Environment="MODBUS_HOST={{ edge_agent_modbus_host }}"
+Environment="MODBUS_PORT={{ edge_agent_modbus_port }}"
+Environment="OPERATION_MODE={{ edge_agent_operation_mode }}"
+Environment="OPERATION_MODE_STATE_FILE={{ edge_agent_operation_mode_state_file }}"
+Environment="OPERATION_MODE_REAL_CONFIRMATION={{ edge_agent_operation_mode_real_confirmation }}"
+Environment="MODBUS_SIM_HOST={{ edge_agent_modbus_sim_host }}"
+Environment="MODBUS_SIM_PORT={{ edge_agent_modbus_sim_port }}"
+Environment="MODBUS_SIM_PROCESS_OFFSET={{ edge_agent_modbus_sim_process_offset }}"
+Environment="MODBUS_REAL_HOST={{ edge_agent_modbus_real_host }}"
+Environment="MODBUS_REAL_PORT={{ edge_agent_modbus_real_port }}"
+Environment="MODBUS_FLOAT_WORD_ORDER={{ edge_agent_modbus_float_word_order }}"
+Environment="MODBUS_U32_WORD_ORDER={{ edge_agent_modbus_u32_word_order }}"
+Environment="MODBUS_REAL_PRESSURE_BASE={{ edge_agent_modbus_real_pressure_base }}"
+Environment="MODBUS_REAL_PRESSURE_ERROR={{ edge_agent_modbus_real_pressure_error }}"
+Environment="MODBUS_REAL_PRESSURE_PERCENT={{ edge_agent_modbus_real_pressure_percent }}"
+Environment="MODBUS_REAL_PRESSURE_REGULATION_BASE={{ edge_agent_modbus_real_pressure_regulation_base }}"
+Environment="MODBUS_REAL_DEMAND_BASE={{ edge_agent_modbus_real_demand_base }}"
+Environment="MODBUS_REAL_PRESSURE_SETPOINT={{ edge_agent_modbus_real_pressure_setpoint }}"
+Environment="MODBUS_REAL_PRESSURE_BOOST={{ edge_agent_modbus_real_pressure_boost }}"
+Environment="MODBUS_REAL_HEATER_FEEDBACK_BASE={{ edge_agent_modbus_real_heater_feedback_base }}"
+Environment="MODBUS_REAL_HEATER_FEEDBACK_ERROR={{ edge_agent_modbus_real_heater_feedback_error }}"
+Environment="WATCHDOG_STRICT_SIMULATION={{ edge_agent_watchdog_strict_simulation }}"
+Environment="WATCHDOG_STRICT_REAL={{ edge_agent_watchdog_strict_real }}"
+Environment="WATCHDOG_FREEZE_THRESHOLD_SEC={{ edge_agent_watchdog_freeze_threshold_sec }}"
+Environment="NATS_URL={{ edge_agent_nats_url }}"
+Environment="NATS_COMMAND_SUBJECT={{ edge_agent_nats_command_subject }}"
+Environment="NATS_PING_SUBJECT={{ edge_agent_nats_ping_subject }}"
+ExecStart={{ edge_agent_venv_dir }}/bin/python3 {{ edge_agent_app_dir }}/gateway_modbus_sbc.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,63 @@
+---
+- name: Check existing broker TLS assets
+  stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ nats_host_server_cert_path }}"
+    - "{{ nats_host_server_key_path }}"
+    - "{{ nats_host_ca_cert_path }}"
+  register: broker_tls_assets
+
+- name: Decide whether broker certificates need renewal
+  set_fact:
+    broker_tls_renew_now: >-
+      {{ renew_broker_certificates or
+         (broker_tls_assets.results | selectattr('stat.exists', 'equalto', false) | list | length > 0) }}
+
+- name: Read Local Root CA
+  set_fact:
+    local_root_ca: "{{ lookup('file', playbook_dir ~ '/../files/cascadya-root.crt') }}"
+  delegate_to: localhost
+  when: broker_tls_renew_now
+
+- name: Issue broker certificate from Vault
+  uri:
+    url: "{{ vault_addr }}/v1/{{ vault_pki_mount }}/issue/{{ vault_pki_role }}"
+    method: POST
+    headers:
+      X-Vault-Token: "{{ vault_token }}"
+    body_format: json
+    body:
+      common_name: "{{ broker_fqdn }}"
+      alt_names: "{{ broker_alt_names }}"
+      ttl: "720h"
+    return_content: yes
+  register: vault_cert
+  delegate_to: localhost
+  when: broker_tls_renew_now
+
+- name: Write server certificate
+  copy:
+    content: "{{ vault_cert.json.data.certificate }}"
+    dest: "{{ nats_host_server_cert_path }}"
+    mode: "0644"
+  notify: Recreate broker stack
+  when: broker_tls_renew_now
+
+- name: Write private key
+  copy:
+    content: "{{ vault_cert.json.data.private_key }}"
+    dest: "{{ nats_host_server_key_path }}"
+    mode: "0600"
+  notify: Recreate broker stack
+  when: broker_tls_renew_now
+
+- name: Write CA chain
+  copy:
+    content: |
+      {{ vault_cert.json.data.issuing_ca }}
+      {{ local_root_ca }}
+    dest: "{{ nats_host_ca_cert_path }}"
+    mode: "0644"
+  notify: Recreate broker stack
+  when: broker_tls_renew_now

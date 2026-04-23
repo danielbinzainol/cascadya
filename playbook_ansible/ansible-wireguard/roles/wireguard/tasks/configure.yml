@@ -1,0 +1,56 @@
+---
+- name: Ensure at least one WireGuard interface is defined
+  ansible.builtin.assert:
+    that:
+      - wireguard_interfaces | length > 0
+    fail_msg: "wireguard_interfaces must declare at least one managed WireGuard interface."
+
+- name: Ensure interface names are unique
+  ansible.builtin.assert:
+    that:
+      - (wireguard_interfaces | map(attribute='name') | list | unique | length) == (wireguard_interfaces | length)
+    fail_msg: "wireguard_interfaces contains duplicate interface names."
+
+- name: Validate WireGuard interface definitions
+  ansible.builtin.assert:
+    that:
+      - item.name is defined
+      - item.name | trim | length > 0
+      - item.address is defined
+      - item.address | trim | length > 0
+      - item.listen_port is defined
+      - item.private_key is defined
+      - item.private_key | trim | length > 0
+    fail_msg: "Interface {{ item.name | default('unnamed') }} is missing a required field or private key."
+  loop: "{{ wireguard_interfaces }}"
+  loop_control:
+    label: "{{ item.name | default('unnamed') }}"
+
+- name: Ensure /etc/wireguard exists
+  ansible.builtin.file:
+    path: /etc/wireguard
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Render WireGuard configuration
+  ansible.builtin.template:
+    src: wg-interface.conf.j2
+    dest: "/etc/wireguard/{{ item.name }}.conf"
+    owner: root
+    group: root
+    mode: "0600"
+  loop: "{{ wireguard_interfaces }}"
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Restart managed wireguard interfaces
+
+- name: Ensure WireGuard services are enabled and started
+  ansible.builtin.systemd:
+    name: "wg-quick@{{ item.name }}"
+    enabled: true
+    state: started
+  loop: "{{ wireguard_interfaces }}"
+  loop_control:
+    label: "{{ item.name }}"

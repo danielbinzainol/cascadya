@@ -1,0 +1,384 @@
+---
+- name: Validate required Mimir object storage settings
+  assert:
+    that:
+      - mimir_bucket_name | trim | length > 0
+      - mimir_s3_endpoint | trim | length > 0
+      - mimir_bucket_region | trim | length > 0
+      - mimir_s3_access_key_id | trim | length > 0
+      - mimir_s3_secret_access_key | trim | length > 0
+      - (mimir_s3_access_key_id | trim | regex_findall('^<[^>]+>$') | length) == 0
+      - (mimir_s3_secret_access_key | trim | regex_findall('^<[^>]+>$') | length) == 0
+      - (mimir_s3_access_key_id | trim | lower) != 'null'
+      - (mimir_s3_secret_access_key | trim | lower) != 'null'
+    fail_msg: >-
+      Mimir requires bucket metadata plus runtime S3 credentials.
+      Provide mimir_bucket_name, mimir_bucket_endpoint, mimir_bucket_region,
+      and the env vars MIMIR_S3_ACCESS_KEY_ID / MIMIR_S3_SECRET_ACCESS_KEY
+      or SCW_ACCESS_KEY / SCW_SECRET_KEY.
+      The S3 credentials must be real values, not placeholders such as
+      <mimir_s3_access_key_id> and not the literal string null.
+
+- name: Validate the Mimir tenant model
+  assert:
+    that:
+      - (mimir_tenants | default([])) | length > 0
+      - (mimir_tenants | selectattr('id', 'equalto', mimir_default_tenant) | list | length) == 1
+    fail_msg: >-
+      Define at least one Mimir tenant and ensure mimir_default_tenant matches
+      exactly one tenant entry.
+  when:
+    - mimir_enable_multitenancy or mimir_enable_runtime_overrides or mimir_enable_rule_provisioning
+
+- name: Validate Grafana admin secrets
+  assert:
+    that:
+      - grafana_admin_user | trim | length > 0
+      - grafana_admin_password | trim | length > 0
+    fail_msg: >-
+      Grafana admin credentials are required.
+      Provide GRAFANA_ADMIN_USER and GRAFANA_ADMIN_PASSWORD at runtime.
+
+- name: Validate PostgreSQL datasource secrets
+  assert:
+    that:
+      - grafana_postgresql_password | trim | length > 0
+    fail_msg: >-
+      The SBC dashboard datasource is enabled but MONITORING_POSTGRES_PASSWORD
+      was not provided.
+  when: monitoring_enable_postgresql_datasource
+
+- name: Validate Infinity datasource dependencies
+  assert:
+    that:
+      - broker_private_ip | trim | length > 0
+    fail_msg: >-
+      The Infinity datasource is enabled but broker_private_ip was not provided.
+  when: monitoring_enable_infinity_datasource
+
+- name: Validate remote VM scrape targets
+  assert:
+    that:
+      - item.name | default('', true) | trim | length > 0
+      - item.address | default('', true) | trim | length > 0
+    fail_msg: >-
+      Each remote VM scrape target must define at least name and address.
+  loop: "{{ alloy_remote_node_exporter_targets | default([]) }}"
+  when: alloy_scrape_remote_node_exporters
+
+- name: Create monitoring directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ monitoring_dir }}"
+    - "{{ monitoring_dir }}/alloy"
+    - "{{ monitoring_dir }}/grafana/provisioning/datasources"
+    - "{{ monitoring_dir }}/grafana/provisioning/dashboards"
+    - "{{ monitoring_dir }}/grafana/dashboards/sbc"
+    - "{{ monitoring_dir }}/grafana/dashboards/nats"
+    - "{{ monitoring_dir }}/grafana/dashboards/docker"
+    - "{{ monitoring_dir }}/grafana/dashboards/mimir"
+    - "{{ monitoring_dir }}/loki"
+    - "{{ monitoring_dir }}/mimir"
+    - "{{ mimir_rules_root }}"
+    - "{{ monitoring_data_root }}/alloy"
+    - "{{ monitoring_data_root }}/grafana"
+    - "{{ monitoring_data_root }}/loki"
+    - "{{ monitoring_data_root }}/mimir"
+    - "{{ monitoring_data_root }}/mimir/tsdb"
+    - "{{ monitoring_data_root }}/mimir/compactor"
+    - "{{ monitoring_data_root }}/mimir/ruler"
+    - "{{ monitoring_data_root }}/promtail"
+
+- name: Create Mimir tenant rule directories
+  file:
+    path: "{{ mimir_rules_root }}/{{ item.id }}"
+    state: directory
+    mode: "0755"
+  loop: "{{ mimir_tenants }}"
+  when: mimir_enable_rule_provisioning
+
+- name: Ensure Grafana data directory ownership
+  file:
+    path: "{{ monitoring_data_root }}/grafana"
+    state: directory
+    owner: "{{ grafana_container_uid }}"
+    group: "{{ grafana_container_gid }}"
+    recurse: true
+
+- name: Ensure Loki data directory ownership
+  file:
+    path: "{{ monitoring_data_root }}/loki"
+    state: directory
+    owner: "{{ loki_container_uid }}"
+    group: "{{ loki_container_gid }}"
+    recurse: true
+
+- name: Deploy Grafana datasource provisioning
+  template:
+    src: datasource.yml.j2
+    dest: "{{ monitoring_dir }}/grafana/provisioning/datasources/datasource.yml"
+    mode: "0644"
+  register: grafana_datasource_provisioning
+
+- name: Deploy Grafana dashboard providers
+  template:
+    src: dashboards.yml.j2
+    dest: "{{ monitoring_dir }}/grafana/provisioning/dashboards/dashboards.yml"
+    mode: "0644"
+  register: grafana_dashboard_providers
+
+- name: Deploy SBC dashboard
+  copy:
+    src: sbc_master.json
+    dest: "{{ monitoring_dir }}/grafana/dashboards/sbc/sbc_master.json"
+    mode: "0644"
+  register: grafana_sbc_dashboard
+
+- name: Deploy NATS dashboard
+  copy:
+    src: NATS_server.json
+    dest: "{{ monitoring_dir }}/grafana/dashboards/nats/NATS_server.json"
+    mode: "0644"
+  register: grafana_nats_dashboard
+
+- name: Deploy Docker and system dashboard
+  copy:
+    src: docker_system.json
+    dest: "{{ monitoring_dir }}/grafana/dashboards/docker/docker_system.json"
+    mode: "0644"
+  register: grafana_docker_dashboard
+
+- name: Deploy IPC Mimir dashboard
+  copy:
+    src: ipc_mimir.json
+    dest: "{{ monitoring_dir }}/grafana/dashboards/mimir/ipc_mimir.json"
+    mode: "0644"
+  register: grafana_ipc_mimir_dashboard
+
+- name: Deploy VM Mimir dashboard
+  copy:
+    src: vm_mimir.json
+    dest: "{{ monitoring_dir }}/grafana/dashboards/mimir/vm_mimir.json"
+    mode: "0644"
+  register: grafana_vm_mimir_dashboard
+
+- name: Deploy docker-compose.yml
+  template:
+    src: docker-compose.yml.j2
+    dest: "{{ monitoring_dir }}/docker-compose.yml"
+    mode: "0644"
+  register: monitoring_compose_file
+
+- name: Deploy Alloy config
+  template:
+    src: alloy-config.alloy.j2
+    dest: "{{ monitoring_dir }}/alloy/config.alloy"
+    mode: "0644"
+  register: monitoring_alloy_config
+  when: monitoring_enable_alloy
+
+- name: Deploy Mimir config
+  template:
+    src: mimir.yml.j2
+    dest: "{{ monitoring_dir }}/mimir/mimir.yml"
+    mode: "0644"
+  register: monitoring_mimir_config
+
+- name: Deploy Mimir runtime config
+  template:
+    src: mimir-runtime.yml.j2
+    dest: "{{ mimir_runtime_config_path }}"
+    mode: "0644"
+  register: monitoring_mimir_runtime_config
+
+- name: Deploy bundled Mimir ruler rules
+  copy:
+    src: "mimir-rules/{{ item.id }}/"
+    dest: "{{ mimir_rules_root }}/{{ item.id }}/"
+    mode: "0644"
+  loop: "{{ mimir_tenants }}"
+  register: monitoring_mimir_ruler_rules
+  when: mimir_enable_rule_provisioning
+
+- name: Deploy Loki config
+  template:
+    src: loki-config.yml.j2
+    dest: "{{ monitoring_dir }}/loki/config.yml"
+    mode: "0644"
+  register: monitoring_loki_config
+
+- name: Deploy Promtail config
+  template:
+    src: promtail-config.yml.j2
+    dest: "{{ monitoring_dir }}/promtail-config.yml"
+    mode: "0644"
+  register: monitoring_promtail_config
+  when: monitoring_enable_promtail
+
+- name: Determine whether stack recreation is required
+  set_fact:
+    monitoring_stack_force_recreate_required: >-
+      {{
+        monitoring_force_recreate_stack
+        or (grafana_datasource_provisioning.changed | default(false))
+        or (grafana_dashboard_providers.changed | default(false))
+        or (grafana_sbc_dashboard.changed | default(false))
+        or (grafana_nats_dashboard.changed | default(false))
+        or (grafana_docker_dashboard.changed | default(false))
+        or (grafana_ipc_mimir_dashboard.changed | default(false))
+        or (grafana_vm_mimir_dashboard.changed | default(false))
+        or (monitoring_compose_file.changed | default(false))
+        or (monitoring_alloy_config.changed | default(false))
+        or (monitoring_mimir_config.changed | default(false))
+        or (monitoring_mimir_runtime_config.changed | default(false))
+        or ((monitoring_mimir_ruler_rules.results | default([]) | selectattr('changed') | list | length) > 0)
+        or (monitoring_loki_config.changed | default(false))
+        or (monitoring_promtail_config.changed | default(false))
+      }}
+
+- name: Determine whether proxy validation is required
+  set_fact:
+    monitoring_proxy_validation_required: >-
+      {{
+        (grafana_nginx_site.changed | default(false))
+        or (infracontrol_nginx_site.changed | default(false))
+        or (grafana_nginx_site_link.changed | default(false))
+        or (infracontrol_nginx_site_link.changed | default(false))
+        or (grafana_nginx_default_site.changed | default(false))
+        or ((monitoring_nginx_legacy_enabled_sites.results | default([]) | selectattr('changed') | list | length) > 0)
+        or ((monitoring_nginx_legacy_available_sites.results | default([]) | selectattr('changed') | list | length) > 0)
+        or (grafana_tls_cert_generated.changed | default(false))
+        or (infracontrol_tls_cert_generated.changed | default(false))
+      }}
+
+- name: Start monitoring stack
+  shell: >-
+    {{ docker_compose_command }} up -d
+    {% if monitoring_stack_force_recreate_required %} --force-recreate{% endif %}
+    --remove-orphans
+  args:
+    chdir: "{{ monitoring_dir }}"
+  environment: "{{ monitoring_compose_env }}"
+  register: monitoring_stack_up
+  changed_when: >-
+    (
+      (monitoring_stack_up.stdout | default(''))
+      ~ '\n' ~
+      (monitoring_stack_up.stderr | default(''))
+    ) is search('Recreate|Recreated|Creating|Created|Starting|Started|Stopping|Stopped|Removing|Removed')
+
+- name: Determine whether runtime validation is required
+  set_fact:
+    monitoring_runtime_validation_required: >-
+      {{
+        (not monitoring_runtime_validate_only_when_changed)
+        or monitoring_stack_force_recreate_required
+        or (monitoring_stack_up.changed | default(false))
+        or monitoring_proxy_validation_required
+      }}
+
+- name: Check Grafana HTTPS health endpoint
+  uri:
+    url: "https://127.0.0.1/api/health"
+    headers:
+      Host: "{{ monitoring_grafana_domain }}"
+    validate_certs: false
+    status_code: 200
+  register: grafana_health
+  until: grafana_health.status == 200
+  retries: 20
+  delay: 3
+  when:
+    - monitoring_runtime_validation_scope in ['core', 'full']
+    - monitoring_runtime_validation_required
+    - monitoring_grafana_tls_mode != 'disabled'
+
+- name: Check Grafana health endpoint
+  uri:
+    url: "http://127.0.0.1:3000/api/health"
+    status_code: 200
+  register: grafana_health_http
+  until: grafana_health_http.status == 200
+  retries: 20
+  delay: 3
+  when:
+    - monitoring_runtime_validation_scope in ['core', 'full']
+    - monitoring_runtime_validation_required
+    - monitoring_grafana_tls_mode == 'disabled'
+
+- name: Check infracontrol health endpoint through nginx
+  uri:
+    url: "https://127.0.0.1/health"
+    headers:
+      Host: "{{ monitoring_infracontrol_domain }}"
+    validate_certs: false
+    status_code: 200
+  register: infracontrol_health
+  until: infracontrol_health.status == 200
+  retries: "{{ monitoring_infracontrol_health_retries }}"
+  delay: "{{ monitoring_infracontrol_health_delay }}"
+  when:
+    - monitoring_runtime_validation_scope in ['core', 'full']
+    - monitoring_runtime_validation_required
+    - monitoring_infracontrol_enabled
+    - monitoring_infracontrol_validate_proxy
+
+- name: Check infracontrol root web entrypoint through nginx
+  uri:
+    url: "https://127.0.0.1/"
+    headers:
+      Host: "{{ monitoring_infracontrol_domain }}"
+    validate_certs: false
+    follow_redirects: none
+    status_code: [200, 301, 302, 303, 307, 308]
+  register: infracontrol_root
+  until: infracontrol_root.status in [200, 301, 302, 303, 307, 308]
+  retries: "{{ monitoring_infracontrol_health_retries }}"
+  delay: "{{ monitoring_infracontrol_health_delay }}"
+  when:
+    - monitoring_runtime_validation_scope in ['core', 'full']
+    - monitoring_runtime_validation_required
+    - monitoring_infracontrol_enabled
+    - monitoring_infracontrol_validate_proxy
+
+- name: Check Loki readiness endpoint
+  uri:
+    url: "http://127.0.0.1:3100/ready"
+    status_code: 200
+  register: loki_health
+  until: loki_health.status == 200
+  retries: 20
+  delay: 3
+  when:
+    - monitoring_runtime_validation_scope == 'full'
+    - monitoring_runtime_validation_required
+
+- name: Check Mimir readiness endpoint
+  uri:
+    url: "http://127.0.0.1:9009/ready"
+    timeout: "{{ mimir_readiness_uri_timeout }}"
+    status_code: 200
+  register: mimir_health
+  until: mimir_health.status == 200
+  retries: "{{ mimir_readiness_retries }}"
+  delay: "{{ mimir_readiness_delay }}"
+  when:
+    - monitoring_runtime_validation_scope == 'full'
+    - monitoring_runtime_validation_required
+
+- name: Check Alloy local HTTP endpoint
+  uri:
+    url: "http://127.0.0.1:{{ alloy_http_listen_port }}/-/ready"
+    status_code: 200
+  register: alloy_health
+  until: alloy_health.status == 200
+  retries: 20
+  delay: 3
+  when:
+    - monitoring_runtime_validation_scope == 'full'
+    - monitoring_runtime_validation_required
+    - monitoring_enable_alloy
+    - alloy_enable_http_ui

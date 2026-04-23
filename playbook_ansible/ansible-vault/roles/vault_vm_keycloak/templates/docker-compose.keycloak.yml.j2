@@ -1,0 +1,57 @@
+version: "3.9"
+
+services:
+  postgres-keycloak:
+    image: {{ vault_vm_keycloak_postgres_image | to_json }}
+    container_name: postgres-keycloak
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: {{ vault_vm_keycloak_db_name | to_json }}
+      POSTGRES_USER: {{ vault_vm_keycloak_db_user | to_json }}
+      POSTGRES_PASSWORD: {{ vault_vm_keycloak_db_password | to_json }}
+    volumes:
+      - {{ vault_vm_keycloak_runtime_root }}/postgres/data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U {{ vault_vm_keycloak_db_user }} -d {{ vault_vm_keycloak_db_name }}
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  keycloak:
+    image: {{ vault_vm_keycloak_image | to_json }}
+    container_name: keycloak
+    restart: unless-stopped
+    depends_on:
+      postgres-keycloak:
+        condition: service_healthy
+    command:
+      - start
+{% if vault_vm_keycloak_realm_import_enabled %}
+      - --import-realm
+{% endif %}
+    environment:
+      KC_PROXY_HEADERS: "xforwarded"
+      KC_HTTP_ENABLED: "true"
+      KC_HTTP_PORT: "8080"
+      KC_HOSTNAME: {{ vault_vm_keycloak_public_base_url | to_json }}
+      KC_HOSTNAME_STRICT: "true"
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+      KC_DB: "postgres"
+      KC_DB_URL_HOST: "postgres-keycloak"
+      KC_DB_URL_PORT: "5432"
+      KC_DB_URL_DATABASE: {{ vault_vm_keycloak_db_name | to_json }}
+      KC_DB_USERNAME: {{ vault_vm_keycloak_db_user | to_json }}
+      KC_DB_PASSWORD: {{ vault_vm_keycloak_db_password | to_json }}
+      KC_BOOTSTRAP_ADMIN_USERNAME: {{ vault_vm_keycloak_admin_username | to_json }}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: {{ vault_vm_keycloak_admin_password | to_json }}
+    ports:
+      - "{{ vault_vm_keycloak_http_bind }}:{{ vault_vm_keycloak_http_port }}:8080"
+    volumes:
+      - {{ vault_vm_keycloak_runtime_root }}/keycloak/data:/opt/keycloak/data
+      - {{ vault_vm_keycloak_client_sync_root }}:{{ vault_vm_keycloak_client_sync_mount_path }}:ro
+{% if vault_vm_keycloak_realm_import_enabled %}
+      - {{ vault_vm_keycloak_runtime_root }}/import:/opt/keycloak/data/import:ro
+{% endif %}

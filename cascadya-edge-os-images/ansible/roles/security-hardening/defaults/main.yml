@@ -1,0 +1,60 @@
+---
+security_hardening_service_user: "{{ target_user }}"
+security_hardening_data_dir: "{{ cascadya_data_dir }}"
+security_hardening_agent_dir: "{{ security_hardening_data_dir }}/agent"
+security_hardening_cert_dir: "{{ security_hardening_agent_dir }}/certs"
+security_hardening_ssh_service_name: ssh
+security_hardening_manage_sshd: true
+security_hardening_disable_ssh_password_auth: false
+security_hardening_core_dump_limits_path: /etc/security/limits.d/99-cascadya-hardening.conf
+
+security_hardening_sshd_settings:
+  - regexp: "^#?PermitRootLogin\\s+"
+    line: "PermitRootLogin no"
+  - regexp: "^#?PubkeyAuthentication\\s+"
+    line: "PubkeyAuthentication yes"
+  - regexp: "^#?PasswordAuthentication\\s+"
+    line: "PasswordAuthentication {{ 'no' if security_hardening_disable_ssh_password_auth else 'yes' }}"
+  - regexp: "^#?X11Forwarding\\s+"
+    line: "X11Forwarding no"
+  - regexp: "^#?MaxAuthTries\\s+"
+    line: "MaxAuthTries 4"
+  - regexp: "^#?PermitEmptyPasswords\\s+"
+    line: "PermitEmptyPasswords no"
+  - regexp: "^#?ClientAliveInterval\\s+"
+    line: "ClientAliveInterval 300"
+  - regexp: "^#?ClientAliveCountMax\\s+"
+    line: "ClientAliveCountMax 0"
+  - regexp: "^#?LoginGraceTime\\s+"
+    line: "LoginGraceTime 30"
+  - regexp: "^#?UsePAM\\s+"
+    line: "UsePAM yes"
+
+security_hardening_sysctl_defaults:
+  net.ipv4.ip_forward: "0"
+  net.ipv4.tcp_syncookies: "1"
+  net.ipv4.conf.all.accept_redirects: "0"
+  net.ipv4.conf.default.accept_redirects: "0"
+  net.ipv4.conf.all.secure_redirects: "0"
+  net.ipv4.conf.default.secure_redirects: "0"
+  net.ipv4.conf.all.send_redirects: "0"
+  net.ipv4.conf.default.send_redirects: "0"
+  net.ipv4.conf.all.accept_source_route: "0"
+  net.ipv4.conf.default.accept_source_route: "0"
+  net.ipv4.conf.all.log_martians: "1"
+  net.ipv4.conf.default.log_martians: "1"
+  net.ipv4.conf.all.rp_filter: "1"
+  net.ipv4.conf.default.rp_filter: "1"
+  net.ipv4.icmp_echo_ignore_broadcasts: "1"
+  net.ipv4.icmp_ignore_bogus_error_responses: "1"
+  net.ipv6.conf.all.accept_redirects: "0"
+  net.ipv6.conf.default.accept_redirects: "0"
+  net.ipv6.conf.all.accept_source_route: "0"
+  net.ipv6.conf.default.accept_source_route: "0"
+  kernel.randomize_va_space: "2"
+  fs.suid_dumpable: "0"
+security_hardening_sysctl_overrides: "{{ sysctl_overwrite | default({}) }}"
+
+security_hardening_core_dump_limits:
+  - "* soft core 0"
+  - "* hard core 0"

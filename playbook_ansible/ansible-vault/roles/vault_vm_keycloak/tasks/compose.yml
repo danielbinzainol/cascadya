@@ -1,0 +1,20 @@
+---
+- name: Pull Keycloak images
+  ansible.builtin.command: "{{ vault_vm_keycloak_compose_command }} -f {{ vault_vm_keycloak_compose_file }} pull"
+  args:
+    chdir: "{{ vault_vm_keycloak_runtime_root }}"
+  register: vault_vm_keycloak_pull_result
+  changed_when: false
+  when: vault_vm_keycloak_pull_images | bool
+
+- name: Start the Keycloak stack
+  ansible.builtin.command: "{{ vault_vm_keycloak_compose_command }} -f {{ vault_vm_keycloak_compose_file }} up -d"
+  args:
+    chdir: "{{ vault_vm_keycloak_runtime_root }}"
+  register: vault_vm_keycloak_up_result
+  changed_when: >-
+    'Creating' in vault_vm_keycloak_up_result.stdout or
+    'Recreating' in vault_vm_keycloak_up_result.stdout or
+    'Starting' in vault_vm_keycloak_up_result.stdout or
+    'Created' in (vault_vm_keycloak_up_result.stderr | default('')) or
+    'Started' in (vault_vm_keycloak_up_result.stderr | default(''))

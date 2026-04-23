@@ -1,0 +1,29 @@
+{
+  "metadata": {
+    "updated_at": "2026-04-09",
+    "notes": [
+      "Flexible IPv4 default rate comes from the Scaleway Virtual Instances pricing page.",
+      "Block Storage 5K and 15K rates come from the Scaleway Storage pricing page.",
+      "Object Storage rates come from the Scaleway Storage pricing page.",
+      "The l_ssd local storage rate is intentionally left null because the public docs do not expose a clean universal per-GB API rate. Fill it manually if you need local volume pricing.",
+      "The b_ssd volume rate is mapped to the 5K Block Storage rate as a best-effort approximation."
+    ]
+  },
+  "hours_per_month": 730,
+  "flexible_ipv4_hourly_eur": 0.004,
+  "volume_hourly_eur_per_gb": {
+    "sbs_5k": 0.000118,
+    "sbs_15k": 0.000177,
+    "sbs_volume": 0.000118,
+    "b_ssd": 0.000118,
+    "l_ssd": null
+  },
+  "object_storage_hourly_eur_per_gb": {
+    "STANDARD": 0.00002,
+    "STANDARD_MULTI_AZ": 0.00002,
+    "ONEZONE_IA": 0.0000103,
+    "STANDARD_IA": 0.0000103,
+    "STANDARD_ONE_ZONE": 0.0000103,
+    "GLACIER": 0.0000035
+  }
+}

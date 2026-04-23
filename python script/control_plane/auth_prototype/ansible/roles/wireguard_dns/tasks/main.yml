@@ -1,0 +1,129 @@
+- name: Install dnsmasq
+  ansible.builtin.apt:
+    name: dnsmasq
+    state: present
+    update_cache: true
+  tags: ["wireguard", "dns"]
+
+- name: Ensure dnsmasq config directory exists
+  ansible.builtin.file:
+    path: /etc/dnsmasq.d
+    state: directory
+    mode: "0755"
+  tags: ["wireguard", "dns"]
+
+- name: Deploy internal dnsmasq configuration
+  ansible.builtin.template:
+    src: cascadya-internal.conf.j2
+    dest: /etc/dnsmasq.d/cascadya-internal.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart dnsmasq
+  tags: ["wireguard", "dns"]
+
+- name: Enable IPv4 forwarding persistently
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-wireguard-forward.conf
+    content: "net.ipv4.ip_forward=1\n"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: apply sysctl
+  tags: ["wireguard", "routing"]
+
+- name: Install forwarding script
+  ansible.builtin.template:
+    src: configure-wireguard-forwarding.sh.j2
+    dest: /usr/local/sbin/configure-wireguard-forwarding.sh
+    owner: root
+    group: root
+    mode: "0755"
+  notify: restart wireguard forwarding service
+  tags: ["wireguard", "routing"]
+
+- name: Install forwarding systemd service
+  ansible.builtin.template:
+    src: wireguard-forwarding.service.j2
+    dest: /etc/systemd/system/wireguard-forwarding.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - reload systemd
+    - restart wireguard forwarding service
+  tags: ["wireguard", "routing"]
+
+- name: Ensure dnsmasq is enabled and running
+  ansible.builtin.systemd:
+    name: dnsmasq
+    enabled: true
+    state: started
+  when: not ansible_check_mode
+  tags: ["wireguard", "dns"]
+
+- name: Ensure wireguard forwarding service is enabled and running
+  ansible.builtin.systemd:
+    name: wireguard-forwarding.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: not ansible_check_mode
+  tags: ["wireguard", "routing"]
+
+- name: Flush wireguard DNS/routing handlers before verification
+  ansible.builtin.meta: flush_handlers
+  when: not ansible_check_mode
+  tags: ["wireguard", "dns", "routing", "verify"]
+
+- name: Verify internal DNS record for control panel
+  ansible.builtin.command: "nslookup {{ control_panel_domain }} {{ wireguard_dns_ip }}"
+  register: wireguard_dns_control_panel_lookup
+  changed_when: false
+  when: not ansible_check_mode
+  tags: ["wireguard", "verify"]
+
+- name: Verify internal DNS record for Wazuh dashboard
+  ansible.builtin.command: "nslookup {{ wazuh_dashboard_domain }} {{ wireguard_dns_ip }}"
+  register: wireguard_dns_wazuh_lookup
+  changed_when: false
+  when: not ansible_check_mode
+  tags: ["wireguard", "verify"]
+
+- name: Verify internal DNS record for Grafana
+  ansible.builtin.command: "nslookup {{ grafana_domain }} {{ wireguard_dns_ip }}"
+  register: wireguard_dns_grafana_lookup
+  changed_when: false
+  when: not ansible_check_mode
+  tags: ["wireguard", "verify"]
+
+- name: Verify public DNS forwarding through dnsmasq
+  ansible.builtin.command: "nslookup s3.nl-ams.scw.cloud {{ wireguard_dns_ip }}"
+  register: wireguard_dns_public_lookup
+  changed_when: false
+  when: not ansible_check_mode
+  tags: ["wireguard", "verify"]
+
+- name: Assert dnsmasq returns control panel private IP
+  ansible.builtin.assert:
+    that:
+      - "control_panel_private_ip in wireguard_dns_control_panel_lookup.stdout"
+    fail_msg: "dnsmasq ne renvoie pas l'IP privee attendue pour {{ control_panel_domain }}."
+  when: not ansible_check_mode
+  tags: ["wireguard", "verify"]
+
+- name: Assert dnsmasq returns Wazuh dashboard private IP
+  ansible.builtin.assert:
+    that:
+      - "wazuh_dashboard_private_ip in wireguard_dns_wazuh_lookup.stdout"
+    fail_msg: "dnsmasq ne renvoie pas l'IP privee attendue pour {{ wazuh_dashboard_domain }}."
+  when: not ansible_check_mode
+  tags: ["wireguard", "verify"]
+
+- name: Assert dnsmasq returns Grafana private IP
+  ansible.builtin.assert:
+    that:
+      - "grafana_private_ip in wireguard_dns_grafana_lookup.stdout"
+    fail_msg: "dnsmasq ne renvoie pas l'IP privee attendue pour {{ grafana_domain }}."
+  when: not ansible_check_mode
+  tags: ["wireguard", "verify"]

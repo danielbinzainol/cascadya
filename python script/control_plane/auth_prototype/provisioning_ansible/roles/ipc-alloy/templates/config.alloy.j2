@@ -1,0 +1,60 @@
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
+prometheus.remote_write "mimir" {
+  external_labels = {
+    source            = "{{ ipc_metrics_source }}"
+    node              = "{{ ipc_metrics_node }}"
+    role              = "{{ ipc_metrics_role }}"
+    site              = "{{ ipc_metrics_site }}"
+    retention_profile = "{{ ipc_metrics_retention_profile }}"
+    tenant            = "{{ ipc_metrics_tenant_label }}"
+  }
+
+  endpoint {
+    url  = "{{ ipc_alloy_mimir_remote_write_url }}"
+    name = "mimir"
+{% if ipc_alloy_send_tenant_header | default(true) | bool and (ipc_alloy_mimir_tenant | default('', true) | trim) %}
+    headers = {
+      "X-Scope-OrgID" = "{{ ipc_alloy_mimir_tenant }}",
+    }
+{% endif %}
+{% if ipc_alloy_mimir_basic_auth_username | default('', true) | trim %}
+    basic_auth {
+      username = "{{ ipc_alloy_mimir_basic_auth_username }}"
+      password = "{{ ipc_alloy_mimir_basic_auth_password }}"
+    }
+{% endif %}
+{% if (ipc_alloy_mimir_remote_write_url | default('', true) | lower).startswith('https://') and ((ipc_alloy_mimir_ca_source_path | default('', true) | trim) or not (ipc_alloy_mimir_verify_tls | bool)) %}
+    tls_config {
+{% if ipc_alloy_mimir_ca_source_path | default('', true) | trim %}
+      ca_file = "{{ ipc_alloy_mimir_ca_dest_path }}"
+{% endif %}
+{% if not (ipc_alloy_mimir_verify_tls | bool) %}
+      insecure_skip_verify = true
+{% endif %}
+    }
+{% endif %}
+  }
+}
+
+prometheus.scrape "node_exporter" {
+  targets = [
+    {
+      "__address__"       = "{{ ipc_alloy_node_exporter_target }}",
+      "job"               = "{{ ipc_alloy_node_exporter_job }}",
+      "instance"          = "{{ ipc_metrics_instance }}",
+      "source"            = "{{ ipc_metrics_source }}",
+      "node"              = "{{ ipc_metrics_node }}",
+      "role"              = "{{ ipc_metrics_role }}",
+      "site"              = "{{ ipc_metrics_site }}",
+      "retention_profile" = "{{ ipc_metrics_retention_profile }}",
+      "tenant"            = "{{ ipc_metrics_tenant_label }}",
+    },
+  ]
+  scrape_interval = "{{ ipc_alloy_scrape_interval }}"
+  scrape_timeout  = "{{ ipc_alloy_scrape_timeout }}"
+  forward_to      = [prometheus.remote_write.mimir.receiver]
+}

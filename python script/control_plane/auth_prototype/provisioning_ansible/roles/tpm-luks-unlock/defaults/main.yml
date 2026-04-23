@@ -1,0 +1,18 @@
+---
+enable_tpm_luks: false
+tpm_luks_device: /dev/sda4
+tpm_luks_crypttab_name: cascadya_data
+tpm_luks_crypttab_password: none
+tpm_luks_passphrase: ""
+tpm_luks_pcrs: "7"
+tpm_luks_header_backup_enabled: true
+tpm_luks_header_backup_dir: /root/luks-header-backups
+tpm_luks_header_backup_file: "{{ tpm_luks_header_backup_dir }}/{{ inventory_hostname }}-{{ tpm_luks_crypttab_name }}.img"
+
+tpm_luks_required_packages:
+  - cryptsetup
+  - tpm2-tools
+tpm_luks_update_cache: false
+
+tpm_luks_default_crypttab_options:
+  - luks
