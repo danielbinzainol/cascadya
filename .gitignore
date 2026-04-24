@@ -26,9 +26,15 @@ wheels/
 
 # tests coverage
 coverage.xml
+.coverage
+.coverage.*
+htmlcov/
 
 # DB info
 .env
 
 # Vault info
 etc/
+
+# Docker artifacts, image exports
+*.tar
