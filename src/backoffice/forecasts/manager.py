@@ -37,7 +37,11 @@ from src.backoffice.forecasts.schemas import (
     ScheduleUpdateRequest,
 )
 from src.backoffice.persistence.database import SessionLocal
-from src.backoffice.persistence.models import InarizSteamForecast, InarizSteamProd
+from src.backoffice.persistence.models import (
+    ForecastScheduleORM,
+    InarizSteamForecast,
+    InarizSteamProd,
+)
 
 
 class ForecastManager:
@@ -71,6 +75,9 @@ class ForecastManager:
     async def start(self) -> None:
         self._stop.clear()
         await asyncio.to_thread(self._bootstrap_timeseries_tables)
+        schedules = await asyncio.to_thread(self._load_schedules_from_db)
+        async with self._lock:
+            self._schedules = {schedule.schedule_id: schedule for schedule in schedules}
         if self._dispatcher_task is None:
             self._dispatcher_task = asyncio.create_task(self._dispatcher_loop())
         if self._scheduler_task is None:
@@ -162,6 +169,7 @@ class ForecastManager:
             raise HTTPException(
                 status_code=404, detail=f"Unknown site '{payload.site}'."
             )
+        schedule = await asyncio.to_thread(self._create_schedule_in_db, schedule)
         async with self._lock:
             self._schedules[schedule.schedule_id] = schedule
         return schedule
@@ -175,25 +183,20 @@ class ForecastManager:
             raise HTTPException(
                 status_code=404, detail=f"Unknown site '{payload.site}'."
             )
+        schedule = await asyncio.to_thread(
+            self._update_schedule_in_db, schedule_id, payload
+        )
         async with self._lock:
-            schedule = self._schedules.get(schedule_id)
-            if schedule is None:
-                raise HTTPException(
-                    status_code=404, detail=f"Unknown schedule '{schedule_id}'."
-                )
-            schedule.site = site
-            schedule.model = payload.model
-            schedule.n_splits = payload.n_splits
-            schedule.gap = payload.gap
-            schedule.test_size = payload.test_size
-            schedule.active = payload.active
+            self._schedules[schedule_id] = schedule
         return schedule
 
     async def list_schedules(self) -> list[ForecastSchedule]:
+        schedules = await asyncio.to_thread(self._load_schedules_from_db)
         async with self._lock:
+            self._schedules = {schedule.schedule_id: schedule for schedule in schedules}
             values = list(self._schedules.values())
-        values.sort(key=lambda s: s.schedule_id)
-        return values
+            values.sort(key=lambda s: s.schedule_id)
+            return values
 
     async def set_schedule_active(
         self, schedule_id: str, active: bool
@@ -201,23 +204,18 @@ class ForecastManager:
         logger.info(
             "enter set_schedule_active schedule_id=%s active=%s", schedule_id, active
         )
+        schedule = await asyncio.to_thread(
+            self._set_schedule_active_in_db, schedule_id, active
+        )
         async with self._lock:
-            schedule = self._schedules.get(schedule_id)
-            if schedule is None:
-                raise HTTPException(
-                    status_code=404, detail=f"Unknown schedule '{schedule_id}'."
-                )
-            schedule.active = active
+            self._schedules[schedule_id] = schedule
         return schedule
 
     async def delete_schedule(self, schedule_id: str) -> None:
         logger.info("enter delete_schedule schedule_id=%s", schedule_id)
+        await asyncio.to_thread(self._delete_schedule_in_db, schedule_id)
         async with self._lock:
-            removed = self._schedules.pop(schedule_id, None)
-            if removed is None:
-                raise HTTPException(
-                    status_code=404, detail=f"Unknown schedule '{schedule_id}'."
-                )
+            self._schedules.pop(schedule_id, None)
 
     def available_sites(self) -> list[str]:
         return self._discover_sites(self._data_root)
@@ -481,3 +479,74 @@ class ForecastManager:
             db.execute(upsert)
             db.commit()
         logger.info("persisted forecast rows=%s site=%s", len(rows), site)
+
+    def _load_schedules_from_db(self) -> list[ForecastSchedule]:
+        with SessionLocal() as db:
+            rows = db.scalars(
+                select(ForecastScheduleORM).order_by(
+                    ForecastScheduleORM.schedule_id.asc()
+                )
+            ).all()
+        return [row.to_domain_schedule() for row in rows]
+
+    def _create_schedule_in_db(self, schedule: ForecastSchedule) -> ForecastSchedule:
+        with SessionLocal() as db:
+            orm_schedule = ForecastScheduleORM(
+                schedule_id=schedule.schedule_id,
+                site=schedule.site,
+                model=schedule.model,
+                n_splits=schedule.n_splits,
+                gap=schedule.gap,
+                test_size=schedule.test_size,
+                active=schedule.active,
+                trigger_time=schedule.trigger_time,
+                timezone=schedule.timezone,
+                last_triggered_at=schedule.last_triggered_at,
+            )
+            db.add(orm_schedule)
+            db.commit()
+            db.refresh(orm_schedule)
+            return orm_schedule.to_domain_schedule()
+
+    def _update_schedule_in_db(
+        self, schedule_id: str, payload: ScheduleUpdateRequest
+    ) -> ForecastSchedule:
+        with SessionLocal() as db:
+            orm_schedule = db.get(ForecastScheduleORM, schedule_id)
+            if orm_schedule is None:
+                raise HTTPException(
+                    status_code=404, detail=f"Unknown schedule '{schedule_id}'."
+                )
+            orm_schedule.site = payload.site.lower().strip()
+            orm_schedule.model = payload.model
+            orm_schedule.n_splits = payload.n_splits
+            orm_schedule.gap = payload.gap
+            orm_schedule.test_size = payload.test_size
+            orm_schedule.active = payload.active
+            db.commit()
+            db.refresh(orm_schedule)
+            return orm_schedule.to_domain_schedule()
+
+    def _set_schedule_active_in_db(
+        self, schedule_id: str, active: bool
+    ) -> ForecastSchedule:
+        with SessionLocal() as db:
+            orm_schedule = db.get(ForecastScheduleORM, schedule_id)
+            if orm_schedule is None:
+                raise HTTPException(
+                    status_code=404, detail=f"Unknown schedule '{schedule_id}'."
+                )
+            orm_schedule.active = active
+            db.commit()
+            db.refresh(orm_schedule)
+            return orm_schedule.to_domain_schedule()
+
+    def _delete_schedule_in_db(self, schedule_id: str) -> None:
+        with SessionLocal() as db:
+            orm_schedule = db.get(ForecastScheduleORM, schedule_id)
+            if orm_schedule is None:
+                raise HTTPException(
+                    status_code=404, detail=f"Unknown schedule '{schedule_id}'."
+                )
+            db.delete(orm_schedule)
+            db.commit()

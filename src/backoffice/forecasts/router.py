@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import io
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 
 from src.backoffice.forecasts.manager import ForecastManager
@@ -17,10 +17,6 @@ from src.backoffice.forecasts.schemas import (
     ScheduleResponse,
     ScheduleUpdateRequest,
 )
-
-from sqlalchemy.orm import Session
-from src.backoffice.persistence.database import get_db
-from src.backoffice.persistence.models import to_orm_schedule
 
 
 def _to_summary(run: ForecastRun) -> RunSummaryResponse:
@@ -104,16 +100,8 @@ def build_forecast_router(manager: ForecastManager) -> APIRouter:
         return StreamingResponse(buf, media_type="text/csv", headers=headers)
 
     @router.post("/schedules", response_model=ScheduleResponse)
-    async def create_schedule(
-        payload: ScheduleCreateRequest, db: Session = Depends(get_db)
-    ) -> ScheduleResponse:
+    async def create_schedule(payload: ScheduleCreateRequest) -> ScheduleResponse:
         schedule = await manager.create_schedule(payload)
-
-        orm_schedule = to_orm_schedule(schedule)
-
-        db.add(orm_schedule)
-        db.commit()
-        db.refresh(orm_schedule)
 
         return ScheduleResponse(
             schedule_id=schedule.schedule_id,
