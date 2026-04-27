@@ -58,7 +58,7 @@ def test_generation_forecast_endpoint_calls_client_with_env_config(monkeypatch) 
     class FakeRteGenerationForecastClient:
         def __init__(self, *, base_url: str, auth: object) -> None:
             captured["base_url"] = base_url
-            captured["access_token"] = getattr(auth, "access_token", None)
+            captured["access_rte_token"] = getattr(auth, "access_rte_token", None)
 
         async def __aenter__(self) -> "FakeRteGenerationForecastClient":
             return self
@@ -108,7 +108,7 @@ def test_generation_forecast_endpoint_calls_client_with_env_config(monkeypatch) 
         captured["base_url"]
         == "https://custom-rte-host/open_api/generation_forecast/v3"
     )
-    assert captured["access_token"].get_secret_value() == "rte-token-value"
+    assert captured["access_rte_token"].get_secret_value() == "rte-token-value"
     assert captured["production_types"] == ["WIND", "SOLAR"]
     assert captured["forecast_types"] == ["D-1", "ID"]
     assert captured["start_date"] == datetime.datetime(
@@ -130,7 +130,7 @@ def test_generation_forecast_endpoint_rejects_missing_env_credentials(
     monkeypatch.delenv("RTE_VAULT_TOKEN", raising=False)
     monkeypatch.delenv("RTE_VAULT_SECRET_PATH", raising=False)
     monkeypatch.delenv("VAULT_ADDR", raising=False)
-    monkeypatch.delenv("VAULT_TOKEN", raising=False)
+    monkeypatch.delenv("RTE_VAULT_TOKEN", raising=False)
 
     client = TestClient(
         src.rte.generation_forecast_api.connection_rte_generation_forecast_api.app
@@ -202,7 +202,7 @@ def test_generation_forecast_endpoint_maps_auth_error(monkeypatch) -> None:
             self, *, production_types, forecast_types, start_date, end_date
         ):  # noqa: ANN001
             _ = (production_types, forecast_types, start_date, end_date)
-            raise RteAuthError("invalid token", status_code=401)
+            raise RteAuthError("invalid RTE token", status_code=401)
 
     monkeypatch.setattr(
         src.rte.generation_forecast_api.connection_rte_generation_forecast_api,
@@ -217,7 +217,7 @@ def test_generation_forecast_endpoint_maps_auth_error(monkeypatch) -> None:
     response = client.get("/rte/generation-forecast/forecasts")
 
     assert response.status_code == 401
-    assert response.json()["detail"] == "invalid token"
+    assert response.json()["detail"] == "invalid RTE token"
 
 
 def test_generation_total_forecast_endpoint_calls_client_with_env_config(
@@ -228,7 +228,7 @@ def test_generation_total_forecast_endpoint_calls_client_with_env_config(
     class FakeRteGenerationForecastClient:
         def __init__(self, *, base_url: str, auth: object) -> None:
             captured["base_url"] = base_url
-            captured["access_token"] = getattr(auth, "access_token", None)
+            captured["access_rte_token"] = getattr(auth, "access_rte_token", None)
 
         async def __aenter__(self) -> "FakeRteGenerationForecastClient":
             return self
@@ -277,7 +277,7 @@ def test_generation_total_forecast_endpoint_calls_client_with_env_config(
         captured["base_url"]
         == "https://custom-rte-host/open_api/generation_forecast/v3"
     )
-    assert captured["access_token"].get_secret_value() == "rte-token-value"
+    assert captured["access_rte_token"].get_secret_value() == "rte-token-value"
     assert captured["forecast_types"] == ["D-1", "ID"]
     assert captured["start_date"] == datetime.datetime(
         2026, 3, 20, 0, 0, tzinfo=datetime.UTC
@@ -300,7 +300,7 @@ def test_generation_total_forecast_endpoint_maps_auth_error(monkeypatch) -> None
 
         async def get_total_forecast(self, *, forecast_types, start_date, end_date):  # noqa: ANN001
             _ = (forecast_types, start_date, end_date)
-            raise RteAuthError("invalid token", status_code=401)
+            raise RteAuthError("invalid RTE token", status_code=401)
 
     monkeypatch.setattr(
         src.rte.generation_forecast_api.connection_rte_generation_forecast_api,
@@ -315,4 +315,4 @@ def test_generation_total_forecast_endpoint_maps_auth_error(monkeypatch) -> None
     response = client.get("/rte/generation-forecast/total-forecast")
 
     assert response.status_code == 401
-    assert response.json()["detail"] == "invalid token"
+    assert response.json()["detail"] == "invalid RTE token"

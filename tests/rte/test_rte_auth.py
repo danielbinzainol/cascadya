@@ -34,9 +34,9 @@ def test_resolve_rte_auth_env_reads_basic_auth_from_vault(monkeypatch) -> None:
             return {"data": {"data": {"RTE_BASIC_AUTH_B64": "vault-basic-value"}}}
 
     class FakeClient:
-        def __init__(self, *, url: str, token: str) -> None:
+        def __init__(self, *, url: str, rte_token: str) -> None:
             captured["url"] = url
-            captured["token"] = token
+            captured["rte_token"] = rte_token
             self.secrets = SimpleNamespace(kv=SimpleNamespace(v2=FakeKVV2()))
 
         def is_authenticated(self) -> bool:
@@ -47,7 +47,7 @@ def test_resolve_rte_auth_env_reads_basic_auth_from_vault(monkeypatch) -> None:
     monkeypatch.delenv("RTE_CLIENT_ID", raising=False)
     monkeypatch.delenv("RTE_CLIENT_SECRET", raising=False)
     monkeypatch.setenv("RTE_VAULT_ADDR", "https://vault.scaleway.example:8200")
-    monkeypatch.setenv("RTE_VAULT_TOKEN", "vault-token")
+    monkeypatch.setenv("RTE_VAULT_TOKEN", "vault-rte-token")
     monkeypatch.setenv("RTE_VAULT_SECRET_PATH", "rte/api")
     monkeypatch.setenv("RTE_VAULT_MOUNT_POINT", "kv")
     monkeypatch.setitem(sys.modules, "hvac", SimpleNamespace(Client=FakeClient))
@@ -57,7 +57,7 @@ def test_resolve_rte_auth_env_reads_basic_auth_from_vault(monkeypatch) -> None:
     assert resolved.basic_authorization_b64 is not None
     assert resolved.basic_authorization_b64.get_secret_value() == "vault-basic-value"
     assert captured["url"] == "https://vault.scaleway.example:8200"
-    assert captured["token"] == "vault-token"
+    assert captured["rte_token"] == "vault-rte-token"
     assert captured["path"] == "rte/api"
     assert captured["mount_point"] == "kv"
 
@@ -70,7 +70,7 @@ def test_resolve_rte_auth_env_raises_when_vault_configured_but_hvac_missing(
     monkeypatch.delenv("RTE_CLIENT_ID", raising=False)
     monkeypatch.delenv("RTE_CLIENT_SECRET", raising=False)
     monkeypatch.setenv("RTE_VAULT_ADDR", "https://vault.scaleway.example:8200")
-    monkeypatch.setenv("RTE_VAULT_TOKEN", "vault-token")
+    monkeypatch.setenv("RTE_VAULT_TOKEN", "vault-rte-token")
     monkeypatch.setenv("RTE_VAULT_SECRET_PATH", "rte/api")
 
     def _raise_missing_hvac():  # noqa: ANN202

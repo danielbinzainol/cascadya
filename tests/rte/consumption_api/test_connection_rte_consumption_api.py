@@ -35,7 +35,7 @@ def test_rte_short_term_endpoint_calls_client_with_env_config(monkeypatch) -> No
     class FakeRteConsumptionClient:
         def __init__(self, *, base_url: str, auth: object) -> None:
             captured["base_url"] = base_url
-            captured["access_token"] = getattr(auth, "access_token", None)
+            captured["access_rte_token"] = getattr(auth, "access_rte_token", None)
 
         async def __aenter__(self) -> "FakeRteConsumptionClient":
             return self
@@ -74,7 +74,7 @@ def test_rte_short_term_endpoint_calls_client_with_env_config(monkeypatch) -> No
     payload = response.json()
     assert payload["short_term"][0]["type"] == "REALISED"
     assert captured["base_url"] == "https://custom-rte-host/open_api/consumption/v1"
-    assert captured["access_token"].get_secret_value() == "rte-token-value"
+    assert captured["access_rte_token"].get_secret_value() == "rte-token-value"
     assert captured["types"] == ["REALISED", "ID"]
     assert captured["start_date"] == datetime.datetime(
         2026, 3, 20, 0, 0, tzinfo=datetime.UTC
@@ -93,7 +93,7 @@ def test_rte_short_term_endpoint_rejects_missing_env_credentials(monkeypatch) ->
     monkeypatch.delenv("RTE_VAULT_TOKEN", raising=False)
     monkeypatch.delenv("RTE_VAULT_SECRET_PATH", raising=False)
     monkeypatch.delenv("VAULT_ADDR", raising=False)
-    monkeypatch.delenv("VAULT_TOKEN", raising=False)
+    monkeypatch.delenv("RTE_VAULT_TOKEN", raising=False)
 
     client = TestClient(src.rte.consumption_api.connection_rte_consumption_api.app)
     response = client.get("/rte/consumption/short-term")
@@ -155,7 +155,7 @@ def test_rte_short_term_endpoint_maps_auth_error(monkeypatch) -> None:
 
         async def get_short_term(self, *, types, start_date, end_date):  # noqa: ANN001
             _ = (types, start_date, end_date)
-            raise RteAuthError("invalid token", status_code=401)
+            raise RteAuthError("invalid RTE token", status_code=401)
 
     monkeypatch.setattr(
         src.rte.consumption_api.connection_rte_consumption_api,
@@ -168,4 +168,4 @@ def test_rte_short_term_endpoint_maps_auth_error(monkeypatch) -> None:
     response = client.get("/rte/consumption/short-term")
 
     assert response.status_code == 401
-    assert response.json()["detail"] == "invalid token"
+    assert response.json()["detail"] == "invalid RTE token"

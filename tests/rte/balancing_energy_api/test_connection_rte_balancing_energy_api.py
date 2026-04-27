@@ -41,7 +41,7 @@ def test_imbalance_data_endpoint_calls_client_with_env_config(monkeypatch) -> No
     class FakeRteBalancingEnergyClient:
         def __init__(self, *, base_url: str, auth: object) -> None:
             captured["base_url"] = base_url
-            captured["access_token"] = getattr(auth, "access_token", None)
+            captured["access_rte_token"] = getattr(auth, "access_rte_token", None)
 
         async def __aenter__(self) -> "FakeRteBalancingEnergyClient":
             return self
@@ -82,7 +82,7 @@ def test_imbalance_data_endpoint_calls_client_with_env_config(monkeypatch) -> No
     assert (
         captured["base_url"] == "https://custom-rte-host/open_api/balancing_energy/v5"
     )
-    assert captured["access_token"].get_secret_value() == "rte-token-value"
+    assert captured["access_rte_token"].get_secret_value() == "rte-token-value"
     assert captured["start_date"] == datetime.datetime(
         2026, 3, 20, 0, 0, tzinfo=datetime.UTC
     )
@@ -100,7 +100,7 @@ def test_imbalance_data_endpoint_rejects_missing_env_credentials(monkeypatch) ->
     monkeypatch.delenv("RTE_VAULT_TOKEN", raising=False)
     monkeypatch.delenv("RTE_VAULT_SECRET_PATH", raising=False)
     monkeypatch.delenv("VAULT_ADDR", raising=False)
-    monkeypatch.delenv("VAULT_TOKEN", raising=False)
+    monkeypatch.delenv("RTE_VAULT_TOKEN", raising=False)
 
     client = TestClient(
         src.rte.balancing_energy_api.connection_rte_balancing_energy_api.app
@@ -181,4 +181,4 @@ def test_imbalance_data_endpoint_maps_auth_error(monkeypatch) -> None:
     response = client.get("/rte/balancing-energy/imbalance-data")
 
     assert response.status_code == 401
-    assert response.json()["detail"] == "invalid token"
+    assert response.json()["detail"] == "invalid RTE token"
