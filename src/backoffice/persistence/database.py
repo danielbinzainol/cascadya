@@ -7,6 +7,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
+from pathlib import Path
+
 load_dotenv()
 
 
@@ -14,14 +16,9 @@ class DatabaseConfigError(RuntimeError):
     """Raised when the database URL cannot be resolved safely."""
 
 
-def _context_default_host() -> str:
-    context = os.getenv("APP_CONTEXT", "local").strip().lower()
-    return "db" if context == "container" else "localhost"
-
-
 def _build_database_url_from_parts(*, password: str) -> str:
     user = os.getenv("DATABASE_USERNAME", "postgres")
-    host = os.getenv("DATABASE_HOST") or _context_default_host()
+    host = os.getenv("DATABASE_HOST")
     port = os.getenv("DATABASE_PORT", "5432")
     db_name = os.getenv("DATABASE_NAME", "forecast_database")
     driver = os.getenv("DATABASE_DRIVER", "postgresql+psycopg")
@@ -31,7 +28,15 @@ def _build_database_url_from_parts(*, password: str) -> str:
 
 
 def _vault_is_configured() -> bool:
-    return bool(os.getenv("VAULT_ADDR") and os.getenv("VAULT_SECRET_PATH"))
+    return bool(os.getenv("VAULT_ADDR") and os.getenv("PSQL_VAULT_SECRET_PATH"))
+
+
+def _read_psql_vault_token() -> str | None:
+    psql_token_file = os.getenv("PSQL_VAULT_TOKEN_FILE")
+    if psql_token_file:
+        content = Path(psql_token_file).read_text(encoding="utf-8").strip()
+        return content or None
+    return None
 
 
 def _read_password_from_vault() -> str | None:
@@ -40,18 +45,18 @@ def _read_password_from_vault() -> str | None:
         return None
 
     vault_addr = os.getenv("VAULT_ADDR")
-    vault_token = os.getenv("VAULT_TOKEN")
+    psql_vault_token = _read_psql_vault_token()
     vault_role_id = os.getenv("VAULT_ROLE_ID")
     vault_secret_id = os.getenv("VAULT_SECRET_ID")
-    secret_path = os.getenv("VAULT_SECRET_PATH")
-    mount = os.getenv("VAULT_KV_MOUNT", "secret")
-    field = os.getenv("VAULT_DB_PASSWORD_FIELD", "POSTGRES_PASSWORD")
-    verify_tls = os.getenv("VAULT_VERIFY_TLS", "true").strip().lower() != "false"
+    psql_vault_secret_path = os.getenv("PSQL_VAULT_SECRET_PATH")
+    mount = "secret"
+    field = "POSTGRES_PASSWORD"
+    verify_tls = True
 
     try:
         client = hvac.Client(url=vault_addr, verify=verify_tls)
-        if vault_token:
-            client.token = vault_token
+        if psql_vault_token:
+            client.token = psql_vault_token
         elif vault_role_id and vault_secret_id:
             auth = client.auth.approle.login(
                 role_id=vault_role_id,
@@ -61,7 +66,7 @@ def _read_password_from_vault() -> str | None:
         else:
             raise DatabaseConfigError(
                 "Vault is configured but no authentication method is set. "
-                "Provide VAULT_TOKEN or (VAULT_ROLE_ID and VAULT_SECRET_ID)."
+                "Provide PSQL_VAULT_TOKEN_FILE or (VAULT_ROLE_ID and VAULT_SECRET_ID)."
             )
 
         if not client.is_authenticated():
@@ -71,13 +76,13 @@ def _read_password_from_vault() -> str | None:
 
         response = client.secrets.kv.v2.read_secret_version(
             mount_point=mount,
-            path=secret_path,
+            path=psql_vault_secret_path,
         )
         secret_data = response.get("data", {}).get("data", {})
         password = secret_data.get(field)
         if not password:
             raise DatabaseConfigError(
-                f"Vault secret '{secret_path}' is missing expected field '{field}'."
+                f"Vault secret '{psql_vault_secret_path}' is missing expected field '{field}'."
             )
         return str(password)
     except DatabaseConfigError:
@@ -98,13 +103,13 @@ def build_database_url() -> str:
     if env_url:
         return env_url
 
-    env_password = os.getenv("POSTGRES_PASSWORD") or os.getenv("DATABASE_PASSWORD")
+    env_password = os.getenv("POSTGRES_PASSWORD")
     if env_password:
         return _build_database_url_from_parts(password=env_password)
 
     raise DatabaseConfigError(
         "Database configuration is missing. Set Vault config (VAULT_ADDR + "
-        "VAULT_SECRET_PATH), or DATABASE_URL, or DB parts including password."
+        "PSQL_VAULT_SECRET_PATH), or DATABASE_URL, or DB parts including password."
     )
 
 
