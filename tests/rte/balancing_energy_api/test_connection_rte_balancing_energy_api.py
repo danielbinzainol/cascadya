@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import datetime
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 import src.rte.balancing_energy_api.connection_rte_balancing_energy_api
 from src.rte.rte_client import RteAuthError
@@ -37,11 +39,18 @@ def _imbalance_data_payload() -> dict:
 
 def test_imbalance_data_endpoint_calls_client_with_env_config(monkeypatch) -> None:
     captured: dict[str, object] = {}
+    fake_resolved_auth = SimpleNamespace(
+        access_token=SecretStr("rte-token-value"),
+        client_id=None,
+        client_secret=None,
+        basic_authorization_b64=None,
+        token_url="https://fake-rte-token-url",
+    )
 
     class FakeRteBalancingEnergyClient:
         def __init__(self, *, base_url: str, auth: object) -> None:
             captured["base_url"] = base_url
-            captured["access_rte_token"] = getattr(auth, "access_rte_token", None)
+            captured["access_token"] = getattr(auth, "access_token", None)
 
         async def __aenter__(self) -> "FakeRteBalancingEnergyClient":
             return self
@@ -59,11 +68,15 @@ def test_imbalance_data_endpoint_calls_client_with_env_config(monkeypatch) -> No
         "RteBalancingEnergyClient",
         FakeRteBalancingEnergyClient,
     )
+    monkeypatch.setattr(
+        src.rte.balancing_energy_api.connection_rte_balancing_energy_api,
+        "resolve_rte_auth_env",
+        lambda: fake_resolved_auth,
+    )
     monkeypatch.setenv(
         "RTE_BALANCING_ENERGY_BASE_URL",
         "https://custom-rte-host/open_api/balancing_energy/v5",
     )
-    monkeypatch.setenv("RTE_ACCESS_TOKEN", "rte-token-value")
 
     client = TestClient(
         src.rte.balancing_energy_api.connection_rte_balancing_energy_api.app
@@ -82,7 +95,7 @@ def test_imbalance_data_endpoint_calls_client_with_env_config(monkeypatch) -> No
     assert (
         captured["base_url"] == "https://custom-rte-host/open_api/balancing_energy/v5"
     )
-    assert captured["access_rte_token"].get_secret_value() == "rte-token-value"
+    assert captured["access_token"].get_secret_value() == "rte-token-value"
     assert captured["start_date"] == datetime.datetime(
         2026, 3, 20, 0, 0, tzinfo=datetime.UTC
     )

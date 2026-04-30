@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import datetime
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 import src.rte.generation_forecast_api.connection_rte_generation_forecast_api
 from src.rte.rte_client import RteAuthError
@@ -54,11 +56,18 @@ def _total_forecast_payload() -> dict:
 
 def test_generation_forecast_endpoint_calls_client_with_env_config(monkeypatch) -> None:
     captured: dict[str, object] = {}
+    fake_resolved_auth = SimpleNamespace(
+        access_token=SecretStr("rte-token-value"),
+        client_id=None,
+        client_secret=None,
+        basic_authorization_b64=None,
+        token_url="https://fake-rte-token-url",
+    )
 
     class FakeRteGenerationForecastClient:
         def __init__(self, *, base_url: str, auth: object) -> None:
             captured["base_url"] = base_url
-            captured["access_rte_token"] = getattr(auth, "access_rte_token", None)
+            captured["access_token"] = getattr(auth, "access_token", None)
 
         async def __aenter__(self) -> "FakeRteGenerationForecastClient":
             return self
@@ -80,11 +89,15 @@ def test_generation_forecast_endpoint_calls_client_with_env_config(monkeypatch) 
         "RteGenerationForecastClient",
         FakeRteGenerationForecastClient,
     )
+    monkeypatch.setattr(
+        src.rte.generation_forecast_api.connection_rte_generation_forecast_api,
+        "resolve_rte_auth_env",
+        lambda: fake_resolved_auth,
+    )
     monkeypatch.setenv(
         "RTE_GENERATION_FORECAST_BASE_URL",
         "https://custom-rte-host/open_api/generation_forecast/v3",
     )
-    monkeypatch.setenv("RTE_ACCESS_TOKEN", "rte-token-value")
 
     client = TestClient(
         src.rte.generation_forecast_api.connection_rte_generation_forecast_api.app
@@ -108,7 +121,7 @@ def test_generation_forecast_endpoint_calls_client_with_env_config(monkeypatch) 
         captured["base_url"]
         == "https://custom-rte-host/open_api/generation_forecast/v3"
     )
-    assert captured["access_rte_token"].get_secret_value() == "rte-token-value"
+    assert captured["access_token"].get_secret_value() == "rte-token-value"
     assert captured["production_types"] == ["WIND", "SOLAR"]
     assert captured["forecast_types"] == ["D-1", "ID"]
     assert captured["start_date"] == datetime.datetime(
@@ -224,11 +237,18 @@ def test_generation_total_forecast_endpoint_calls_client_with_env_config(
     monkeypatch,
 ) -> None:
     captured: dict[str, object] = {}
+    fake_resolved_auth = SimpleNamespace(
+        access_token=SecretStr("rte-token-value"),
+        client_id=None,
+        client_secret=None,
+        basic_authorization_b64=None,
+        token_url="https://fake-rte-token-url",
+    )
 
     class FakeRteGenerationForecastClient:
         def __init__(self, *, base_url: str, auth: object) -> None:
             captured["base_url"] = base_url
-            captured["access_rte_token"] = getattr(auth, "access_rte_token", None)
+            captured["access_token"] = getattr(auth, "access_token", None)
 
         async def __aenter__(self) -> "FakeRteGenerationForecastClient":
             return self
@@ -251,11 +271,15 @@ def test_generation_total_forecast_endpoint_calls_client_with_env_config(
         "RteGenerationForecastClient",
         FakeRteGenerationForecastClient,
     )
+    monkeypatch.setattr(
+        src.rte.generation_forecast_api.connection_rte_generation_forecast_api,
+        "resolve_rte_auth_env",
+        lambda: fake_resolved_auth,
+    )
     monkeypatch.setenv(
         "RTE_GENERATION_FORECAST_BASE_URL",
         "https://custom-rte-host/open_api/generation_forecast/v3",
     )
-    monkeypatch.setenv("RTE_ACCESS_TOKEN", "rte-token-value")
 
     client = TestClient(
         src.rte.generation_forecast_api.connection_rte_generation_forecast_api.app
@@ -277,7 +301,7 @@ def test_generation_total_forecast_endpoint_calls_client_with_env_config(
         captured["base_url"]
         == "https://custom-rte-host/open_api/generation_forecast/v3"
     )
-    assert captured["access_rte_token"].get_secret_value() == "rte-token-value"
+    assert captured["access_token"].get_secret_value() == "rte-token-value"
     assert captured["forecast_types"] == ["D-1", "ID"]
     assert captured["start_date"] == datetime.datetime(
         2026, 3, 20, 0, 0, tzinfo=datetime.UTC
