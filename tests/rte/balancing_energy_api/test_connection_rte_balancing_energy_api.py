@@ -194,4 +194,4 @@ def test_imbalance_data_endpoint_maps_auth_error(monkeypatch) -> None:
     response = client.get("/rte/balancing-energy/imbalance-data")
 
     assert response.status_code == 401
-    assert response.json()["detail"] == "invalid RTE token"
+    assert response.json()["detail"] == "invalid token"
