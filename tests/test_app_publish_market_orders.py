@@ -7,7 +7,20 @@ import pandas as pd
 from fastapi.testclient import TestClient
 
 import src.connection_aeolus_api
-from src.backoffice.api.main import app
+from src.backoffice.api import main as backoffice_main
+
+app = backoffice_main.app
+
+
+def _disable_forecast_startup_db(monkeypatch) -> None:
+    async def _noop_start() -> None:
+        return None
+
+    async def _noop_stop() -> None:
+        return None
+
+    monkeypatch.setattr(backoffice_main.FORECAST_MANAGER, "start", _noop_start)
+    monkeypatch.setattr(backoffice_main.FORECAST_MANAGER, "stop", _noop_stop)
 
 
 def _write_market_orders_csv(path: Path, *, power_kw_sell: list[float]) -> None:
@@ -30,6 +43,7 @@ def _write_market_orders_csv(path: Path, *, power_kw_sell: list[float]) -> None:
 def test_publish_market_orders_endpoint_publishes_transactions(
     monkeypatch, tmp_path
 ) -> None:
+    _disable_forecast_startup_db(monkeypatch)
     csv_path = tmp_path / "inariz_20260211_20260223_1735.csv"
     _write_market_orders_csv(csv_path, power_kw_sell=[-150.0, -300.0])
     captured: dict[str, int] = {}
@@ -79,6 +93,7 @@ def test_publish_market_orders_endpoint_publishes_transactions(
 def test_publish_market_orders_endpoint_rejects_empty_publish(
     monkeypatch, tmp_path
 ) -> None:
+    _disable_forecast_startup_db(monkeypatch)
     csv_path = tmp_path / "inariz_20260211_20260223_1735.csv"
     _write_market_orders_csv(csv_path, power_kw_sell=[0.0, 0.0])
 

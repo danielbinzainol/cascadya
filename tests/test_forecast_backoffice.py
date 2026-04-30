@@ -8,12 +8,35 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import src.backoffice.forecasts.manager as forecast_manager
+import src.backoffice.persistence.database as database
+from src.backoffice.persistence.database import Base
 from src.backoffice.forecasts.router import build_forecast_router
+
+
+def _configure_test_database(tmp_path: Path, monkeypatch) -> None:
+    db_path = tmp_path / "test_backoffice.db"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite+pysqlite:///{db_path.as_posix()}")
+
+    # Avoid accidental Vault usage during tests.
+    monkeypatch.delenv("VAULT_ADDR", raising=False)
+    monkeypatch.delenv("PSQL_VAULT_SECRET_PATH", raising=False)
+    monkeypatch.delenv("PSQL_VAULT_TOKEN_FILE", raising=False)
+    monkeypatch.delenv("VAULT_ROLE_ID", raising=False)
+    monkeypatch.delenv("VAULT_SECRET_ID", raising=False)
+
+    # Reset cached engines/sessionmaker to force using the per-test DATABASE_URL.
+    database._main_engine = None
+    database._query_engine = None
+    database._sessionmaker = None
+
+    engine = database.get_main_engine()
+    Base.metadata.create_all(bind=engine)
 
 
 def _build_test_client(
     tmp_path: Path, monkeypatch
 ) -> tuple[TestClient, forecast_manager.ForecastManager]:
+    _configure_test_database(tmp_path, monkeypatch)
     (tmp_path / "data" / "inariz" / "raw").mkdir(parents=True, exist_ok=True)
     manager = forecast_manager.ForecastManager(data_root=tmp_path)
     app = FastAPI()
