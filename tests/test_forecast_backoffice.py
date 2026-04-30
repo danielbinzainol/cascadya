@@ -34,11 +34,35 @@ def _configure_test_database(tmp_path: Path, monkeypatch) -> None:
 
 
 def _build_test_client(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path,
+    monkeypatch,
+    *,
+    load_site_timeseries_from_workflow_fn=None,
 ) -> tuple[TestClient, forecast_manager.ForecastManager]:
     _configure_test_database(tmp_path, monkeypatch)
     (tmp_path / "data" / "inariz" / "raw").mkdir(parents=True, exist_ok=True)
-    manager = forecast_manager.ForecastManager(data_root=tmp_path)
+    if load_site_timeseries_from_workflow_fn is None:
+        fallback_series = pd.DataFrame(
+            {
+                "measured_at_utc": pd.date_range(
+                    "2026-01-01", periods=300, freq="15min", tz="UTC"
+                ),
+                "target": [float(i % 20) for i in range(300)],
+            }
+        )
+
+        def _fallback_load_site_timeseries_from_workflow(
+            *_args, **_kwargs
+        ) -> pd.DataFrame:
+            return fallback_series
+
+        load_site_timeseries_from_workflow_fn = (
+            _fallback_load_site_timeseries_from_workflow
+        )
+    manager = forecast_manager.ForecastManager(
+        data_root=tmp_path,
+        load_site_timeseries_from_workflow_fn=load_site_timeseries_from_workflow_fn,
+    )
     app = FastAPI()
 
     @app.on_event("startup")
@@ -63,11 +87,6 @@ def test_create_run_and_read_details(tmp_path, monkeypatch) -> None:
         }
     )
 
-    monkeypatch.setattr(
-        forecast_manager,
-        "_load_site_timeseries_from_workflow",
-        lambda *_args, **_kwargs: fake_series,
-    )
     monkeypatch.setattr(
         forecast_manager,
         "_compute_single_model",
@@ -107,7 +126,11 @@ def test_create_run_and_read_details(tmp_path, monkeypatch) -> None:
         },
     )
 
-    client, _ = _build_test_client(tmp_path, monkeypatch)
+    client, _ = _build_test_client(
+        tmp_path,
+        monkeypatch,
+        load_site_timeseries_from_workflow_fn=lambda *_args, **_kwargs: fake_series,
+    )
     with client:
         created = client.post(
             "/forecasts/runs",
@@ -145,12 +168,6 @@ def test_runs_for_same_site_are_queued(tmp_path, monkeypatch) -> None:
         }
     )
 
-    monkeypatch.setattr(
-        forecast_manager,
-        "_load_site_timeseries_from_workflow",
-        lambda *_args, **_kwargs: fake_series,
-    )
-
     def slow_compute(*_args, **_kwargs):
         time.sleep(0.2)
         return {
@@ -168,7 +185,11 @@ def test_runs_for_same_site_are_queued(tmp_path, monkeypatch) -> None:
         }
 
     monkeypatch.setattr(forecast_manager, "_compute_single_model", slow_compute)
-    client, _ = _build_test_client(tmp_path, monkeypatch)
+    client, _ = _build_test_client(
+        tmp_path,
+        monkeypatch,
+        load_site_timeseries_from_workflow_fn=lambda *_args, **_kwargs: fake_series,
+    )
     with client:
         first = client.post(
             "/forecasts/runs",
@@ -207,11 +228,6 @@ def test_all_models_ranking_is_persisted(tmp_path, monkeypatch) -> None:
             "target": [float(i % 10) for i in range(400)],
         }
     )
-    monkeypatch.setattr(
-        forecast_manager,
-        "_load_site_timeseries_from_workflow",
-        lambda *_args, **_kwargs: fake_series,
-    )
 
     def fake_compute(model_name, *_args, **_kwargs):
         rmse = {"simple_copy": 4.0, "median_copy": 2.5, "linear_regression": 1.5}.get(
@@ -232,7 +248,11 @@ def test_all_models_ranking_is_persisted(tmp_path, monkeypatch) -> None:
         }
 
     monkeypatch.setattr(forecast_manager, "_compute_single_model", fake_compute)
-    client, _ = _build_test_client(tmp_path, monkeypatch)
+    client, _ = _build_test_client(
+        tmp_path,
+        monkeypatch,
+        load_site_timeseries_from_workflow_fn=lambda *_args, **_kwargs: fake_series,
+    )
     with client:
         created = client.post(
             "/forecasts/runs",
@@ -353,11 +373,6 @@ def test_run_details_include_scoring_details_and_export_filename(
             "target": [float(i % 17) for i in range(300)],
         }
     )
-    monkeypatch.setattr(
-        forecast_manager,
-        "_load_site_timeseries_from_workflow",
-        lambda *_args, **_kwargs: fake_series,
-    )
 
     def fake_compute(model_name, *_args, **_kwargs):
         base_rmse = {
@@ -422,7 +437,11 @@ def test_run_details_include_scoring_details_and_export_filename(
 
     monkeypatch.setattr(forecast_manager, "_compute_single_model", fake_compute)
 
-    client, _ = _build_test_client(tmp_path, monkeypatch)
+    client, _ = _build_test_client(
+        tmp_path,
+        monkeypatch,
+        load_site_timeseries_from_workflow_fn=lambda *_args, **_kwargs: fake_series,
+    )
     with client:
         created = client.post(
             "/forecasts/runs",
@@ -470,11 +489,6 @@ def test_run_detail_handles_nan_payload_without_500(tmp_path, monkeypatch) -> No
             "target": [float(i % 11) for i in range(220)],
         }
     )
-    monkeypatch.setattr(
-        forecast_manager,
-        "_load_site_timeseries_from_workflow",
-        lambda *_args, **_kwargs: fake_series,
-    )
 
     monkeypatch.setattr(
         forecast_manager,
@@ -516,7 +530,11 @@ def test_run_detail_handles_nan_payload_without_500(tmp_path, monkeypatch) -> No
         },
     )
 
-    client, _ = _build_test_client(tmp_path, monkeypatch)
+    client, _ = _build_test_client(
+        tmp_path,
+        monkeypatch,
+        load_site_timeseries_from_workflow_fn=lambda *_args, **_kwargs: fake_series,
+    )
     with client:
         created = client.post(
             "/forecasts/runs",
