@@ -34,9 +34,9 @@ def test_resolve_rte_auth_env_reads_basic_auth_from_vault(monkeypatch) -> None:
             return {"data": {"data": {"RTE_BASIC_AUTH_B64": "vault-basic-value"}}}
 
     class FakeClient:
-        def __init__(self, *, url: str, rte_token: str) -> None:
+        def __init__(self, *, url: str, token: str) -> None:
             captured["url"] = url
-            captured["rte_token"] = rte_token
+            captured["rte_token"] = token
             self.secrets = SimpleNamespace(kv=SimpleNamespace(v2=FakeKVV2()))
 
         def is_authenticated(self) -> bool:
