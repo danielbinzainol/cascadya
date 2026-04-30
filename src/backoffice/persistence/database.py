@@ -5,7 +5,7 @@ import hvac
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
 from pathlib import Path
 
@@ -113,30 +113,60 @@ def build_database_url() -> str:
     )
 
 
-engine = create_engine(build_database_url())
-_query_engine: Engine | None = None
-
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
+# creating it here before import in several other files allows for a unique shared instance between models and Alembic metadata.
+# having several different metadata would break migrations/autodiscovery
 Base = declarative_base()
 
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# for starters, _query_engine is created as None
+# this cache singleton is useful to make sure to create it once, not at every call to get_query_engine
+_query_engine: Engine | None = None
 
 
+# the first call to get_query_engine will transform _query_engine from None to an Engine object with create_engie(...)
+# this same Engine object will be returned for later calls
 def get_query_engine() -> Engine:
     """Return engine used by read-only query API."""
     global _query_engine
     if _query_engine is not None:
         return _query_engine
-    query_url = os.getenv("DATABASE_QUERY_URL") or os.getenv("DATABASE_URL")
-    if query_url:
-        _query_engine = create_engine(query_url)
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        _query_engine = create_engine(database_url)
         return _query_engine
     _query_engine = create_engine(build_database_url())
     return _query_engine
+
+
+# same logic for the main engine, used for the DB insert/update
+_main_engine: Engine | None = None
+
+
+# lazy instanciation of main engine, not to create the DB everytime the present module is imported
+def get_main_engine() -> Engine:
+    """Return main engine used for DB insert/update."""
+    global _main_engine
+    if _main_engine is not None:
+        return _main_engine
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        _main_engine = create_engine(database_url)
+        return _main_engine
+    _main_engine = create_engine(build_database_url())
+    return _main_engine
+
+
+# cache module for the sessionmaker
+_sessionmaker: sessionmaker | None = None
+
+
+def get_sessionmaker() -> sessionmaker[Session]:
+    """Lazy instanciatoin of the session maker"""
+    global _sessionmaker
+    if _sessionmaker is not None:
+        return _sessionmaker
+
+    _sessionmaker = sessionmaker(
+        autocommit=False, autoflush=False, bind=get_main_engine()
+    )
+    return _sessionmaker

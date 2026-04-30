@@ -36,7 +36,7 @@ from src.backoffice.forecasts.schemas import (
     ScheduleCreateRequest,
     ScheduleUpdateRequest,
 )
-from src.backoffice.persistence.database import SessionLocal
+from src.backoffice.persistence.database import get_sessionmaker
 from src.backoffice.persistence.models import (
     ForecastScheduleORM,
     InarizSteamForecast,
@@ -384,6 +384,7 @@ class ForecastManager:
 
     def _bootstrap_timeseries_tables(self) -> None:
         """Populate raw timeseries tables at startup if they are empty."""
+        SessionLocal = get_sessionmaker()
         with SessionLocal() as db:
             existing = db.scalar(select(InarizSteamProd.measured_at_utc).limit(1))
             if existing is not None:
@@ -413,6 +414,7 @@ class ForecastManager:
         if site != "inariz":
             return self._load_site_timeseries_from_workflow(self._data_root, site)
 
+        SessionLocal = get_sessionmaker()
         with SessionLocal() as db:
             records = db.scalars(
                 select(InarizSteamProd).order_by(InarizSteamProd.measured_at_utc.asc())
@@ -467,6 +469,7 @@ class ForecastManager:
             logger.info("no forecast rows to persist for site=%s", site)
             return
 
+        SessionLocal = get_sessionmaker()
         with SessionLocal() as db:
             stmt = pg_insert(InarizSteamForecast).values(rows)
             upsert = stmt.on_conflict_do_update(
@@ -481,6 +484,7 @@ class ForecastManager:
         logger.info("persisted forecast rows=%s site=%s", len(rows), site)
 
     def _load_schedules_from_db(self) -> list[ForecastSchedule]:
+        SessionLocal = get_sessionmaker()
         with SessionLocal() as db:
             rows = db.scalars(
                 select(ForecastScheduleORM).order_by(
@@ -490,6 +494,7 @@ class ForecastManager:
         return [row.to_domain_schedule() for row in rows]
 
     def _create_schedule_in_db(self, schedule: ForecastSchedule) -> ForecastSchedule:
+        SessionLocal = get_sessionmaker()
         with SessionLocal() as db:
             orm_schedule = ForecastScheduleORM(
                 schedule_id=schedule.schedule_id,
@@ -511,6 +516,7 @@ class ForecastManager:
     def _update_schedule_in_db(
         self, schedule_id: str, payload: ScheduleUpdateRequest
     ) -> ForecastSchedule:
+        SessionLocal = get_sessionmaker()
         with SessionLocal() as db:
             orm_schedule = db.get(ForecastScheduleORM, schedule_id)
             if orm_schedule is None:
@@ -530,6 +536,7 @@ class ForecastManager:
     def _set_schedule_active_in_db(
         self, schedule_id: str, active: bool
     ) -> ForecastSchedule:
+        SessionLocal = get_sessionmaker()
         with SessionLocal() as db:
             orm_schedule = db.get(ForecastScheduleORM, schedule_id)
             if orm_schedule is None:
@@ -542,6 +549,7 @@ class ForecastManager:
             return orm_schedule.to_domain_schedule()
 
     def _delete_schedule_in_db(self, schedule_id: str) -> None:
+        SessionLocal = get_sessionmaker()
         with SessionLocal() as db:
             orm_schedule = db.get(ForecastScheduleORM, schedule_id)
             if orm_schedule is None:
