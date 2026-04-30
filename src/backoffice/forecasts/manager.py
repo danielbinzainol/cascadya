@@ -10,7 +10,10 @@ from datetime import datetime, time
 from pathlib import Path
 from typing import Literal
 
+import pandas as pd
 from fastapi import HTTPException
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from src.backoffice.forecasts.models import (
     PARIS_TZ,
@@ -32,6 +35,12 @@ from src.backoffice.forecasts.schemas import (
     RunCreateRequest,
     ScheduleCreateRequest,
     ScheduleUpdateRequest,
+)
+from src.backoffice.persistence.database import get_sessionmaker
+from src.backoffice.persistence.models import (
+    ForecastScheduleORM,
+    InarizSteamForecast,
+    InarizSteamProd,
 )
 
 
@@ -65,6 +74,10 @@ class ForecastManager:
 
     async def start(self) -> None:
         self._stop.clear()
+        await asyncio.to_thread(self._bootstrap_timeseries_tables)
+        schedules = await asyncio.to_thread(self._load_schedules_from_db)
+        async with self._lock:
+            self._schedules = {schedule.schedule_id: schedule for schedule in schedules}
         if self._dispatcher_task is None:
             self._dispatcher_task = asyncio.create_task(self._dispatcher_loop())
         if self._scheduler_task is None:
@@ -156,6 +169,7 @@ class ForecastManager:
             raise HTTPException(
                 status_code=404, detail=f"Unknown site '{payload.site}'."
             )
+        schedule = await asyncio.to_thread(self._create_schedule_in_db, schedule)
         async with self._lock:
             self._schedules[schedule.schedule_id] = schedule
         return schedule
@@ -169,25 +183,20 @@ class ForecastManager:
             raise HTTPException(
                 status_code=404, detail=f"Unknown site '{payload.site}'."
             )
+        schedule = await asyncio.to_thread(
+            self._update_schedule_in_db, schedule_id, payload
+        )
         async with self._lock:
-            schedule = self._schedules.get(schedule_id)
-            if schedule is None:
-                raise HTTPException(
-                    status_code=404, detail=f"Unknown schedule '{schedule_id}'."
-                )
-            schedule.site = site
-            schedule.model = payload.model
-            schedule.n_splits = payload.n_splits
-            schedule.gap = payload.gap
-            schedule.test_size = payload.test_size
-            schedule.active = payload.active
+            self._schedules[schedule_id] = schedule
         return schedule
 
     async def list_schedules(self) -> list[ForecastSchedule]:
+        schedules = await asyncio.to_thread(self._load_schedules_from_db)
         async with self._lock:
+            self._schedules = {schedule.schedule_id: schedule for schedule in schedules}
             values = list(self._schedules.values())
-        values.sort(key=lambda s: s.schedule_id)
-        return values
+            values.sort(key=lambda s: s.schedule_id)
+            return values
 
     async def set_schedule_active(
         self, schedule_id: str, active: bool
@@ -195,23 +204,18 @@ class ForecastManager:
         logger.info(
             "enter set_schedule_active schedule_id=%s active=%s", schedule_id, active
         )
+        schedule = await asyncio.to_thread(
+            self._set_schedule_active_in_db, schedule_id, active
+        )
         async with self._lock:
-            schedule = self._schedules.get(schedule_id)
-            if schedule is None:
-                raise HTTPException(
-                    status_code=404, detail=f"Unknown schedule '{schedule_id}'."
-                )
-            schedule.active = active
+            self._schedules[schedule_id] = schedule
         return schedule
 
     async def delete_schedule(self, schedule_id: str) -> None:
         logger.info("enter delete_schedule schedule_id=%s", schedule_id)
+        await asyncio.to_thread(self._delete_schedule_in_db, schedule_id)
         async with self._lock:
-            removed = self._schedules.pop(schedule_id, None)
-            if removed is None:
-                raise HTTPException(
-                    status_code=404, detail=f"Unknown schedule '{schedule_id}'."
-                )
+            self._schedules.pop(schedule_id, None)
 
     def available_sites(self) -> list[str]:
         return self._discover_sites(self._data_root)
@@ -244,9 +248,7 @@ class ForecastManager:
             async with self._lock:
                 run = self._runs[run_id]
             logger.info("_execute_run run_id=%s step=load_series", run_id)
-            series = await asyncio.to_thread(
-                self._load_site_timeseries_from_workflow, self._data_root, site
-            )
+            series = await asyncio.to_thread(self._load_site_timeseries, site)
             model_names = (
                 ["simple_copy", "median_copy", "linear_regression"]
                 if run.model == "all_models"
@@ -278,6 +280,11 @@ class ForecastManager:
                 ranking[0]["model"] if run.model == "all_models" else run.model
             )
             best = per_model[selected_model]
+            await asyncio.to_thread(
+                self._persist_forecast_series,
+                site,
+                best["export_rows"],
+            )
             scoring_details_map: dict[int, dict[str, object]] = {}
             for model_name, model_result in per_model.items():
                 fold_details = model_result.get("fold_details", [])
@@ -374,3 +381,180 @@ class ForecastManager:
         queue = self._site_queue[site]
         for idx, run_id in enumerate(queue, start=1):
             self._runs[run_id].queue_position = idx
+
+    def _bootstrap_timeseries_tables(self) -> None:
+        """Populate raw timeseries tables at startup if they are empty."""
+        SessionLocal = get_sessionmaker()
+        with SessionLocal() as db:
+            existing = db.scalar(select(InarizSteamProd.measured_at_utc).limit(1))
+            if existing is not None:
+                return
+
+            logger.info(
+                "bootstrap inariz_steam_prod from workflow because table is empty"
+            )
+            frame = self._load_site_timeseries_from_workflow(self._data_root, "inariz")
+            rows = [
+                InarizSteamProd(
+                    measured_at_utc=row.measured_at_utc.to_pydatetime()
+                    if hasattr(row.measured_at_utc, "to_pydatetime")
+                    else row.measured_at_utc,
+                    steam_production_m3_h=float(row.target),
+                )
+                for row in frame.itertuples(index=False)
+            ]
+            if not rows:
+                raise ValueError("Workflow produced no rows for inariz_steam_prod.")
+            db.bulk_save_objects(rows)
+            db.commit()
+            logger.info("bootstrapped inariz_steam_prod rows=%s", len(rows))
+
+    def _load_site_timeseries(self, site: str) -> pd.DataFrame:
+        """Load run input series from database, with workflow fallback."""
+        if site != "inariz":
+            return self._load_site_timeseries_from_workflow(self._data_root, site)
+
+        SessionLocal = get_sessionmaker()
+        with SessionLocal() as db:
+            records = db.scalars(
+                select(InarizSteamProd).order_by(InarizSteamProd.measured_at_utc.asc())
+            ).all()
+
+        if not records:
+            logger.info(
+                "inariz_steam_prod empty, fallback to workflow for site=%s", site
+            )
+            return self._load_site_timeseries_from_workflow(self._data_root, site)
+
+        out = pd.DataFrame(
+            {
+                "measured_at_utc": [r.measured_at_utc for r in records],
+                "target": [float(r.steam_production_m3_h) for r in records],
+            }
+        )
+        out["measured_at_utc"] = pd.to_datetime(out["measured_at_utc"], utc=True)
+        out = out.sort_values("measured_at_utc").reset_index(drop=True)
+        if len(out) < 200:
+            raise ValueError("Not enough history points to run cross-validation.")
+        return out
+
+    def _persist_forecast_series(
+        self, site: str, export_rows: list[dict[str, object]]
+    ) -> None:
+        """Persist non-zero prediction rows used by In-Sample + Out-of-Sample chart."""
+        if site != "inariz":
+            return
+
+        rows: list[dict[str, object]] = []
+        for row in export_rows:
+            segment = str(row.get("segment", ""))
+            if segment not in {"in_sample_window", "out_of_sample"}:
+                continue
+            predicted = row.get("predicted")
+            if predicted is None:
+                continue
+            predicted_value = float(predicted)
+            ts = pd.to_datetime(row.get("timestamp"), errors="coerce", utc=True)
+            if pd.isna(ts):
+                continue
+            rows.append(
+                {
+                    "measured_at_utc": ts.to_pydatetime(),
+                    "steam_production_m3_h": predicted_value,
+                    "unit": "m3/h",
+                }
+            )
+
+        if not rows:
+            logger.info("no forecast rows to persist for site=%s", site)
+            return
+
+        SessionLocal = get_sessionmaker()
+        with SessionLocal() as db:
+            stmt = pg_insert(InarizSteamForecast).values(rows)
+            upsert = stmt.on_conflict_do_update(
+                index_elements=[InarizSteamForecast.measured_at_utc],
+                set_={
+                    "steam_production_m3_h": stmt.excluded.steam_production_m3_h,
+                    "unit": stmt.excluded.unit,
+                },
+            )
+            db.execute(upsert)
+            db.commit()
+        logger.info("persisted forecast rows=%s site=%s", len(rows), site)
+
+    def _load_schedules_from_db(self) -> list[ForecastSchedule]:
+        SessionLocal = get_sessionmaker()
+        with SessionLocal() as db:
+            rows = db.scalars(
+                select(ForecastScheduleORM).order_by(
+                    ForecastScheduleORM.schedule_id.asc()
+                )
+            ).all()
+        return [row.to_domain_schedule() for row in rows]
+
+    def _create_schedule_in_db(self, schedule: ForecastSchedule) -> ForecastSchedule:
+        SessionLocal = get_sessionmaker()
+        with SessionLocal() as db:
+            orm_schedule = ForecastScheduleORM(
+                schedule_id=schedule.schedule_id,
+                site=schedule.site,
+                model=schedule.model,
+                n_splits=schedule.n_splits,
+                gap=schedule.gap,
+                test_size=schedule.test_size,
+                active=schedule.active,
+                trigger_time=schedule.trigger_time,
+                timezone=schedule.timezone,
+                last_triggered_at=schedule.last_triggered_at,
+            )
+            db.add(orm_schedule)
+            db.commit()
+            db.refresh(orm_schedule)
+            return orm_schedule.to_domain_schedule()
+
+    def _update_schedule_in_db(
+        self, schedule_id: str, payload: ScheduleUpdateRequest
+    ) -> ForecastSchedule:
+        SessionLocal = get_sessionmaker()
+        with SessionLocal() as db:
+            orm_schedule = db.get(ForecastScheduleORM, schedule_id)
+            if orm_schedule is None:
+                raise HTTPException(
+                    status_code=404, detail=f"Unknown schedule '{schedule_id}'."
+                )
+            orm_schedule.site = payload.site.lower().strip()
+            orm_schedule.model = payload.model
+            orm_schedule.n_splits = payload.n_splits
+            orm_schedule.gap = payload.gap
+            orm_schedule.test_size = payload.test_size
+            orm_schedule.active = payload.active
+            db.commit()
+            db.refresh(orm_schedule)
+            return orm_schedule.to_domain_schedule()
+
+    def _set_schedule_active_in_db(
+        self, schedule_id: str, active: bool
+    ) -> ForecastSchedule:
+        SessionLocal = get_sessionmaker()
+        with SessionLocal() as db:
+            orm_schedule = db.get(ForecastScheduleORM, schedule_id)
+            if orm_schedule is None:
+                raise HTTPException(
+                    status_code=404, detail=f"Unknown schedule '{schedule_id}'."
+                )
+            orm_schedule.active = active
+            db.commit()
+            db.refresh(orm_schedule)
+            return orm_schedule.to_domain_schedule()
+
+    def _delete_schedule_in_db(self, schedule_id: str) -> None:
+        SessionLocal = get_sessionmaker()
+        with SessionLocal() as db:
+            orm_schedule = db.get(ForecastScheduleORM, schedule_id)
+            if orm_schedule is None:
+                raise HTTPException(
+                    status_code=404, detail=f"Unknown schedule '{schedule_id}'."
+                )
+            db.delete(orm_schedule)
+            db.commit()

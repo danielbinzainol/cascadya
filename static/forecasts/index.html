@@ -316,6 +316,21 @@
             <pre>{{ selectedRun.logs }}</pre>
           </div>
         </section>
+
+        <section class="panel panel-wide">
+          <details class="sql-console">
+            <summary><strong>Advanced SQL (Read-Only)</strong></summary>
+            <p class="small">
+              Internal/admin use. Single SELECT/WITH query only. Write/delete/DDL queries are blocked.
+            </p>
+            <iframe
+              style="width:100%"
+              class="query-frame"
+              src="/static/backoffice/query.html"
+              title="Read-only SQL query console"
+            ></iframe>
+          </details>
+        </section>
       </main>
     </div>
   </body>

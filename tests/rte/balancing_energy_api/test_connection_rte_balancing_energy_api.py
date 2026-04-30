@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import datetime
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 import src.rte.balancing_energy_api.connection_rte_balancing_energy_api
 from src.rte.rte_client import RteAuthError
@@ -37,6 +39,13 @@ def _imbalance_data_payload() -> dict:
 
 def test_imbalance_data_endpoint_calls_client_with_env_config(monkeypatch) -> None:
     captured: dict[str, object] = {}
+    fake_resolved_auth = SimpleNamespace(
+        access_token=SecretStr("rte-token-value"),
+        client_id=None,
+        client_secret=None,
+        basic_authorization_b64=None,
+        token_url="https://fake-rte-token-url",
+    )
 
     class FakeRteBalancingEnergyClient:
         def __init__(self, *, base_url: str, auth: object) -> None:
@@ -59,11 +68,15 @@ def test_imbalance_data_endpoint_calls_client_with_env_config(monkeypatch) -> No
         "RteBalancingEnergyClient",
         FakeRteBalancingEnergyClient,
     )
+    monkeypatch.setattr(
+        src.rte.balancing_energy_api.connection_rte_balancing_energy_api,
+        "resolve_rte_auth_env",
+        lambda: fake_resolved_auth,
+    )
     monkeypatch.setenv(
         "RTE_BALANCING_ENERGY_BASE_URL",
         "https://custom-rte-host/open_api/balancing_energy/v5",
     )
-    monkeypatch.setenv("RTE_ACCESS_TOKEN", "rte-token-value")
 
     client = TestClient(
         src.rte.balancing_energy_api.connection_rte_balancing_energy_api.app
@@ -100,7 +113,7 @@ def test_imbalance_data_endpoint_rejects_missing_env_credentials(monkeypatch) ->
     monkeypatch.delenv("RTE_VAULT_TOKEN", raising=False)
     monkeypatch.delenv("RTE_VAULT_SECRET_PATH", raising=False)
     monkeypatch.delenv("VAULT_ADDR", raising=False)
-    monkeypatch.delenv("VAULT_TOKEN", raising=False)
+    monkeypatch.delenv("RTE_VAULT_TOKEN", raising=False)
 
     client = TestClient(
         src.rte.balancing_energy_api.connection_rte_balancing_energy_api.app

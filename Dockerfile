@@ -18,6 +18,8 @@ COPY static ./static
 COPY app.py ./app.py
 COPY plots.py ./plots.py
 COPY config.yml ./config.yml
+COPY alembic.ini ./alembic.ini
+COPY alembic ./alembic
 
 # Install project into the virtual environment.
 RUN uv sync --locked --no-dev
@@ -41,11 +43,11 @@ COPY --from=builder /app/static /app/static
 COPY --from=builder /app/app.py /app/app.py
 COPY --from=builder /app/plots.py /app/plots.py
 COPY --from=builder /app/config.yml /app/config.yml
+COPY --from=builder /app/alembic.ini /app/alembic.ini
+COPY --from=builder /app/alembic /app/alembic
 
 # Ensure runtime writable directories exist.
 RUN mkdir -p /app/data /app/reports && chown -R appuser:appuser /app
-
-USER appuser
 
 EXPOSE 8000
 
@@ -53,4 +55,10 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)" || exit 1
 
-CMD ["uvicorn", "src.backoffice.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# create/migrate the DB upon startup, 
+# and start the API
+COPY docker/entrypoint.sh /app/docker/entrypoint.sh
+RUN chmod +x /app/docker/entrypoint.sh
+
+USER appuser
+ENTRYPOINT ["/app/docker/entrypoint.sh"]

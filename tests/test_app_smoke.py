@@ -7,7 +7,20 @@ import pandas as pd
 from fastapi.testclient import TestClient
 
 import src.connection_aeolus_api as aeolus_api
-from src.backoffice.api.main import app
+from src.backoffice.api import main as backoffice_main
+
+app = backoffice_main.app
+
+
+def _disable_forecast_startup_db(monkeypatch) -> None:
+    async def _noop_start() -> None:
+        return None
+
+    async def _noop_stop() -> None:
+        return None
+
+    monkeypatch.setattr(backoffice_main.FORECAST_MANAGER, "start", _noop_start)
+    monkeypatch.setattr(backoffice_main.FORECAST_MANAGER, "stop", _noop_stop)
 
 
 def _write_market_orders_csv(path: Path) -> None:
@@ -27,6 +40,7 @@ def _write_market_orders_csv(path: Path) -> None:
 
 
 def test_main_app_smoke_docs_forecast_and_aeolus_publish(monkeypatch, tmp_path) -> None:
+    _disable_forecast_startup_db(monkeypatch)
     csv_path = tmp_path / "inariz_20260211_20260223_1735.csv"
     _write_market_orders_csv(csv_path)
 

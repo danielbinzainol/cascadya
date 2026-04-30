@@ -37,19 +37,19 @@ def _get_hvac_module() -> ModuleType:
 
 def _read_rte_basic_auth_b64_from_vault() -> str | None:
     vault_addr = os.getenv("RTE_VAULT_ADDR") or os.getenv("VAULT_ADDR")
-    vault_token_raw = os.getenv("RTE_VAULT_TOKEN") or os.getenv("VAULT_TOKEN")
+    rte_vault_token_raw = os.getenv("RTE_VAULT_TOKEN") or os.getenv("RTE_VAULT_TOKEN")
     vault_mount_point = os.getenv("RTE_VAULT_MOUNT_POINT", "secret")
-    vault_secret_path = os.getenv("RTE_VAULT_SECRET_PATH")
+    rte_vault_secret_path = os.getenv("RTE_VAULT_SECRET_PATH")
     vault_secret_key = os.getenv("RTE_VAULT_SECRET_KEY", "RTE_BASIC_AUTH_B64")
 
-    if not vault_addr or not vault_token_raw or not vault_secret_path:
+    if not vault_addr or not rte_vault_token_raw or not rte_vault_secret_path:
         return None
-    vault_token = SecretStr(vault_token_raw)
+    rte_vault_token = SecretStr(rte_vault_token_raw)
 
     hvac = _get_hvac_module()
     client = hvac.Client(
         url=vault_addr,
-        token=vault_token.get_secret_value(),
+        token=rte_vault_token.get_secret_value(),
     )
 
     if not client.is_authenticated():
@@ -60,7 +60,7 @@ def _read_rte_basic_auth_b64_from_vault() -> str | None:
 
     try:
         read_response = client.secrets.kv.v2.read_secret_version(
-            path=vault_secret_path,
+            path=rte_vault_secret_path,
             mount_point=vault_mount_point,
         )
     except Exception as exc:  # noqa: BLE001

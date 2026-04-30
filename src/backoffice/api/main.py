@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from src.connection_aeolus_api import router as aeolus_router
 from src.backoffice.forecasts.manager import ForecastManager
 from src.backoffice.forecasts.router import build_forecast_router
+from src.backoffice.api.routers.admin_queries import router as admin_queries_router
 from src.backoffice.api.routers.market_orders import router as market_orders_router
 
 app = FastAPI()
@@ -28,6 +29,7 @@ async def shutdown_forecasts() -> None:
 
 app.include_router(market_orders_router)
 app.include_router(build_forecast_router(FORECAST_MANAGER))
+app.include_router(admin_queries_router)
 app.include_router(aeolus_router)
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

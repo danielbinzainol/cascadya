@@ -8,7 +8,7 @@ from src.aeolus_models import (
     PositionType,
     ProductTimeStepApi,
 )
-from src.backoffice.services import aeolus_publish_service
+from src.integrations import aeolus_publish_service
 
 router = APIRouter(prefix="/aeolus", tags=["aeolus"])
 

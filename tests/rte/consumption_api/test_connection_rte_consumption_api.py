@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import datetime
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 import src.rte.consumption_api.connection_rte_consumption_api
 from src.rte.rte_client import RteAuthError
@@ -31,6 +33,13 @@ def _short_term_payload() -> dict:
 
 def test_rte_short_term_endpoint_calls_client_with_env_config(monkeypatch) -> None:
     captured: dict[str, object] = {}
+    fake_resolved_auth = SimpleNamespace(
+        access_token=SecretStr("rte-token-value"),
+        client_id=None,
+        client_secret=None,
+        basic_authorization_b64=None,
+        token_url="https://fake-rte-token-url",
+    )
 
     class FakeRteConsumptionClient:
         def __init__(self, *, base_url: str, auth: object) -> None:
@@ -54,10 +63,14 @@ def test_rte_short_term_endpoint_calls_client_with_env_config(monkeypatch) -> No
         "RteConsumptionClient",
         FakeRteConsumptionClient,
     )
+    monkeypatch.setattr(
+        src.rte.consumption_api.connection_rte_consumption_api,
+        "resolve_rte_auth_env",
+        lambda: fake_resolved_auth,
+    )
     monkeypatch.setenv(
         "RTE_CONSUMPTION_BASE_URL", "https://custom-rte-host/open_api/consumption/v1"
     )
-    monkeypatch.setenv("RTE_ACCESS_TOKEN", "rte-token-value")
 
     client = TestClient(src.rte.consumption_api.connection_rte_consumption_api.app)
     response = client.get(
@@ -93,7 +106,7 @@ def test_rte_short_term_endpoint_rejects_missing_env_credentials(monkeypatch) ->
     monkeypatch.delenv("RTE_VAULT_TOKEN", raising=False)
     monkeypatch.delenv("RTE_VAULT_SECRET_PATH", raising=False)
     monkeypatch.delenv("VAULT_ADDR", raising=False)
-    monkeypatch.delenv("VAULT_TOKEN", raising=False)
+    monkeypatch.delenv("RTE_VAULT_TOKEN", raising=False)
 
     client = TestClient(src.rte.consumption_api.connection_rte_consumption_api.app)
     response = client.get("/rte/consumption/short-term")
@@ -155,7 +168,7 @@ def test_rte_short_term_endpoint_maps_auth_error(monkeypatch) -> None:
 
         async def get_short_term(self, *, types, start_date, end_date):  # noqa: ANN001
             _ = (types, start_date, end_date)
-            raise RteAuthError("invalid token", status_code=401)
+            raise RteAuthError("invalid RTE token", status_code=401)
 
     monkeypatch.setattr(
         src.rte.consumption_api.connection_rte_consumption_api,
@@ -168,4 +181,4 @@ def test_rte_short_term_endpoint_maps_auth_error(monkeypatch) -> None:
     response = client.get("/rte/consumption/short-term")
 
     assert response.status_code == 401
-    assert response.json()["detail"] == "invalid token"
+    assert response.json()["detail"] == "invalid RTE token"

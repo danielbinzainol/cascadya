@@ -102,6 +102,7 @@ def build_forecast_router(manager: ForecastManager) -> APIRouter:
     @router.post("/schedules", response_model=ScheduleResponse)
     async def create_schedule(payload: ScheduleCreateRequest) -> ScheduleResponse:
         schedule = await manager.create_schedule(payload)
+
         return ScheduleResponse(
             schedule_id=schedule.schedule_id,
             site=schedule.site,
