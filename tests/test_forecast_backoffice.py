@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pandas as pd
@@ -63,15 +64,16 @@ def _build_test_client(
         data_root=tmp_path,
         load_site_timeseries_from_workflow_fn=load_site_timeseries_from_workflow_fn,
     )
-    app = FastAPI()
 
-    @app.on_event("startup")
-    async def startup() -> None:
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
         await manager.start()
+        try:
+            yield
+        finally:
+            await manager.stop()
 
-    @app.on_event("shutdown")
-    async def shutdown() -> None:
-        await manager.stop()
+    app = FastAPI(lifespan=lifespan)
 
     app.include_router(build_forecast_router(manager))
     return TestClient(app), manager

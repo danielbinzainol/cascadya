@@ -38,3 +38,11 @@ etc/
 
 # Docker artifacts, image exports
 *.tar
+
+# pytest tmp folders, overwritten at each new run
+.pytest_tmp/
+tmp_pytest_run*/
+pytest-cache-files-*/
+tmp/pytest/
+tmp/pytest_cache/
+tmp/temp
