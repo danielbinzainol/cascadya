@@ -12,7 +12,7 @@ class RteBalancingEnergyBaseModel(BaseModel):
 class ImbalanceDataValue(RteBalancingEnergyBaseModel):
     start_date: AwareDatetime
     end_date: AwareDatetime
-    imbalance: int | None = None
+    imbalance: float | None = None
     system_trend: str | None = None
     positive_imbalance_settlement_price: float | None = None
     negative_imbalance_settlement_price: float | None = None
