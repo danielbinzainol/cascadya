@@ -1,4 +1,5 @@
 import uvicorn
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -11,20 +12,21 @@ from src.backoffice.forecasts.router import build_forecast_router
 from src.backoffice.api.routers.admin_queries import router as admin_queries_router
 from src.backoffice.api.routers.market_orders import router as market_orders_router
 
-app = FastAPI()
 STATIC_DIR = (Path(__file__).resolve().parents[3] / "static").resolve()
 BACKOFFICE_HOME = STATIC_DIR / "backoffice" / "index.html"
 FORECAST_MANAGER = ForecastManager(data_root=Path(__file__).resolve().parents[3])
 
 
-@app.on_event("startup")
-async def startup_forecasts() -> None:
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
     await FORECAST_MANAGER.start()
+    try:
+        yield
+    finally:
+        await FORECAST_MANAGER.stop()
 
 
-@app.on_event("shutdown")
-async def shutdown_forecasts() -> None:
-    await FORECAST_MANAGER.stop()
+app = FastAPI(lifespan=lifespan)
 
 
 app.include_router(market_orders_router)
