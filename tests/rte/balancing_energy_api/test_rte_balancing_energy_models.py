@@ -48,3 +48,12 @@ def test_imbalance_data_response_accepts_extra_fields() -> None:
     parsed = ImbalanceDataResponse.model_validate(payload)
 
     assert parsed.imbalance_data[0].values[0].imbalance == 200
+
+
+def test_imbalance_data_response_accepts_fractional_imbalance_values() -> None:
+    payload = _imbalance_payload()
+    payload["imbalance_data"][0]["values"][0]["imbalance"] = 380.92
+
+    parsed = ImbalanceDataResponse.model_validate(payload)
+
+    assert parsed.imbalance_data[0].values[0].imbalance == 380.92

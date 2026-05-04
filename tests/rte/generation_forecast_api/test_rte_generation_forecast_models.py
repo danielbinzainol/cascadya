@@ -92,3 +92,13 @@ def test_total_forecast_response_accepts_total_forecast_camel_case_root_key() ->
 
     assert len(parsed.total_forecast) == 1
     assert parsed.total_forecast[0].type == "D-1"
+
+
+def test_total_forecast_response_normalizes_invalid_seconds_in_datetime() -> None:
+    payload = _total_forecast_payload()
+    payload["total_forecast"][0]["end_date"] = "2026-05-02T10:32:79Z"
+
+    parsed = TotalForecastResponse.model_validate(payload)
+
+    assert parsed.total_forecast[0].end_date is not None
+    assert parsed.total_forecast[0].end_date.second == 59

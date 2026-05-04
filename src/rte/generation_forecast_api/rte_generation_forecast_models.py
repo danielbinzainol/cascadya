@@ -1,12 +1,42 @@
 from __future__ import annotations
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+import re
+
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 
 class RteGenerationForecastBaseModel(BaseModel):
     model_config = ConfigDict(
         extra="allow", validate_by_name=True, validate_by_alias=True
     )
+
+    @field_validator(
+        "start_date",
+        "end_date",
+        "updated_date",
+        mode="before",
+        check_fields=False,
+    )
+    @classmethod
+    def _normalize_rte_datetime_seconds(cls, value):  # noqa: ANN001
+        if not isinstance(value, str):
+            return value
+        match = re.search(
+            r"T\d{2}:\d{2}:(\d{2})(?:\.\d+)?(?:Z|[+\-]\d{2}:\d{2})$", value
+        )
+        if not match:
+            return value
+        seconds = int(match.group(1))
+        if seconds <= 59:
+            return value
+        return value.replace(f":{seconds:02d}", ":59", 1)
 
 
 class GenerationForecastPoint(RteGenerationForecastBaseModel):
