@@ -1,0 +1,48 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Data
+/data/
+
+# Plots
+/reports/
+
+# Debugging
+.vscode/
+
+# Notebooks cache
+.ipynb_checkpoints
+
+# agents
+.agents
+
+# tests coverage
+coverage.xml
+.coverage
+.coverage.*
+htmlcov/
+
+# DB info
+.env.*
+
+# Vault info
+etc/
+
+# Docker artifacts, image exports
+*.tar
+
+# pytest tmp folders, overwritten at each new run
+.pytest_tmp/
+tmp_pytest_run*/
+pytest-cache-files-*/
+tmp/pytest/
+tmp/pytest_cache/
+tmp/temp

@@ -1,0 +1,33 @@
+# VCS / metadata
+.git
+.gitignore
+.github
+
+# Python environments and caches
+.venv
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Coverage / test output
+.coverage
+coverage.xml
+htmlcov/
+
+# Local artifacts
+notebooks/
+reports/
+thoughts/
+test_connection_cmarket_mqtt/
+
+# Editor / OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Agent/tooling local state
+.agents/

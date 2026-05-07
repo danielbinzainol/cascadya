@@ -1,0 +1,38 @@
+services:
+  backoffice:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: c-market-backoffice:latest
+    container_name: c-market-backoffice
+    restart: unless-stopped
+    depends_on: 
+      - db
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./tmp/tokens:/run/c_market:ro
+    environment:
+      PYTHONUNBUFFERED: "1"
+      DATABASE_USERNAME: "postgres"
+      DATABASE_PORT: "5432"
+      DATABASE_NAME: "forecast_database"
+      DATABASE_HOST: ${DATABASE_HOST}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+
+  db:
+    image: postgres:18.3-alpine
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/
+    expose:
+      - 5432
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=forecast_database
+
+volumes:
+  postgres_data:      

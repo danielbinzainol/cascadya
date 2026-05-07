@@ -1,0 +1,71 @@
+[project]
+name = "ml-models"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.128.0",
+    "holidays>=0.89",
+    "hvac>=2.3.0",
+    "httpx>=0.28.1",
+    "matplotlib>=3.10.8",
+    "mlflow>=3.8.1",
+    "numpy>=2.4.1",
+    "openpyxl>=3.1.5",
+    "pandas>=2.3.3",
+    "pathlib>=1.0.1",
+    "pyyaml>=6.0.3",
+    "scikit-learn>=1.8.0",
+    "scipy>=1.17.0",
+    "seaborn>=0.13.2",
+    "statsmodels>=0.14.6",
+    "tqdm>=4.67.1",
+    "uvicorn>=0.40.0",
+    "statsforecast>=2.0.1",
+    "sqlalchemy>=2.0.46",
+    "psycopg[binary]>=3.3.3",
+    "alembic>=1.18.1",
+]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.2.0",
+    "jupyter-core>=5.9.1",
+    "pyqt6>=6.10.2",
+    "pytest<9.0.0",
+    "pytest-csv-params>=1.3.2",
+    "pytest-cov>=6.2.1",
+    "ruff>=0.15.8",
+    "pre-commit>=4.5.1",
+    "ty>=0.0.26",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+python_files = ["test_*.py"]
+addopts = [
+    "-q",
+    "--cov=src",
+    "--cov=app",
+    "--cov=plots",
+    "--cov-branch",
+    "--cov-report=term-missing",
+    "--cov-report=xml",
+    "--cov-report=html",
+]
+
+[tool.coverage.run]
+source = ["src", "app", "plots"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+
+[tool.ruff]
+extend-exclude = ["*.ipynb"]
+
+[tool.ty.src]
+exclude = ["notebooks"]
